@@ -262,10 +262,23 @@ async function listModels(conn) {
   list.sort((a, b) => (b.free - a.free) || (b.ctx - a.ctx) || a.id.localeCompare(b.id));
   return list;
 }
-function pickModel(conn, list) {
-  for (const re of PRESETS[conn.preset]?.pick || [/./]) { const m = list.find(x => re.test(x.id)); if (m) return m.id; }
-  return list[0]?.id || PRESETS[conn.preset]?.defaultModel || '';
+/* Models in the order worth trying: preset preferences first, newest Gemini Flash first */
+const verOf = id => (String(id).match(/(\d+(?:\.\d+)?)/) || [0, 0])[1] * 1;
+function modelCandidates(conn, list) {
+  let ids = list.map(m => m.id).filter(Boolean);
+  if (conn.preset === 'gemini') {
+    const flash = ids.filter(id => /^gemini-[\d.]+-flash$/.test(id)).sort((a, b) => verOf(b) - verOf(a));
+    const flashx = ids.filter(id => /^gemini-[\d.]+-flash/.test(id) && !/(lite|image|tts|live|audio|embedding|thinking|native)/.test(id) && !flash.includes(id)).sort((a, b) => verOf(b) - verOf(a));
+    ids = [...flash, ...(ids.includes('gemini-flash-latest') ? ['gemini-flash-latest'] : []), ...flashx, ...ids];
+  } else {
+    const out = []; for (const re of PRESETS[conn.preset]?.pick || [/./]) for (const id of ids) if (re.test(id) && !out.includes(id)) out.push(id);
+    ids = [...out, ...ids];
+  }
+  ids = [...new Set(ids)];
+  if (!ids.length && PRESETS[conn.preset]?.defaultModel) ids = [PRESETS[conn.preset].defaultModel];
+  return ids;
 }
+function pickModel(conn, list) { return modelCandidates(conn, list)[0] || ''; }
 async function testConn(conn) {
   if (!conn.model) throw new Error('No model chosen.');
   const r = stripThink(await chatOne(conn, [{ role:'user', content:'Reply with exactly: The tavern door creaks open.' }], { stream:false, maxTokens:60, temperature:0 })).trim();
@@ -291,14 +304,21 @@ async function autoPair(conn) {
 async function setupConn(conn, { repick } = {}) {
   conn.status = 'working'; conn.note = 'Finding a free model…'; refreshConnUI();
   try {
-    if (!conn.model || repick) {
-      let list = [];
-      try { list = await listModels(conn); conn.models = list.slice(0, 80).map(m => m.id); } catch (e) { conn.note = 'Couldn\'t list models (' + e.message + ').'; }
-      conn.model = pickModel(conn, list);
-      if (!conn.model) throw new Error(conn.note || 'No usable models found for this key.');
-    }
+    let list = null;
+    const loadList = async () => { if (list) return list; list = []; try { list = await listModels(conn); conn.models = list.slice(0, 80).map(m => m.id); } catch (e) { conn.note = 'Couldn\'t list models (' + e.message + ').'; } return list; };
+    if (!conn.model || repick) { conn.model = pickModel(conn, await loadList()); if (!conn.model) throw new Error(conn.note || 'No usable models found for this key.'); }
     conn.note = 'Testing…'; refreshConnUI();
-    await testConn(conn);
+    /* if a model is retired or restricted (404/403), try the next good one automatically */
+    try { await testConn(conn); }
+    catch (e) {
+      if (![400, 403, 404].includes(e.status) && !/not found|no longer|only available|not supported|unavailable/i.test(e.message)) throw e;
+      const tried = new Set([conn.model]); let ok = false, last = e;
+      for (const id of modelCandidates(conn, await loadList()).filter(x => !tried.has(x)).slice(0, 6)) {
+        conn.model = id; tried.add(id); conn.note = `Trying ${id.split('/').pop()}…`; refreshConnUI();
+        try { await testConn(conn); ok = true; break; } catch (e2) { last = e2; if (e2.retry && ![400, 403, 404].includes(e2.status)) break; }
+      }
+      if (!ok) throw last;
+    }
     conn.status = 'ok'; conn.note = 'Ready';
     if (!connReady(conns().find(c => c.id === S.settings.ai.active)) || conns().find(c => c.id === S.settings.ai.active)?.status === 'error') S.settings.ai.active = conn.id;
     await autoPair(conn);

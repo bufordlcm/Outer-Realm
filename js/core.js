@@ -106,10 +106,10 @@ const DEFAULT_CLIENT_ID = '62872295580-f6pf5i15jaoo5mnskkrooe8gfosjo7v8.apps.goo
 
 const PRESETS = {
   openrouter: { label:'OpenRouter', short:'OpenRouter', baseUrl:'https://openrouter.ai/api/v1', key:true, keyUrl:'https://openrouter.ai/settings/keys', freeOnly:true,
-    pick:[/deepseek\/deepseek-chat.*:free/, /deepseek\/deepseek-v3.*:free/, /llama-3\.3-70b.*:free/, /qwen.*(235b|72b|32b).*:free/, /gemini.*flash.*:free/, /mistral.*(small|medium).*:free/, /:free$/],
+    pick:[/deepseek.*(chat|v3|v4).*:free/, /deepseek.*:free/, /qwen.*(235b|72b|80b|32b|30b).*:free/, /llama.*(70b|405b|maverick).*:free/, /kimi.*:free/, /glm.*:free/, /mistral.*(medium|small|large).*:free/, /gemma.*(27b|31b|12b).*:free/, /nemotron.*:free/, /minimax.*:free/, /gemini.*flash.*:free/, /:free$/],
     note:'Free account, dozens of free open models (DeepSeek, Llama, Qwen, Mistral). Best all-round choice.' },
-  gemini:     { label:'Google Gemini', short:'Gemini', baseUrl:'https://generativelanguage.googleapis.com/v1beta/openai', key:true, keyUrl:'https://aistudio.google.com/apikey', defaultModel:'gemini-2.5-flash',
-    pick:[/^gemini-2\.5-flash$/, /^gemini-flash-latest$/, /^gemini-[\d.]+-flash$/, /^gemini-[\d.]+-flash(?!.*(lite|image|tts|live|audio|embedding|thinking))/, /^gemini-.*flash/],
+  gemini:     { label:'Google Gemini', short:'Gemini', baseUrl:'https://generativelanguage.googleapis.com/v1beta/openai', key:true, keyUrl:'https://aistudio.google.com/apikey', defaultModel:'gemini-flash-latest',
+    pick:[/^gemini-[\d.]+-flash$/, /^gemini-flash-latest$/, /^gemini-.*flash/],
     note:'Free key from Google AI Studio. Strong storyteller, generous free limits. Sign in with any Google account.' },
   pollinations:{ label:'Pollinations', short:'Pollinations', baseUrl:'https://gen.pollinations.ai/v1', key:true, keyUrl:'https://enter.pollinations.ai', defaultModel:'openai',
     pick:[/^openai$/, /^openai-large$/, /^mistral/, /^deepseek/, /./], note:'Paid with Pollen credits since Nov 2026; needs a secret sk_ key (pk_ keys no longer generate). Free scene images need no key.' },
