@@ -281,8 +281,8 @@ function modelCandidates(conn, list) {
 function pickModel(conn, list) { return modelCandidates(conn, list)[0] || ''; }
 async function testConn(conn) {
   if (!conn.model) throw new Error('No model chosen.');
-  const r = stripThink(await chatOne(conn, [{ role:'user', content:'Reply with exactly: The tavern door creaks open.' }], { stream:false, maxTokens:60, temperature:0 })).trim();
-  if (!r) throw new Error('Connected, but the reply was empty — try another model.');
+  const r = stripThink(await chatOne(conn, [{ role:'user', content:'Reply with exactly: The tavern door creaks open.' }], { stream:false, maxTokens:300, temperature:0 })).trim();
+  if (!r) throw new Error('Connected, but the reply was empty (it may be a "thinking" model that ran out of room). Tap Test again, or pick another model.');
   return r;
 }
 /* Story-only models (trained on narrative) write great scenes but are shaky at the JSON rule steps.

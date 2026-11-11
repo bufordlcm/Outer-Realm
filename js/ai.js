@@ -133,6 +133,8 @@ async function chatOne(conn, messages, { stream = false, onToken, signal, maxTok
   const maxOut = maxTokens ?? num(t.maxTokens || 1000);
   messages = fitContext(messages, conn.ctx || PRESETS[conn.preset]?.ctx || 0, maxOut);
   const body = { model: (model || conn.model).trim(), messages, temperature: temperature ?? Number(t.temperature ?? 0.85), max_tokens: maxOut, stream };
+  /* thinking models (Nemotron, DeepSeek R1, Qwen3…) can spend the whole token budget thinking: keep it short on OpenRouter, and leave room */
+  if (conn.preset === 'openrouter') { body.reasoning = { effort: 'low', exclude: true }; body.max_tokens = maxOut + 1200; }
   let res;
   try { res = await fetch(conn.baseUrl.trim().replace(/\/+$/, '') + '/chat/completions', { method:'POST', headers, body: JSON.stringify(body), signal }); }
   catch (e) { if (e.name === 'AbortError') throw e; throw aiError(`Couldn't reach ${conn.label}. ` + (conn.preset === 'ollama' ? 'Is Ollama running with OLLAMA_ORIGINS="*"? ' : 'Check your connection, or this provider may not allow browser apps.'), 0, true); }
