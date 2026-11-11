@@ -66,24 +66,27 @@ for (const c of Object.values(S.campaigns)) migrate(c);
    unreachable and auto-switch is on, it tries the next ready connection. */
 /* world & character building can use a stronger online AI; it falls back to the story AI if that one refuses, is out of free uses, or is offline */
 const REFUSAL = /^\s*(I('m| am) (sorry|unable|not able)|I can(no|')t (help|assist|create|write|do|provide|continue)|Sorry, (but )?I can|As an AI)/i;
-function builderConn() {
-  const want = S.settings.ai.builder ?? 'auto'; if (want === 'same') return null;
+function builderConns() {
+  const want = S.settings.ai.builder ?? 'auto'; if (want === 'same') return [];
   const story = activeConn();
-  const c = want === 'auto' ? conns().find(x => connReady(x) && x !== story && x.preset !== 'ollama' && x.preset !== 'custom') : conns().find(x => x.id === want);
-  return connReady(c) && c !== story ? c : null;
+  const online = conns().filter(x => connReady(x) && x !== story && x.preset !== 'ollama' && x.preset !== 'custom');
+  const chosen = want === 'auto' ? null : conns().find(x => x.id === want);
+  return (chosen && connReady(chosen) && chosen !== story ? [chosen, ...online.filter(x => x !== chosen)] : online);
 }
+const builderConn = () => builderConns()[0] || null;
 async function chat(messages, opts = {}) {
   if (opts.build) {
-    const bc = builderConn();
-    if (bc) {
+    const list = builderConns(); let tried = 0;
+    for (const bc of list) {
+      tried++;
       try {
         const out = await chatOne(bc, messages, { ...opts, model: '' });
         const t = stripThink(out).trim();
         if (t && !REFUSAL.test(t.slice(0, 160))) return out;
-        console.warn('Builder AI declined; using the story AI');
-      } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Builder AI unavailable; using the story AI', e); }
-      toast(`${bc.label} couldn't help with this one, so your story AI is building it instead.`, 4500);
+        console.warn('Builder AI declined:', bc.label);
+      } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Builder AI unavailable:', bc.label, e); }
     }
+    if (tried) toast(`The online builder AI${tried > 1 ? 's were' : ' was'} busy or declined, so your story AI is building it instead.`, 4500);
   }
   const first = activeConn();
   if (!first) throw new Error('No AI connected yet. Open Setup and add a free key.');
