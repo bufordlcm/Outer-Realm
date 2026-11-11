@@ -22,7 +22,7 @@ import urllib.request
 FORGE = 'http://127.0.0.1:7860'
 SEARXNG = 'http://127.0.0.1:8888'
 PORT = 7861
-ALLOWED = {'https://ironquillstories.netlify.app'}
+ALLOWED = {'https://ironquillstories.netlify.app', 'https://outer-realm.netlify.app'}
 # Extra web addresses allowed to use this helper: one per line in allowed-sites.txt next to this file
 try:
     with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'allowed-sites.txt'), encoding='utf-8') as f:

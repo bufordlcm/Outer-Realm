@@ -34,7 +34,7 @@ The scripts are plain files loaded in order; there is nothing to build or instal
 
 | Part | Setting |
 |---|---|
-| App address | New Netlify site connected to the GitHub repo **outer-realm** (the old site was ironquillstories.netlify.app) |
+| App address | **https://outer-realm.netlify.app** (Netlify, deploys automatically from GitHub bufordlcm/Outer-Realm; the old site was ironquillstories.netlify.app) |
 | Story AI | **Ollama** on the GTX 1070 Ti: **Wayfarer 12B** writes, **dolphin3** runs the rule steps |
 | Pictures | **Forge** on the GTX 1060 6GB, reached through the helper on port 7861 |
 | Ollama settings (Windows user variables) | `OLLAMA_ORIGINS` = your app address(es), comma separated · `OLLAMA_CONTEXT_LENGTH` = `12288` · `OLLAMA_HOST` = `0.0.0.0:11434` · `CUDA_VISIBLE_DEVICES` = the 1070 Ti |
