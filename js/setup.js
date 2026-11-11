@@ -281,7 +281,11 @@ function modelCandidates(conn, list) {
 function pickModel(conn, list) { return modelCandidates(conn, list)[0] || ''; }
 async function testConn(conn) {
   if (!conn.model) throw new Error('No model chosen.');
-  const r = stripThink(await chatOne(conn, [{ role:'user', content:'Reply with exactly: The tavern door creaks open.' }], { stream:false, maxTokens:300, temperature:0 })).trim();
+  const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), conn.preset === 'ollama' ? 120000 : 60000);
+  let r;
+  try { r = stripThink(await chatOne(conn, [{ role:'user', content:'Reply with exactly: The tavern door creaks open.' }], { stream:false, maxTokens:300, temperature:0, signal: ctl.signal })).trim(); }
+  catch (e) { if (e.name === 'AbortError') throw new Error(conn.preset === 'ollama' ? 'No answer after 2 minutes. Is Ollama running, and is the model loaded? Tap Test again.' : 'No answer after a minute: this free model is probably overloaded. Tap Test again later, or pick another model.'); throw e; }
+  finally { clearTimeout(tm); }
   if (!r) throw new Error('Connected, but the reply was empty (it may be a "thinking" model that ran out of room). Tap Test again, or pick another model.');
   return r;
 }
