@@ -72,8 +72,15 @@ const IDB = {
 };
 function forgeJob(prompt, seed, c) {
   const s = S.settings.image; const pick = pickForgeModel(c, prompt); const pk = forgePresetKey(pick.model); const P = FORGE_PRESETS[pk];
-  const [W, H] = FORGE_SIZES[P.base][s.size] || FORGE_SIZES[P.base].square;
-  return { prompt, seed, W, H, P, model: pick.model, safe: pick.safe, k: 'k' + hashStr([prompt, seed, W, H, pk, pick.model, pick.safe, s.forgeNeg].join('|')) };
+  const [FW, FH] = FORGE_SIZES[P.base][s.size] || FORGE_SIZES[P.base].square;
+  /* "Fast" draws SDXL pictures at 3/4 size: about half the pixels, so roughly twice as quick on smaller cards */
+  const small = [Math.round(FW * 0.75 / 64) * 64, Math.round(FH * 0.75 / 64) * 64];
+  const fast = P.base === 'xl' && (s.forgeRes || 'fast') === 'fast';
+  const [W, H] = fast ? small : [FW, FH];
+  const keyOf = (w, h) => 'k' + hashStr([prompt, seed, w, h, pk, pick.model, pick.safe, s.forgeNeg].join('|'));
+  /* a picture already painted at the other size is reused instead of painted again */
+  const alt = P.base === 'xl' ? (fast ? keyOf(FW, FH) : keyOf(small[0], small[1])) : '';
+  return { prompt, seed, W, H, P, model: pick.model, safe: pick.safe, k: keyOf(W, H), alt };
 }
 const localPH = k => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="3" height="2"><desc>${k}</desc></svg>`);
 const localFailURL = k => 'data:,fail-' + k;
@@ -95,6 +102,7 @@ async function pumpLocal() {
       try {
         let blob = await IDB.get(job.k);
         if (!blob) { blob = await DriveImg.get(job.k); if (blob) IDB.put(job.k, blob); }
+        if (!blob && job.alt) { blob = await IDB.get(job.alt) || await DriveImg.get(job.alt); if (blob) IDB.put(job.k, blob); }
         if (!blob) { blob = await forgeGenerate(job); await IDB.put(job.k, blob); if (S.settings.image.driveSave !== false && Drive.configured()) DriveImg.queue(job.k); }
         LOCAL.url[job.k] = URL.createObjectURL(blob);
       } catch (e) { LOCAL.fail[job.k] = e.message || String(e); (LOCAL.failAt = LOCAL.failAt || {})[job.k] = Date.now(); }
