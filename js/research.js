@@ -116,7 +116,7 @@ Reply with JSON only:
 {"search":null}
 or {"search":"short search phrase, 2-6 words, the specific thing"}` },
     { role:'user', content:`STORY: ${c.title}. ${c.genre || ''} ${String(c.premise || '').slice(0, 300)}\n\nRECENT:\n${storyLines(c, 2) || '(start)'}\n\nTHE PLAYER'S MESSAGE NOW: ${playerText}` }
-  ], { stream:false, signal, maxTokens:60, temperature:0.1, helper:true });
+  ], { stream:false, signal, maxTokens:60, temperature:0.1, helper:true, json:true });
   const j = tryJSON(stripThink(raw));
   const q = j && typeof j.search === 'string' ? j.search.trim().replace(/^["']|["']$/g, '').slice(0, 80) : '';
   if (!q || q.length < 3 || /^(null|none)$/i.test(q)) return null;

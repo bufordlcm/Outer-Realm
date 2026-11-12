@@ -124,7 +124,7 @@ async function makeCompanion(concept, madeBy) {
     const raw = await chat([
       { role:'system', content:`You create a companion character for a solo tabletop RPG party. Fit the setting and the player's request. Stats 8-18 (three or four above 10). 2-4 traits from tier D to B, at least one negative ("polarity":"-"), each with a trigger and story effects. Give them goals of their own and 1-2 secrets that could matter later. Reply with JSON only: ${COMP_SPEC}` },
       { role:'user', content:`SETTING: ${c.title}. ${c.genre}. ${c.premise}${c.world ? '\nWORLD:\n' + c.world : ''}\n\nPLAYER CHARACTER: ${c.character.name}, ${c.character.storyRole}\n\nCOMPANION REQUEST: ${concept}` }
-    ], { build:true, stream:false, maxTokens:1400, temperature:0.85 });
+    ], { build:true, stream:false, maxTokens:1800, temperature:0.85, json:true });
     const j = tryJSON(stripThink(raw)); if (!j || !j.name) throw new Error('The GM\'s reply wasn\'t a usable companion. Try again.');
     const p = normComp(j, madeBy); c.party = arr(c.party); c.party.push(p); if (autoPortraitsOn()) portraitFor(c, p.id, true);
     c.messages.push({ id: uid(), role:'sys', text:`${p.name} is ready to join the party. The GM will bring them in.` });

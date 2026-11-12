@@ -122,7 +122,7 @@ async function buildCast(c, concepts) {
       const raw = await chat([
         { role:'system', content:`You create a character for an immersive, free-form interactive story. They must be an ADULT (18 or older). Make them vivid and specific: a real personality with flaws, a way of talking, goals and a history of their own, and 1-2 private things they don't share easily. Fit the setting and the player's description. Reply with JSON only: ${COMP_SPEC}` },
         { role:'user', content:`SETTING: ${c.title}. ${c.genre}. ${c.premise}${c.world ? '\nWORLD:\n' + c.world.slice(0, 1500) : ''}\n\nTHE PLAYER: ${c.character.name}, ${c.character.storyRole || ''}\n\nCHARACTER TO CREATE: ${concept}` }
-      ], { build:true, stream:false, maxTokens:1200, temperature:0.85 });
+      ], { build:true, stream:false, maxTokens:1800, temperature:0.85, json:true });
       const j = tryJSON(stripThink(raw)); if (!j?.name) throw new Error('no character');
       const p = normComp(j, 'player'); p.revealed = true; c.party = arr(c.party); c.party.push(p);
       if (autoPortraitsOn()) portraitFor(c, p.id, true);

@@ -131,7 +131,7 @@ function fitContext(messages, ctx, maxOut) {
   return out;
 }
 function aiError(msg, status, retry) { const e = new Error(msg); e.status = status; e.retry = retry; return e; }
-async function chatOne(conn, messages, { stream = false, onToken, signal, maxTokens, temperature, model } = {}) {
+async function chatOne(conn, messages, { stream = false, onToken, signal, maxTokens, temperature, model, json } = {}) {
   const t = S.settings.text;
   const headers = { 'Content-Type':'application/json' };
   if (conn.apiKey) headers.Authorization = 'Bearer ' + conn.apiKey.trim();
@@ -141,6 +141,7 @@ async function chatOne(conn, messages, { stream = false, onToken, signal, maxTok
   messages = fitContext(messages, conn.ctx || PRESETS[conn.preset]?.ctx || 0, maxOut);
   const body = { model: (model || conn.model).trim(), messages, temperature: temperature ?? Number(t.temperature ?? 0.85), max_tokens: maxOut, stream };
   /* thinking models (Nemotron, DeepSeek R1, Qwen3…) can spend the whole token budget thinking: keep it short on OpenRouter, and leave room */
+  if (json && (conn.preset === 'gemini' || conn.preset === 'ollama')) body.response_format = { type: 'json_object' };
   if (conn.preset === 'openrouter') { body.reasoning = { effort: 'low', exclude: true }; body.max_tokens = maxOut + 1200; }
   if (conn.preset === 'gemini' && /gemini-[3-9]|gemini-.*latest/.test(body.model)) { body.reasoning_effort = 'low'; body.max_tokens = maxOut + 1200; }
   let res;

@@ -503,28 +503,41 @@ RULES
 Reply with ONLY this JSON:
 {"name":"","pronouns":"","story_role":"","appearance":"","backstory":"","stats":{"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10},"traits":[{"name":"","polarity":"+","tier":"B","trigger":"","effects":[""]}],"gear":[{"name":"","desc":"","tier":""}]}`;
 
-const WORLD_RULES = `You design the setting for IRONQUILL, a solo tabletop RPG run by an AI Game Master. From the player's short idea, build a rich, playable starting point.
-- If the idea names an existing fictional world (a book, film, show or game), set the adventure inside that world: use its real places, factions, rules and well-known characters, and keep to its tone and lore. Place the player's story in a gap where an original character fits.
-- Otherwise invent an original world.
-- The premise sets the opening situation and a hook. Describe the world and situation only — never decide what the player character does, thinks or feels.
-- world: 8-14 short bullet lines ("- ") covering key places, factions or houses, 3-5 notable NPCs with one-line motives, how magic or technology works, and current tensions.
-- secrets: 3-5 bullet lines of hidden truths and plot threads the GM will reveal only through play (a traitor, a hidden cause, a coming threat).
-- magic_cost: "free" for worlds where casters use magic freely (e.g. wizarding schools), "strain" where magic is costly or rare, "none" where the player has no magic.
+const WORLD_RULES = `You are a veteran tabletop RPG designer building the setting for a solo game run by an AI Game Master. Turn the player's short idea into a world that is rich, specific and ready to play tonight.
+- If the idea names an existing fictional world (a book, film, show or game), set the adventure inside that world: use its real places, factions, rules and well-known characters, and keep its tone and lore. Place the player's story in a gap where an original character fits.
+- Otherwise invent an original world. Make it feel lived-in: concrete names, smells, sounds, local customs, what things cost, what people fear.
+QUALITY BAR
+- Specific beats generic. Not "a dark forest" but "the Hushwood, where birds stopped singing three winters ago". Avoid stock clichés (chosen ones, ancient evil simply awakening, the dark lord) unless you give them a fresh twist.
+- Everything connects: every secret involves at least one named person and one named place; factions want things that clash with each other; every key person wants something, hides something, and has a distinct way of talking.
+- The opening premise drops the player into an immediate situation with stakes and a clear first problem in the first scene, not a long backstory. Describe the world and situation only: never decide what the player character does, thinks or feels.
+- The roadmap escalates: each act raises the stakes and its beats name people, places and factions from this world.
+FIELDS
+- world: 10-16 short bullet lines ("- "): the starting place and 3-4 other key places (each with a sensory detail), factions or houses, how magic or technology works and what it costs, daily life, current tensions.
+- secrets: 4-6 bullet lines of hidden truths the GM reveals only through play (a traitor, a hidden cause, a coming threat, a lie everyone believes).
+- magic_cost: "free" where casters use magic freely (e.g. wizarding schools), "strain" where magic is costly or rare, "none" where the player has no magic.
 - art_style: a short phrase for an illustrator matching the world's look.
-- plan: 3-5 sentences of hidden campaign direction: likely twists, and how the story will test the character.
-- roadmap: the plot in 3-5 acts, as text. Each act on its own line as "Act 1: Short title | the act's goal", followed by 3-4 beats, each on a line starting "- ". Beats are things that can happen in the world (discoveries, arrivals, reveals, dangers), never things the player character must decide or do.
-- people: 4-6 key characters: {"name","text":"one sentence: who they are","where","sex":"male|female","feel":"friendly|neutral|wary|hostile"}. Adults only.
+- plan: 4-6 sentences of hidden campaign direction: likely twists, how the story will test the character, and a possible ending or two.
+- roadmap: the plot in 4 acts, as text. Each act on its own line as "Act 1: Short title | the act's goal", followed by 3-4 beats, each on a line starting "- ". Beats are things that can happen in the world (discoveries, arrivals, reveals, dangers), never things the player character must decide or do.
+- people: 5-7 key characters: {"name","text":"two sentences: who they are, what they want and what they hide, and how they talk","where","sex":"male|female","feel":"friendly|neutral|wary|hostile"}. Adults only. Include at least one ally, one rival and one who is not what they seem.
 - threats: 2-3 dangers that advance over time if ignored, each with max 4-8 and what happens when it fills.
-- factions: 3-5 groups with a one-line description each.
+- factions: 3-5 groups with a one-line description of what they want.
 Reply with ONLY this JSON:
 {"title":"","genre":"","premise":"","tone":"","art_style":"","magic_cost":"free","world":"- ...","secrets":"- ...","plan":"","roadmap":"Act 1: ... | ...\n- ...","threats":[{"name":"","max":6,"effect":""}],"factions":[{"name":"","desc":""}],"people":[{"name":"","text":"","where":"","sex":"","feel":""}]}`;
+/* a live timer on the Build button, so a long build visibly is still working */
+function buildTimer() {
+  clearInterval(buildTimer.t);
+  buildTimer.t = setInterval(() => {
+    const st = S.worlding || S.drafting; if (!st) return clearInterval(buildTimer.t);
+    document.querySelectorAll('.buildsecs').forEach(el => { el.textContent = Math.round((Date.now() - st) / 1000) + 's'; });
+  }, 1000);
+}
 async function worldWithAI() {
   const D = S.draft; if (!D || S.worlding) return;
   if (!textReady()) { toast('Set up your Story AI first.'); return openModal('settings', 'ai'); }
   if (!D.worldPrompt.trim()) { toast('Describe the world you want first.'); return $('[data-dpath="worldPrompt"]')?.focus(); }
-  S.worlding = true; renderNew(true);
+  S.worlding = Date.now(); renderNew(true); buildTimer();
   try {
-    const raw = await chat([{ role:'system', content: WORLD_RULES }, { role:'user', content: `PLAYER'S IDEA: ${D.worldPrompt}\n\nReturn the JSON.` }], { build:true, stream:false, maxTokens:2000, temperature:0.8 });
+    const raw = await chat([{ role:'system', content: WORLD_RULES }, { role:'user', content: `PLAYER'S IDEA: ${D.worldPrompt}\n\nReturn the JSON.` }], { build:true, stream:false, maxTokens:4000, temperature:0.85, json:true });
     const j = tryJSON(stripThink(raw));
     if (!j || !(j.premise || j.world)) throw new Error('The AI\'s reply wasn\'t a usable world. Try again, or reword your idea.');
     const list = v => Array.isArray(v) ? v.map(x => '- ' + String(x).replace(/^[-*•]\s*/, '')).join('\n') : String(v || '');
@@ -545,11 +558,11 @@ async function draftWithAI() {
   const D = S.draft; if (!D || S.drafting) return;
   if (!textReady()) { toast('Set up your Story AI first.'); return openModal('settings', 'ai'); }
   if (!D.concept.trim()) { toast('Describe your character first.'); return $('[data-dpath="concept"]')?.focus(); }
-  S.drafting = true; renderNew(true);
+  S.drafting = Date.now(); renderNew(true); buildTimer();
   try {
     const raw = await chat([{ role:'system', content: BUILDER_RULES },
       { role:'user', content:`SETTING\nTitle: ${D.title}\nGenre: ${D.genre}\nPremise: ${D.premise}\nTone: ${D.tone}${D.world ? `\nWorld:\n${D.world}` : ''}\n\nPLAYER'S CHARACTER CONCEPT\n${D.concept}${D.name ? `\nName: ${D.name}` : ''}\n\nReturn the JSON build.` }],
-      { build:true, stream:false, maxTokens:2200, temperature:0.75 });
+      { build:true, stream:false, maxTokens:3200, temperature:0.75, json:true });
     const j = tryJSON(stripThink(raw));
     if (!j || !j.stats) throw new Error('The AI\'s reply wasn\'t a usable build. Try again, or pick a larger model.');
     if (!D.name.trim() && j.name) D.name = String(j.name).slice(0, 60);

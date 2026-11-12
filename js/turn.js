@@ -75,7 +75,7 @@ async function bookkeep(c, scene, ctx, signal) {
     { role:'user', content:`${state}${ctx.photoAsk ? '\nTHE PLAYER ASKED FOR A PHOTO in their last message: include "photo".' : ''}\n\nTHE PLAYER'S LAST ACTION: ${ctx.playerText || '(none: this is the opening scene)'}${ctx.roll ? `\nDICE RESULT (already applied by the app): ${ctx.roll}` : ''}${hasCheck ? `\nA DICE CHECK IS PENDING: ${ctx.check.reason}` : ''}\n\nTHE NEW SCENE:\n${scene}` }
   ];
   for (let attempt = 0; attempt < 2; attempt++) {
-    const raw = await chat(msgs, { stream:false, signal, maxTokens: 900, temperature: attempt ? 0.1 : 0.2, helper: true });
+    const raw = await chat(msgs, { stream:false, signal, maxTokens: 900, temperature: attempt ? 0.1 : 0.2, helper: true, json: true });
     const j = tryJSON(stripThink(raw));
     if (j && typeof j === 'object' && !Array.isArray(j)) return j;
   }
@@ -503,7 +503,7 @@ Reply with JSON only, nothing else:
 {"check":null}
 or {"check":{"kind":"check","stat":"DEX","dc":18,"reason":"slip past the guard unseen","applies":[],"damage":""}}` },
     { role:'user', content:`CHARACTER:\n${sheetText(c)}\n\nRECENT SCENES:\n${storyLines(c, 4) || '(start of the adventure)'}\n\nTHE PLAYER'S ACTION NOW: ${playerText}` }
-  ], { stream:false, signal, maxTokens:220, temperature:0.2, helper:true });
+  ], { stream:false, signal, maxTokens:220, temperature:0.2, helper:true, json:true });
   const j = tryJSON(stripThink(raw));
   const ck = j && j.check && typeof j.check === 'object' ? j.check : null;
   return ck && (ck.stat || ck.ability) ? ck : null;
@@ -539,7 +539,7 @@ ${playerText ? '' : 'This is the OPENING scene: the player has not acted yet, so
 Lines marked "← check this one" are only a hint; judge them yourself.
 Reply with JSON only: {"bad":[numbers of the sentences that break the rule]}  ({"bad":[]} if none do).` },
     { role:'user', content:`WHAT THE PLAYER WROTE FOR ${name.toUpperCase()}:\n${playerText || '(nothing yet: opening scene)'}\n\nTHE SCENE, ONE SENTENCE PER LINE:\n${list}` }
-  ], { stream:false, signal, maxTokens:150, temperature:0, helper:true });
+  ], { stream:false, signal, maxTokens:150, temperature:0, helper:true, json:true });
   const j = tryJSON(stripThink(raw));
   const bad = new Set(arr(j?.bad).map(n => num(n) - 1).filter(i => i >= 0 && i < items.length));
   if (!bad.size) return null;

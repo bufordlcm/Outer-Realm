@@ -40,7 +40,7 @@ function renderNew(keepScroll) {
     ${researchBoxHTML(D)}
     <div class="card" style="margin-top:10px;border-color:#5b4519">
       ${ta('worldPrompt', 'Describe the world you want', 'Harry Potter world, first year at Hogwarts, house rivalries… · Game of Thrones, a minor house in the North… · a pirate archipelago with sea witches…', 2)}
-      <button class="btn gold wide" data-act="aiworld" style="margin-top:10px" ${S.worlding ? 'disabled' : ''}>${S.worlding ? '<span class="spin sm"></span> Building your world…' : icon('spark') + ' Build my world with AI'}</button>
+      <button class="btn gold wide" data-act="aiworld" style="margin-top:10px" ${S.worlding ? 'disabled' : ''}>${S.worlding ? '<span class="spin sm"></span> Building your world… <span class="buildsecs"></span>' : icon('spark') + ' Build my world with AI'}</button>
       <p class="hint">Fills in everything below: title, premise, tone, art style, magic, world notes and hidden GM secrets. Or pick a ready-made story:</p>
       <div class="chips" style="margin-top:8px">${SCENARIOS.map(s => `<button class="chip ${D.scenario === s.id ? 'on' : ''}" data-act="scenario" data-id="${s.id}">${esc(s.name)}</button>`).join('')}</div>
     </div>
@@ -63,7 +63,7 @@ function renderNew(keepScroll) {
     ${mp && !adding ? '<p class="hint">Build the first player here. After you start, tap <b>+ Add player</b> above the text box to add everyone else.</p>' : ''}
     <div class="card" style="margin-top:10px;border-color:#5b4519">
       ${ta('concept', 'Describe your character', 'A brilliant but arrogant potion brewer with a stutter and a bad leg from a lab explosion…', 3)}
-      <button class="btn gold wide" data-act="aidraft" style="margin-top:10px" ${S.drafting ? 'disabled' : ''}>${S.drafting ? '<span class="spin sm"></span> Drafting your build…' : icon('spark') + ' Draft my build with AI'}</button>
+      <button class="btn gold wide" data-act="aidraft" style="margin-top:10px" ${S.drafting ? 'disabled' : ''}>${S.drafting ? '<span class="spin sm"></span> Drafting your build… <span class="buildsecs"></span>' : icon('spark') + ' Draft my build with AI'}</button>
       <p class="hint">The AI fills in everything below — stats, traits, gear and backstory. Then tweak it. Or skip this and build by hand.</p>
     </div>
     <div class="kv">${f('name', 'Name', 'Rowan')}${f('pronouns', 'Pronouns', 'he/him')}</div>
