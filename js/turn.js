@@ -96,20 +96,20 @@ async function gmTurn(opts = {}) {
     if (isCompanion(c)) msg.companion = true;
     const trig = c.messages[pi - 1];
     const prevAct = c.messages.slice(0, pi).reverse().find(m => m.role === 'player' || m.role === 'roll');
-    const playerText = prevAct && !prevAct.hidden ? prevAct.text : '';
+    const playerText = prevAct && !prevAct.hidden ? (prevAct.gm || prevAct.text) : '';
     const isOOC = trig?.role === 'player' && trig.ooc;
 
     /* 1. dice referee: does the player's action need a roll? */
     let refCheck = null;
     if (aiOn('referee') && !isCompanion(c) && !opts.cont && trig?.role === 'player' && !trig.hidden && !trig.ooc) {
       msg.phase = 'Deciding whether this needs a roll…'; renderLog(true);
-      try { refCheck = await refereeCall(c, trig.text, signal); } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Referee failed', e); }
+      try { refCheck = await refereeCall(c, trig.gm || trig.text, signal); } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Referee failed', e); }
       if (refCheck) { const L = msgs[msgs.length - 1]; L.content = L.content.replace(REPLY_NOTE, '') + refereeNote(refCheck) + REPLY_NOTE; }
     }
     /* 1b. the AI decides for itself whether it needs to look something up online */
     if (scoutOn() && !opts.cont && trig?.role === 'player' && !trig.hidden && String(trig.text || '').trim().length >= 8) {
       try {
-        const want = await scoutWeb(c, trig.text, signal);
+        const want = await scoutWeb(c, trig.gm || trig.text, signal);
         if (want) {
           msg.phase = `🔎 Looking up ${want}…`; renderLog(true);
           const r = await withTimeout(lookupLore(c, want), 25000);

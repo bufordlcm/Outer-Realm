@@ -16,6 +16,7 @@ An AI tabletop RPG that runs on your own PC: the story AI (Ollama), pictures (Fo
 | `js/ai.js` | AI connections and the GM's prompts |
 | `js/turn.js` | One turn: dice referee, web lookup, writer, agency guard, bookkeeper, rolls |
 | `js/story.js` | Session zero, death, storybook, menus, People tracker, multiplayer |
+| `js/turnfmt.js` | How the player writes a turn: plain text = speech (or action, by setting), ✋ Action = *asterisks*, (( )) = to the GM; turned into a clear says/does form for the AI |
 | `js/voice.js` | Voices: narrator plus a unique male or female voice per character (PC voices or device voices) |
 | `js/companion.js` | Companion mode |
 | `js/research.js` | World research and lookups during play |

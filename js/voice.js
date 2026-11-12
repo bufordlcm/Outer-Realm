@@ -145,10 +145,9 @@ function messageSegments(c, m) {
   /* one known speaker: *actions in asterisks* are narration, everything else is that speaker talking */
   const own = (me, text) => { const segs = []; cleanSpeech(stripSpeakerTags(text)).split(/(\*[^*]+\*)/).forEach(part => { const act = /^\*.*\*$/.test(part); const s = part.replace(/\*/g, '').replace(/[“”"]/g, '').trim(); if (s && /[a-z0-9]/i.test(s)) segs.push({ who: act ? null : me, text: s }); }); return segs; };
   if (m.role === 'comp') { const p = arr(c.party).find(x => x.id === m.compId); return own(p ? { name: p.name, ent: p } : { name: m.name || 'Companion', ent: null }, m.text); }
-  if (m.role === 'player') {   /* the player: quoted words are their character speaking, the rest is what they do (read by the narrator) */
-    const me = { name: c.character.name, ent: c.character }; const t = cleanSpeech(m.text);
-    if (!/[“"]/.test(t)) return [{ who: null, text: t }];
-    const segs = []; t.split(/([“"][^”"]+[”"])/).forEach(part => { const q = /^[“"]/.test(part); const s = part.replace(/[“”"]/g, '').trim(); if (s) segs.push({ who: q ? me : null, text: s }); }); return segs;
+  if (m.role === 'player') {   /* what they say is their character's voice, what they do is the narrator's, (( notes )) are never read */
+    const me = { name: c.character.name, ent: c.character };
+    return parseTurn(cleanSpeech(m.text), m.mode || 'act').filter(p => p.k !== 'ooc').map(p => ({ who: p.k === 'say' ? me : null, text: p.t }));
   }
   return sceneSegments(c, m.text);
 }

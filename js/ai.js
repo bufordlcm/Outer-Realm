@@ -407,7 +407,7 @@ function buildMessages(c) {
     if (m.role === 'gm') { role = 'assistant'; content = m.text + (m.check ? `\n<state>{"check":${JSON.stringify({ kind: m.check.kind, stat: m.check.stat, dc: m.check.dc, reason: m.check.reason })}}</state>` : ''); }
     else if (m.role === 'roll') { role = 'user'; content = '[DICE] ' + m.text; }
     else if (m.role === 'comp') { role = 'user'; content = `[COMPANION ${m.name}] ${m.text}`; }
-    else { role = 'user'; content = m.text; }
+    else { role = 'user'; content = m.gm || m.text; }
     const last = out[out.length - 1];
     if (last.role === role && role !== 'system') last.content += '\n\n' + content; else out.push({ role, content });
     if (m.role === 'gm' && arr(m.compRolls).length) out.push({ role:'user', content: '[PARTY DICE] ' + m.compRolls.map(r => r.line).join(' | ') });
@@ -559,7 +559,7 @@ function buildWriterMessages(c) {
     if (m.role === 'gm') { role = 'assistant'; content = m.raw || m.text; }
     else if (m.role === 'roll') { role = 'user'; content = '[DICE] ' + m.text; }
     else if (m.role === 'comp') { role = 'user'; content = `[COMPANION ${m.name}] ${m.text}`; }
-    else { role = 'user'; content = m.who && !m.hidden ? `${m.who}: ${m.text}` : m.text; }
+    else { role = 'user'; content = m.who && !m.hidden ? `${m.who}: ${m.gm || m.text}` : (m.gm || m.text); }
     const last = out[out.length - 1];
     if (last.role === role && role !== 'system') last.content += '\n\n' + content; else out.push({ role, content });
     if (m.role === 'gm' && arr(m.compRolls).length) out.push({ role:'user', content: '[PARTY DICE] ' + m.compRolls.map(r => r.line).join(' | ') });

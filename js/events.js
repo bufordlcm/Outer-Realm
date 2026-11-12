@@ -39,6 +39,7 @@ document.addEventListener('click', e => {
     case 'mic': startMic(); break;
     case 'speak': { const m = c?.messages.find(x => x.id === el.dataset.mid); if (m) { if (voiceBusy()) stopVoice(); else speakMessage(c, m); } break; }
     case 'voicestop': stopVoice(); break;
+    case 'fmt': fmtInsert(el.dataset.k); break;
     case 'rmnext': case 'rmback': { if (!c) break; const n = parseRoadmap(c.roadmap).length; c.rmAct = clamp(num(c.rmAct) + (act === 'rmnext' ? 1 : -1), 0, n); touch(c); saveCampaigns(); renderModal(); break; }
     case 'voicecheck': checkPCVoices(true).then(() => { renderModal(); toast(VOICE.pc ? 'Natural PC voices found.' : 'No PC voices found. Run Install voices.bat on the PC, then restart the helper.'); }); break;
     case 'voicetest': speak(`${gmOf(c || {}).name || 'The Narrator'} clears their throat. The tale begins.`); break;

@@ -234,3 +234,11 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent) !important;ou
 .meter.chap i.on{background:linear-gradient(90deg,#8f80ff,#b3a8ff)}
 .meter.chap i.on.done{background:#5a4fd0}
 a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:center;justify-content:center;gap:8px}
+/* composer format buttons and how marked-up turns look */
+.fmtbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;max-width:860px;margin:0 auto 6px}
+.fmtbtn{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:10px;padding:6px 10px;font-size:13px;font-weight:600}
+.fmtbtn:hover{border-color:var(--accent)}
+.fmthint{color:var(--muted);font-size:12px;margin-left:auto}
+.msg.player .b .tact{color:#cfc8ff;font-style:italic}
+.msg.player .b .tooc{color:var(--muted);font-size:.9em}
+@media(max-width:560px){.fmthint{display:none}}

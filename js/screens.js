@@ -166,7 +166,7 @@ function msgHTML(m, c, isLastGM) {
     const card = isLastGM && c.pendingRoll && c.pendingRoll.msgId === m.id && !S.busy ? rollCardHTML(c) : '';
     return `<div class="msg gm ${m.streaming ? 'streaming' : ''}" data-id="${m.id}">${sceneHTML(m, c)}<div class="narr">${m.streaming ? (md(liveNarration(m.text)) || `<p style="color:var(--muted)"><em>${esc(m.phase || 'The Game Master considers…')}</em></p>`) : md(m.text)}</div>${checking}${compRollsHTML(m)}${isCompanion(c) ? notesHTML(m.notes) : shiftHTML(m.notes)}${m.handoutId ? (h => h ? handoutHTML(h) : '')(arr(c.handouts).find(x => x.id === m.handoutId)) : ''}${card}${acts}</div>`;
   }
-  if (m.role === 'player') return `<div class="msg player">${m.who ? `<div class="who">${esc(m.who)}</div>` : ''}<div class="b ${m.ooc ? 'ooc' : ''}">${esc(m.ooc ? m.text.replace(/^\(\(\s*|\s*\)\)$/g, '') : m.text)}</div></div>`;
+  if (m.role === 'player') return `<div class="msg player">${m.who ? `<div class="who">${esc(m.who)}</div>` : ''}<div class="b ${m.ooc ? 'ooc' : ''}">${m.ooc ? esc(m.text.replace(/^\(\(\s*|\s*\)\)$/g, '')) : m.mode ? turnHTML(m.text, m.mode) : esc(m.text)}</div></div>`;
   if (m.role === 'roll') {
     const r = m.rollData || {};
     return `<div class="msg roll"><div class="rollres"><div class="d20 ${r.d === 20 ? 'crit' : r.d === 1 ? 'fumble' : ''}">${r.d ?? '?'}</div>
@@ -254,8 +254,8 @@ function renderDock() {
   const settled = !S.busy && last && !c.pendingRoll && lg >= 0 && c.messages.slice(lg + 1).every(m => m.role === 'sys' || m.role === 'comp');
   const showChips = false;
   dock.innerHTML = `${showChips ? `<div class="chips">${last.choices.map((ch, i) => `<button class="chip" data-act="choice" data-i="${i}">${esc(ch)}</button>`).join('')}</div>` : ''}${settled && S.settings.ui.quick !== false ? (isCompanion(c) ? companionQuickHTML(c) : quickHTML(c)) : ''}${actorBarHTML(c)}${talkBarHTML(c)}
-    <div class="composer"><button class="ooctoggle" data-act="askgm" title="Ask the GM out of character">ASK<br>GM</button>
-      <textarea id="input" rows="1" placeholder="${c.pendingRoll ? 'Roll above, or describe something else…' : isCompanion(c) ? 'Say or do something…' : isMP(c) ? `What does ${esc(c.character.name)} do?` : 'What do you do?'}" ${S.busy ? 'disabled' : ''}>${esc(keep)}</textarea>
+    ${S.busy ? '' : fmtBarHTML(c)}<div class="composer"><button class="ooctoggle" data-act="askgm" title="Ask the GM out of character">ASK<br>GM</button>
+      <textarea id="input" rows="1" placeholder="${c.pendingRoll ? 'Roll above, or describe something else…' : typeMode() === 'say' ? (isMP(c) ? `What does ${esc(c.character.name)} say? ✋ Action for what they do` : 'Say something… tap ✋ Action for what you do') : isCompanion(c) ? 'Say or do something…' : isMP(c) ? `What does ${esc(c.character.name)} do?` : 'What do you do?'}" ${S.busy ? 'disabled' : ''}>${esc(keep)}</textarea>
       ${SR && !S.busy ? `<button class="micbtn ${S.mic ? 'on' : ''}" data-act="mic" aria-label="Speak your action">${icon('mic')}</button>` : ''}
       ${S.busy ? `<button class="sendbtn stop" data-act="stop" aria-label="Stop">${icon('stop')}</button>` : `<button class="sendbtn" data-act="send" aria-label="Send">${icon('send')}</button>`}</div>`;
   autoGrow($('#input'));
@@ -264,7 +264,9 @@ function autoGrow(el) { if (!el) return; el.style.height = 'auto'; el.style.heig
 function sendInput() {
   const inp = $('#input'); if (!inp) return; const t = inp.value.trim(); if (!t) return; inp.value = '';
   if (cur()?.phase === 'session0') { session0Say(t); return; }
-  if (S.ooc) { S.ooc = false; playerAct(`(( ${t} ))`, 'player', { ooc: true }); } else playerAct(t);
+  if (S.ooc) { S.ooc = false; playerAct(`(( ${t} ))`, 'player', { ooc: true }); return; }
+  const c = cur(); const mode = typeMode();
+  playerAct(t, 'player', { mode, gm: turnForGM(c, t, mode), ...(turnAllOOC(t, mode) ? { ooc: true } : {}) });
 }
 
 /* ---------- modals ---------- */
@@ -371,6 +373,9 @@ function settingsHTML() {
       <label class="f"><span>Speed (${S.settings.ui.voiceRate || 1}×)</span><input type="range" min="0.6" max="1.6" step="0.1" data-bind="ui.voiceRate" value="${S.settings.ui.voiceRate || 1}" style="width:100%;accent-color:var(--gold)"></label>
       <button class="btn sm" data-act="voicetest" style="margin-top:8px">${icon('speaker')} Test voice</button>
       <p class="hint">The narrator reads the story; lines in quotes are spoken by whoever says them. Change any companion's voice in the Party screen. On iPhone, more built-in voices are under Settings → Accessibility → Spoken Content → Voices.</p>` : '<p class="hint">This browser has no built-in voices.</p>'}
+      <div class="sect" style="font-size:20px">Writing your turn</div>
+      <label class="f"><span>When I type plain text, it means</span><select data-bind="ui.typeMode"><option value="say" ${typeMode() === 'say' ? 'selected' : ''}>What my character says (✋ Action button for what they do)</option><option value="act" ${typeMode() === 'act' ? 'selected' : ''}>What my character does (💬 Say button for what they say)</option></select></label>
+      <p class="hint">The buttons above the text box add the marks for you: ✋ Action puts *asterisks* around what you do, 💬 Say puts "quotes" around what you say, and (( )) Talk to GM is for questions or requests outside the story. Select some text first to wrap it.</p>
       ${SR ? '<p class="hint">Tap the microphone next to the text box to speak your action.</p>' : ''}
       <div class="sect" style="font-size:20px">Backups</div>
       <p class="hint">A backup file holds every adventure and your settings (keys excluded).</p>
