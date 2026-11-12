@@ -229,6 +229,8 @@ function parseKeys(text) {
 async function importKeys(text, { quiet } = {}) {
   const p = parseKeys(text); const added = [];
   for (const c of p.conns) {
+    /* the PC's own Ollama (localhost) means nothing on another device that already has one, or on a phone */
+    if (/\/\/(localhost|127\.0\.0\.1)/.test(c.baseUrl || '') && (isPhone() || conns().some(x => x.preset === 'ollama'))) continue;
     const ex = conns().find(x => (c.apiKey && x.apiKey === c.apiKey) || (!c.apiKey && x.baseUrl === (c.baseUrl || PRESETS[c.preset].baseUrl)));
     if (ex) { if (c.model && !ex.model) ex.model = c.model; continue; }
     const n = newConn(c.preset, c.apiKey, { ...(c.baseUrl ? { baseUrl: c.baseUrl } : {}), ...(c.model ? { model: c.model } : {}), ...(c.label ? { label: c.label } : {}) });
