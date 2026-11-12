@@ -6,6 +6,7 @@ document.addEventListener('click', e => {
   unlockTTS(); unlockMusic();
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act; const c = cur(); const D = S.draft;
+  if (act.startsWith('bible')) { bibleAction(act, el); return; }
   if (homeAction(act, el) || panelAction(act, el, c) || memoryAction(act, el, c)) return;
   switch (act) {
     case 'party': S.compForm = null; openModal('party'); break;
@@ -88,9 +89,10 @@ document.addEventListener('click', e => {
     case 'open': if (!e.target.closest('[data-act="del"]')) openGame(el.dataset.id); break;
     case 'del': e.stopPropagation(); deleteCampaign(el.dataset.id); break;
     case 'scenario': { const sc = SCENARIOS.find(s => s.id === el.dataset.id); const n = newDraft(sc);
-      for (const k of ['concept','name','pronouns','storyRole','appearance','backstory','stats','traits','signatures','tpToEp','worldPrompt','gmPreset','gmName','gmStyle']) n[k] = D[k];
+      for (const k of ['concept','name','pronouns','storyRole','appearance','backstory','stats','traits','signatures','tpToEp','tpToStats','worldPrompt','gmPreset','gmName','gmStyle']) n[k] = D[k];
       if (!D.gear.length || D.gear.every(g => SCENARIOS.some(s => s.gear.includes(g.name)))) n.gear = sc.gear.map(normGear); else n.gear = D.gear;
       S.draft = n; renderNew(true); break; }
+    case 'aiconvert': draftWithAI(true); break;
     case 'aidraft': draftWithAI(); break;
     case 'aiworld': worldWithAI(); break;
     case 'dstat': { const k = el.dataset.k; D.stats[k] = clamp(D.stats[k] + num(el.dataset.d), 8, 20); renderNew(true); break; }
@@ -239,6 +241,10 @@ document.addEventListener('change', e => {
     c[el.dataset.field] = el.value.trim(); c.status = ''; c.note = ''; saveSettings(); if (c.model) setupConn(c); else refreshConnUI();
   }
   if (S.view === 'setup' && el.dataset.bind && el.dataset.bind.startsWith('drive.')) renderSetup();
+});
+$('#bibleFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try { S.bibleText = await f.text(); renderModal(); toast(`Loaded ${f.name}. Tap the gold button to use it.`); } catch (err) { toast('Couldn\'t read that file: ' + err.message, 5000); }
 });
 $('#keysFile').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;

@@ -111,6 +111,9 @@ function panelMemHTML(c) {
     <div class="lbl">Story so far</div><p class="ptext">${esc(c.summary || 'Written automatically once the story gets long.')}</p>
     <div class="lbl">Key facts (${arr(c.memory).length})</div>
     ${arr(c.memory).slice(-12).reverse().map(m => `<div class="pline">${esc(m)}</div>`).join('') || '<p class="hint">None yet.</p>'}
+    <div class="lbl">Story cards (${arr(c.cards).length})</div>
+    ${arr(c.cards).length ? `<p class="hint">${['person','place','map','item','event','creature','lore','faction','rule'].map(k => [k, arr(c.cards).filter(x => x.kind === k).length]).filter(x => x[1]).map(([k, n]) => `${n} ${k}${n > 1 ? 's' : ''}`).join(' · ')}. The GM gets the ones that matter in each scene.</p>` : '<p class="hint">Import a story bible to give the GM detailed people, places, maps and events.</p>'}
+    <button class="btn sm wide" data-act="bibleopen" data-for="game">${icon('scroll')} Add a story bible or more cards</button>
     <button class="btn sm ghost wide" data-act="tools" style="margin-top:10px">Edit all memory in Campaign tools</button>`;
 }
 function memoryAction(act, el, c) {

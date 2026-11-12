@@ -477,9 +477,9 @@ function setSync(t) { S.syncStatus = t; const a = $('#syncline'); if (a) a.textC
 function newDraft(sc = SCENARIOS[0]) {
   return { scenario: sc.id, title: sc.title, genre: sc.genre, premise: sc.premise, tone: sc.tone, art: sc.art, rating:'PG-13', magicCost: sc.magic || 'gm', gmNotes:'',
     worldPrompt:'', world: sc.world || '', secrets: sc.secrets || '', plan: sc.plan || '', roadmap: sc.roadmap || '', threats: (sc.threats || []).map(t => ({ ...t })), factions: (sc.factions || []).map(f => ({ ...f })),
-    people: (sc.people || []).map(p => ({ ...p })), pinned: [...(sc.pinned || [])], gmPreset:'storyteller', gmName:'', gmStyle:'',
+    people: (sc.people || []).map(p => ({ ...p })), pinned: [...(sc.pinned || [])], cards: [], gmPreset:'storyteller', gmName:'', gmStyle:'',
     concept:'', name:'', pronouns:'', storyRole:'', appearance:'', backstory:'',
-    stats: Object.fromEntries(STATS.map(k => [k, 8])), traits: [], gear: (sc.gear || []).map(normGear), signatures: [], tpToEp: 0, gold: START_GOLD };
+    stats: Object.fromEntries(STATS.map(k => [k, 8])), traits: [], gear: (sc.gear || []).map(normGear), signatures: [], tpToEp: 0, tpToStats: 0, gold: START_GOLD };
 }
 function draftBudget(D) {
   let pos = 0, neg = 0, gear = 0, sig = 0;
@@ -487,7 +487,8 @@ function draftBudget(D) {
   for (const g of D.gear) if (g.tier) gear += GEAR_COST[g.tier] || 0;
   for (const s of D.signatures) sig += clamp(num(s.cost) || 8, 8, 15);
   const conv = Math.max(0, num(D.tpToEp)) * 2;
-  return { pos, neg, gear, sig, conv, left: START_TP + neg - pos - gear - sig - conv, points: statPoints(D.stats) };
+  const extra = Math.max(0, num(D.tpToStats)); const statTP = extra * 2;
+  return { pos, neg, gear, sig, conv, statTP, extra, cap: STAT_BUDGET + extra, left: START_TP + neg - pos - gear - sig - conv - statTP, points: statPoints(D.stats) };
 }
 const BUILDER_RULES = `You help a player build a character for IRONQUILL, a solo tabletop RPG run by an AI Game Master. Turn their concept into a complete, playable build that fits the setting.
 
@@ -554,28 +555,28 @@ async function worldWithAI() {
   } catch (e) { toast(e.message, 6000); }
   finally { S.worlding = false; renderNew(true); }
 }
-async function draftWithAI() {
+async function draftWithAI(convert = false) {
   const D = S.draft; if (!D || S.drafting) return;
   if (!textReady()) { toast('Set up your Story AI first.'); return openModal('settings', 'ai'); }
-  if (!D.concept.trim()) { toast('Describe your character first.'); return $('[data-dpath="concept"]')?.focus(); }
+  if (!D.concept.trim()) { toast(convert ? 'Paste your character into the box first.' : 'Describe your character first.'); return $('[data-dpath="concept"]')?.focus(); }
   S.drafting = Date.now(); renderNew(true); buildTimer();
   try {
     const raw = await chat([{ role:'system', content: BUILDER_RULES },
-      { role:'user', content:`SETTING\nTitle: ${D.title}\nGenre: ${D.genre}\nPremise: ${D.premise}\nTone: ${D.tone}${D.world ? `\nWorld:\n${D.world}` : ''}\n\nPLAYER'S CHARACTER CONCEPT\n${D.concept}${D.name ? `\nName: ${D.name}` : ''}\n\nReturn the JSON build.` }],
+      { role:'user', content:`SETTING\nTitle: ${D.title}\nGenre: ${D.genre}\nPremise: ${D.premise}\nTone: ${D.tone}${D.world ? `\nWorld:\n${D.world}` : ''}\n\n${convert ? 'AN EXISTING CHARACTER TO CONVERT (keep everything it says: name, pronouns, role, looks, history, personality, abilities, items; turn abilities and flaws into traits and items into gear; only fill in what is missing and fit the numbers to the rules)' : 'PLAYER\'S CHARACTER CONCEPT'}\n${D.concept}${D.name ? `\nName: ${D.name}` : ''}\n\nReturn the JSON build.` }],
       { build:true, stream:false, maxTokens:3200, temperature:0.75, json:true });
     const j = tryJSON(stripThink(raw));
     if (!j || !j.stats) throw new Error('The AI\'s reply wasn\'t a usable build. Try again, or pick a larger model.');
-    if (!D.name.trim() && j.name) D.name = String(j.name).slice(0, 60);
-    if (!D.pronouns.trim() && j.pronouns) D.pronouns = String(j.pronouns).slice(0, 30);
+    if ((convert || !D.name.trim()) && j.name) D.name = String(j.name).slice(0, 60);
+    if ((convert || !D.pronouns.trim()) && j.pronouns) D.pronouns = String(j.pronouns).slice(0, 30);
     D.storyRole = String(j.story_role || j.storyRole || D.storyRole || '').slice(0, 60);
     D.appearance = String(j.appearance || D.appearance || '').slice(0, 400);
     D.backstory = String(j.backstory || D.backstory || '').slice(0, 2000);
     for (const k of STATS) D.stats[k] = clamp(num(j.stats[k]) || 10, 8, 20);
-    let guard = 0; while (statPoints(D.stats) > STAT_BUDGET && guard++ < 60) { const k = STATS.reduce((a, b) => D.stats[a] >= D.stats[b] ? a : b); D.stats[k]--; }
+    let guard = 0; while (statPoints(D.stats) > draftBudget(D).cap && guard++ < 60) { const k = STATS.reduce((a, b) => D.stats[a] >= D.stats[b] ? a : b); D.stats[k]--; }
     D.traits = arr(j.traits).map(t => normTrait(t)).filter(t => t.name !== 'Unnamed trait').slice(0, 12);
     const ag = arr(j.gear).map(normGear).filter(g => g.name !== 'Item');
     if (ag.length) D.gear = ag.slice(0, 8);
-    toast('Draft ready — change anything you like.');
+    toast(convert ? 'Your character is sorted into the sheet. Check it over.' : 'Draft ready — change anything you like.');
   } catch (e) { toast(e.message, 6000); }
   finally { S.drafting = false; renderNew(true); }
 }
@@ -584,7 +585,7 @@ function createCampaign(s0 = false) {
   const D = S.draft; const b = draftBudget(D);
   if (!D.name.trim()) { toast('Give your character a name.'); return $('[data-dpath="name"]')?.focus(); }
   if (!D.premise.trim()) { toast('Add a premise so the GM knows the story.'); return $('[data-dpath="premise"]')?.focus(); }
-  if (b.points > STAT_BUDGET) return toast(`Stats use ${b.points} of ${STAT_BUDGET} points — lower some scores.`);
+  if (b.points > b.cap) return toast(`Stats use ${b.points} of ${b.cap} points — lower some scores, or buy more stat points with TP under Bank & convert.`);
   if (b.left < 0) return toast(`You're ${-b.left} TP over budget — drop a positive or add a negative.`);
   if (D.traits.some(t => !t.name.trim() || t.name === 'Unnamed trait')) return toast('Every trait needs a name.');
   const maxHp = Math.max(1, 10 + mod(D.stats.CON));
@@ -626,6 +627,7 @@ function createCampaign(s0 = false) {
   c.research = { topic: D.research?.topic || '', auto: true, sources: arr(D.research?.sources) };
   if (arr(D.pinned).length) c.pinned = [...new Set([...arr(c.pinned), ...D.pinned])];
   if (arr(D.people).length) { c.codex = arr(c.codex); upsertPeople(c, D.people.map(x => ({ ...x, madeBy: 'research' }))); }
+  if (arr(D.cards).length) c.cards = D.cards.map(x => ({ ...x }));
   if (D.portrait) { c.character.portrait = { ...D.portrait }; c.gallery = [{ id: uid(), kind:'character', name: c.character.name, prompt: D.portrait.prompt, seed: D.portrait.seed, day: 1, t: Date.now() }]; }
   S.campaigns[id] = c; delete S.deleted[id]; saveCampaigns();
   const cast = c.mode === 'companion' ? String(D.castText || '').split('\n').map(x => x.replace(/^\s*[-*•\d.)]+\s*/, '').trim()).filter(Boolean).slice(0, 8) : [];

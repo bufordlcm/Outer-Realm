@@ -1,7 +1,7 @@
 'use strict';
 /* ---------- builder page ---------- */
 function budgetHTML(b) {
-  return `<span class="bpill ${b.points > STAT_BUDGET ? 'over' : b.points === STAT_BUDGET ? 'ok' : ''}">Stats ${b.points}/${STAT_BUDGET}</span>
+  return `<span class="bpill ${b.points > b.cap ? 'over' : b.points === b.cap ? 'ok' : ''}">Stats ${b.points}/${b.cap}</span>
     <span class="bpill ${b.left < 0 ? 'over' : 'ok'}">TP left ${b.left}</span>
     <span class="bpill">Traits −${b.pos} · Negatives +${b.neg}${b.gear ? ` · Gear −${b.gear}` : ''}${b.sig ? ` · Signatures −${b.sig}` : ''}${b.conv ? ` · To EP −${b.conv}` : ''}</span>`;
 }
@@ -41,6 +41,7 @@ function renderNew(keepScroll) {
     <div class="card" style="margin-top:10px;border-color:#5b4519">
       ${ta('worldPrompt', 'Describe the world you want', 'Harry Potter world, first year at Hogwarts, house rivalries… · Game of Thrones, a minor house in the North… · a pirate archipelago with sea witches…', 2)}
       <button class="btn gold wide" data-act="aiworld" style="margin-top:10px" ${S.worlding ? 'disabled' : ''}>${S.worlding ? '<span class="spin sm"></span> Building your world… <span class="buildsecs"></span>' : icon('spark') + ' Build my world with AI'}</button>
+      <button class="btn wide" data-act="bibleopen" data-for="draft" style="margin-top:8px">${icon('scroll')} Import a story bible (from ChatGPT, Claude or a Google Doc)</button>
       <p class="hint">Fills in everything below: title, premise, tone, art style, magic, world notes and hidden GM secrets. Or pick a ready-made story:</p>
       <div class="chips" style="margin-top:8px">${SCENARIOS.map(s => `<button class="chip ${D.scenario === s.id ? 'on' : ''}" data-act="scenario" data-id="${s.id}">${esc(s.name)}</button>`).join('')}</div>
     </div>
@@ -64,6 +65,8 @@ function renderNew(keepScroll) {
     <div class="card" style="margin-top:10px;border-color:#5b4519">
       ${ta('concept', 'Describe your character', 'A brilliant but arrogant potion brewer with a stutter and a bad leg from a lab explosion…', 3)}
       <button class="btn gold wide" data-act="aidraft" style="margin-top:10px" ${S.drafting ? 'disabled' : ''}>${S.drafting ? '<span class="spin sm"></span> Drafting your build… <span class="buildsecs"></span>' : icon('spark') + ' Draft my build with AI'}</button>
+      <button class="btn wide" data-act="aiconvert" style="margin-top:8px" ${S.drafting ? 'disabled' : ''}>${icon('upload')} I pasted a finished character: sort it into my sheet</button>
+      <p class="hint">Paste a character from ChatGPT, Claude or anywhere into the box above (any format) and the AI puts the name, looks, story, stats, traits and gear where they belong.</p>
       <p class="hint">The AI fills in everything below — stats, traits, gear and backstory. Then tweak it. Or skip this and build by hand.</p>
     </div>
     <div class="kv">${f('name', 'Name', 'Rowan')}${f('pronouns', 'Pronouns', 'he/him')}</div>
@@ -77,7 +80,7 @@ function renderNew(keepScroll) {
     ${ta('castText', 'Characters (one per line)', 'Mara, a sharp-tongued sellsword who secretly writes poetry\nOld Brannoc, the gruff innkeeper who knows everyone\'s business', 4)}
     <p class="hint">Everyone in your cast is an adult (18+).</p>` : `
 
-    <div class="sect">Stats <small>${STAT_BUDGET} points · 8 to 20</small></div>
+    <div class="sect">Stats <small>${draftBudget(D).cap} points${draftBudget(D).extra ? ` (${STAT_BUDGET} + ${draftBudget(D).extra} bought with TP)` : ''} · 8 to 20</small></div>
     <p class="hint">Each stat gives a bonus (in gold) that's added to your d20 when you roll with it: 10 is average (+0), 14 is +2, 18 is +4.</p>
     ${STATS.map(k => `<div class="statrow"><div class="sn"><b>${SN(k)}</b><small>${STAT_DESC[k]}</small></div>
       <button class="iconbtn sm" data-act="dstat" data-k="${k}" data-d="-1" ${D.stats[k] <= 8 ? 'disabled' : ''}>${icon('minus')}</button>
@@ -110,8 +113,9 @@ function renderNew(keepScroll) {
     <button class="btn sm" data-act="dadd" data-list="signatures" style="margin-top:10px">${icon('plus')} Add signature</button>
 
     <div class="sect">Bank & convert</div>
-    <p class="hint" style="color:var(--ink)">Unspent TP is banked for later upgrades. You can also turn TP into EP now (2 TP → 1 EP) to raise stats at your first level-up.</p>
-    <div class="kv">${f('tpToEp', 'EP to buy with TP', '0', 'number')}${f('gold', 'Starting gold', '15', 'number')}</div>
+    <p class="hint" style="color:var(--ink)">Leftover TP (for example from negative traits) can raise your stats <b>right now</b>: every 2 TP buys 1 extra stat point, so your Stats budget goes above ${STAT_BUDGET}. Anything you don't spend is banked for later upgrades.${draftBudget(D).left > 1 ? ` You have <b>${draftBudget(D).left} TP</b> left: enough for ${Math.floor(draftBudget(D).left / 2)} more stat point${Math.floor(draftBudget(D).left / 2) > 1 ? 's' : ''}.` : ''}</p>
+    <div class="kv">${f('tpToStats', 'Extra stat points to buy now (2 TP each)', '0', 'number')}${f('tpToEp', 'Or save as EP for your first level-up (2 TP each)', '0', 'number')}</div>
+    <div class="kv">${f('gold', 'Starting gold', '15', 'number')}</div>
     `}
 
     ${adding ? `<button class="btn gold wide" data-act="begin" style="margin-top:24px;min-height:54px;font-size:17px">${icon('plus')} Add to the adventure</button>` : `
@@ -285,6 +289,7 @@ function renderModal() {
   const scroll = $('#modalBody')?.scrollTop || 0;
   let title = '', tabs = '', body = '';
   if (S.modal === 'settings') { title = 'Settings'; [tabs, body] = settingsHTML(); }
+  else if (S.modal === 'bible') { title = 'Story Bible'; body = bibleHTML(); }
   else if (S.modal === 'game') { title = 'Game Settings'; [tabs, body] = gameSettingsHTML(); }
   else if (S.modal === 'sheet') { title = 'Character'; [tabs, body] = sheetHTML(); }
   else if (S.modal === 'journal') { title = 'Journal'; [tabs, body] = journalBookHTML(); }

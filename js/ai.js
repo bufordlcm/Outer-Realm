@@ -555,6 +555,7 @@ function buildWriterMessages(c) {
     const here = String(c.location || '').toLowerCase().trim(); const at = e => here && e.where && (String(e.where).toLowerCase().includes(here) || here.includes(String(e.where).toLowerCase()));
     sys.push('', `PEOPLE THE PLAYER KNOWS. They are NOT in this scene unless they are at the current place (${c.location || 'unknown'}) or the story gives a clear reason for them to arrive. Never drop someone in without explaining how they got there.`, ...people.map(e => `- ${e.name}: ${e.text}${e.where ? ` (last seen: ${e.where}${at(e) ? ', HERE' : ''})` : ''}`));
   }
+  { const cp = cardsForPrompt(c); if (cp) sys.push('', cp); }
   const live = c.threats.filter(t => !t.triggered); if (live.length) sys.push('', 'HIDDEN THREATS', ...live.map(t => `- ${t.name} (${t.progress}/${t.max}): ${t.effect}`));
   if (c.factions.length) sys.push('', 'FACTIONS (player standing)', c.factions.map(f => `${f.name} ${fmt(f.rep)}`).join(', '));
   if (arr(c.party).length) sys.push('', comp ? 'THE CAST (characters you voice)' : 'THE PARTY', comp ? castBrief(c) : partyText(c, true));
