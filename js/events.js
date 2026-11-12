@@ -37,7 +37,9 @@ document.addEventListener('click', e => {
     case 'storybook': exportStorybook(c); break;
     case 'quick': playerAct(el.dataset.q); break;
     case 'mic': startMic(); break;
-    case 'speak': { const m = c?.messages.find(x => x.id === el.dataset.mid); if (m) { if (TTS && speechSynthesis.speaking) speechSynthesis.cancel(); else if (m.role === 'comp') speak(m.text, arr(c.party).find(p => p.id === m.compId)?.ttsVoice); else speak(m.text); } break; }
+    case 'speak': { const m = c?.messages.find(x => x.id === el.dataset.mid); if (m) { if (voiceBusy()) stopVoice(); else speakMessage(c, m); } break; }
+    case 'voicestop': stopVoice(); break;
+    case 'voicecheck': checkPCVoices(true).then(() => { renderModal(); toast(VOICE.pc ? 'Natural PC voices found.' : 'No PC voices found. Run Install voices.bat on the PC, then restart the helper.'); }); break;
     case 'voicetest': speak(`${gmOf(c || {}).name || 'The Narrator'} clears their throat. The tale begins.`); break;
     case 'compform': S.compForm = el.dataset.f; renderModal(); setTimeout(() => $('#compConcept, #cm_name')?.focus(), 40); break;
     case 'compcancel': S.compForm = null; renderModal(); break;
@@ -216,7 +218,7 @@ document.addEventListener('input', e => {
 document.addEventListener('change', e => {
   const el = e.target;
   if (el.id === 'forgeUrlIn') { LS.set('iq.forgeUrl', el.value.trim().replace(/\/+$/, '')); LOCAL.fail = {}; return; }
-  if (el.dataset.pvoice) { const p = arr(cur()?.party).find(x => x.id === el.dataset.pvoice); if (p) { p.ttsVoice = el.value; touch(cur()); speak(`${p.name} here.`, p.ttsVoice); } return; }
+  if (el.dataset.pvoice) { const p = arr(cur()?.party).find(x => x.id === el.dataset.pvoice); if (p) { const fld = engine() === 'pc' ? 'vPC' : 'vDev'; if (el.value) p[fld] = el.value; else delete p[fld]; if (fld === 'vDev') p.ttsVoice = el.value; touch(cur()); speak(`${p.name} here. This is how I sound.`, voiceOf(cur(), p, p.name)); } return; }
   if (el.dataset.conn) {   /* model typed or picked from the list */
     const c = conns().find(x => x.id === el.dataset.conn); if (!c) return;
     if (el.dataset.field === 'ctx') { c.ctx = Math.max(0, num(el.value)); saveSettings(); return; }

@@ -136,7 +136,7 @@ function compCardHTML(c, p) {
   const hidden = !p.revealed;
   const port = p.portrait ? `<img class="port" src="${esc(imageUrl(p.portrait, c))}" alt="">` : `<div class="port ph2">${esc(p.name[0] || '?')}</div>`;
   const status = p.status === 'active' ? `<span class="pill" style="color:${p.trust > 0 ? 'var(--green)' : p.trust < 0 ? 'var(--red)' : 'var(--muted)'}">${isCompanion(c) ? 'Closeness' : 'Trust'} ${fmt(p.trust)}</span>` : `<span class="note bad">${p.status === 'dead' ? 'Dead' : 'Left'}</span>`;
-  const voices = TTS ? `<label class="f"><span>Voice</span><select data-pvoice="${p.id}"><option value="">Same as narrator</option>${ttsVoices().map(v => `<option ${p.ttsVoice === v.name ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select></label>` : '';
+  const voices = voiceOn() ? `<label class="f"><span>Voice</span>${voicePickerHTML(`data-pvoice="${p.id}"`, engine() === 'pc' ? p.vPC : (p.vDev || p.ttsVoice), genderOf(p))}</label>` : '';
   return `<div class="ccard ${p.status !== 'active' ? 'gone' : ''}"><div class="row">${port}<div class="grow"><b style="font-size:17px">${esc(p.name)}</b><div class="hint" style="margin:0">${esc(p.role || 'Companion')}${p.status === 'active' && !isCompanion(c) ? ` · Lv ${p.level} · ${p.hp}/${p.maxHp} HP` : ''}</div></div>${status}</div>
     ${hidden ? `<p class="hint">The GM made ${esc(p.name)}. Their full card and secrets are hidden so the story can surprise you.</p><button class="btn sm" data-act="compreveal" data-id="${p.id}">Reveal full card (spoilers)</button>`
       : `<div class="hint" style="color:var(--ink);margin-top:8px">${esc(p.personality)}${p.voice ? `<br><i>Talks: ${esc(p.voice)}</i>` : ''}${p.goals ? `<br>Wants: ${esc(p.goals)}` : ''}</div>
@@ -299,25 +299,6 @@ function journalBookHTML() {
   return [tabs, body];
 }
 
-/* ---------- voice ---------- */
-const TTS = typeof window !== 'undefined' && 'speechSynthesis' in window;
-const ttsVoices = () => { if (!TTS) return []; const v = speechSynthesis.getVoices(); return v.slice().sort((a, b) => (b.lang.startsWith('en') - a.lang.startsWith('en')) || a.name.localeCompare(b.name)); };
-if (TTS) speechSynthesis.onvoiceschanged = () => { if (S.modal) renderModal(); };
-function speak(text, voiceName, queue = false) {
-  if (!TTS || !text) return;
-  if (!queue) speechSynthesis.cancel();
-  const clean = String(text).replace(/\[[^\]]*\]/g, '').replace(/[*_#>`]/g, '').replace(/\s+/g, ' ').trim();
-  const chunks = clean.match(/[^.!?]+[.!?]*["”’]?\s*/g) || [clean];
-  const v = ttsVoices().find(x => x.name === (voiceName || S.settings.ui.voiceName));
-  for (const ch of chunks) { const u = new SpeechSynthesisUtterance(ch); if (v) u.voice = v; u.rate = Number(S.settings.ui.voiceRate) || 1; speechSynthesis.speak(u); }
-}
-let ttsUnlocked = false;
-function unlockTTS() { if (!TTS || ttsUnlocked) return; ttsUnlocked = true; try { speechSynthesis.speak(new SpeechSynthesisUtterance('')); } catch {} }
-function autoSpeak(m, c) {
-  if (S.settings.ui.voice !== 'auto' || !m) return;
-  if (m.role === 'comp') { const p = arr(c.party).find(x => x.id === m.compId); speak(m.text, p?.ttsVoice, true); }
-  else speak(m.text);
-}
 const SR = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
 function startMic() {
   if (!SR) return toast('Voice input isn\'t available in this browser.');
@@ -406,7 +387,8 @@ From the TEXT, list every NAMED person or creature-with-a-name who appears, spea
 For each one write ONE short sentence of what the player character knows: who they are, how they relate to the player, anything important they said or did. If KNOWN PEOPLE already has them, give an updated sentence that keeps the old facts and adds the new. Never reveal hidden GM secrets; only what the player saw or heard.
 "where": the place they were seen (short), or "".
 "feel": how they feel about the player character: devoted, friendly, neutral, wary or hostile.
-Reply with JSON only: {"people":[{"name":"","text":"","where":"","feel":""}]}  (an empty list if nobody named is there).`;
+"sex": male, female or unknown.
+Reply with JSON only: {"people":[{"name":"","text":"","where":"","feel":"","sex":""}]}  (an empty list if nobody named is there).`;
 const FEELS = ['devoted', 'friendly', 'neutral', 'wary', 'hostile'];
 const peopleOf = c => arr(c.codex).filter(e => e.kind === 'person');
 function upsertPeople(c, list, notes) {
@@ -415,10 +397,10 @@ function upsertPeople(c, list, notes) {
   for (const x of arr(list).slice(0, 12)) {
     const name = String(x?.name || '').trim().slice(0, 60); const text = String(x?.text || '').trim().slice(0, 400);
     if (!name || !text || skip.includes(name.toLowerCase()) || /^(the )?(player|you|gm|narrator)$/i.test(name)) continue;
-    const where = String(x?.where || '').trim().slice(0, 60); const feel = FEELS.includes(String(x?.feel || '').toLowerCase().trim()) ? String(x.feel).toLowerCase().trim() : ''; const day = worldOf(c).time.day; const look = String(x?.look || '').trim().slice(0, 300);
+    const where = String(x?.where || '').trim().slice(0, 60); const sex = /^(male|female)$/i.test(String(x?.sex || '').trim()) ? String(x.sex).trim().toLowerCase() : ''; const feel = FEELS.includes(String(x?.feel || '').toLowerCase().trim()) ? String(x.feel).toLowerCase().trim() : ''; const day = worldOf(c).time.day; const look = String(x?.look || '').trim().slice(0, 300);
     const ex = c.codex.find(e => e.name.toLowerCase() === name.toLowerCase()) || c.codex.find(e => e.kind === 'person' && (e.name.toLowerCase().split(' ')[0] === name.toLowerCase().split(' ')[0]) && name.split(' ').length !== e.name.split(' ').length);
-    if (ex) { ex.text = text.length >= ex.text.length * 0.6 ? text : (ex.text + ' ' + text).slice(-600); ex.kind = 'person'; if (where) ex.where = where; if (look && !ex.look) ex.look = look; if (feel) ex.feel = feel; ex.lastDay = day; if (name.length > ex.name.length) ex.name = name; }
-    else { c.codex.push({ name, kind: 'person', text, where, look, feel, day, lastDay: day, madeBy: x?.madeBy || 'gm' }); added++; notes?.push(name); }
+    if (ex) { ex.text = text.length >= ex.text.length * 0.6 ? text : (ex.text + ' ' + text).slice(-600); ex.kind = 'person'; if (where) ex.where = where; if (look && !ex.look) ex.look = look; if (feel) ex.feel = feel; if (sex && !ex.sex) ex.sex = sex; ex.lastDay = day; if (name.length > ex.name.length) ex.name = name; }
+    else { c.codex.push({ name, kind: 'person', text, where, look, feel, sex, day, lastDay: day, madeBy: x?.madeBy || 'gm' }); added++; notes?.push(name); }
   }
   return added;
 }

@@ -146,7 +146,7 @@ const DEFAULT_SETTINGS = {
   image:{ mode:'pollinations', polliKey:'', polliModel:'flux', size:'square', style:'', template:'', forgePreset:'auto', forgeModel:'', forgeModelSfw:'', forgeModelNsfw:'', forgeShare:true, forgeNeg:'', autoPortraits:true, driveSave:true, scenes:true, forgeRes:'fast' },
   drive:{ clientId: DEFAULT_CLIENT_ID, folder: DEFAULT_DRIVE_FOLDER, autoSync:true },
   net:  { on:true, auto:true },
-  ui:   { narr:17, showChoices:true, physicalDice:false, voice:'tap', voiceName:'', voiceRate:1, quick:true, bottomGap:'phone', bottomGapPx:64 },
+  ui:   { narr:17, showChoices:true, physicalDice:false, voice:'tap', voiceName:'', voiceRate:1, voiceEngine:'auto', voicePC:'', charVoices:true, quick:true, bottomGap:'phone', bottomGapPx:64 },
   updatedAt: 0
 };
 

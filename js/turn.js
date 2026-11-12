@@ -5,7 +5,7 @@ function companionSpec(c) {
     '"location": a short place name, ONLY if the player is now somewhere other than CURRENT PLACE.',
     '"time_of_day": dawn|morning|midday|afternoon|evening|night|late night when time moved on. "days_passed": number when whole days passed. "weather": short phrase when it changed.',
     `"remember": ["short lasting fact"] for anything worth remembering long-term: things ${c.character.name} shared about themselves (likes, history, plans, feelings they expressed), promises, inside jokes, important moments between ${c.character.name} and a cast member. Use this generously but only for real facts.`,
-    '"people": [{"name":"","text":"one sentence: who they are and what the player knows","where":"place","feel":"how they feel about the player: devoted, friendly, neutral, wary or hostile","look":"short physical description if shown"}] for every NAMED character who appears or is mentioned and is NOT in the cast.',
+    '"people": [{"name":"","text":"one sentence: who they are and what the player knows","where":"place","feel":"how they feel about the player: devoted, friendly, neutral, wary or hostile","sex":"male, female or unknown","look":"short physical description if shown"}] for every NAMED character who appears or is mentioned and is NOT in the cast.',
     '"codex": [{"name":"","kind":"place|creature|lore|item","text":"one sentence"}] for notable places, lore or items.',
     '"handout": {"title":"","kind":"note|letter|poster|page","text":"the exact words"} if a written message, letter or note was given or read.',
     '"quest_updates": [{"title":"","status":"active|completed|failed"}] only for clear goals the player took on or finished.',
@@ -35,7 +35,7 @@ function bookkeeperSpec(c, hasCheck) {
     hasCheck ? '' : '"check": ONLY if the scene ends with an enemy attack coming at the player: {"kind":"defense","stat":"DEX","dc":13,"reason":"the bandit\'s axe swing","enemy_damage":"d8+1","damage":"d8"} (dc = enemy Defense + 2: minion 12, soldier 15, elite 18; damage = the player\'s weapon die). Otherwise leave it out.',
     '"ep_gain": 1 minor challenge, 2 real challenge, 3-5 major victory overcome in THIS scene.',
     '"level_up": true only at a major story milestone (end of a chapter). Very rare.',
-    '"people": [{"name":"","text":"one sentence: who they are and what the player knows","where":"place","feel":"how they feel about the player: devoted, friendly, neutral, wary or hostile","look":"short physical description if the scene shows one (age, build, hair, clothes)"}] for every NAMED character who appears or is mentioned (not the player, not party companions). Include known people again only if something new was learned.',
+    '"people": [{"name":"","text":"one sentence: who they are and what the player knows","where":"place","feel":"how they feel about the player: devoted, friendly, neutral, wary or hostile","sex":"male, female or unknown","look":"short physical description if the scene shows one (age, build, hair, clothes)"}] for every NAMED character who appears or is mentioned (not the player, not party companions). Include known people again only if something new was learned.',
     '"codex": [{"name":"","kind":"place|creature|lore|item","text":"one sentence"}] for notable places, creatures, lore or items the player learned about (not people).',
     '"handout": {"title":"","kind":"note|letter|poster|page","text":"the exact words"} if the player received or read a written document.',
     '"image_prompt": ONLY when arriving somewhere new or when an important character or creature appears for the first time: ~40 words for an illustrator (subject, setting, lighting, mood; no names, no text). With it, "image_subject": {"kind":"place|character","name":""}.',
@@ -180,7 +180,7 @@ async function gmTurn(opts = {}) {
     if (msg.bookFail) msg.notes.push({ t:'Records not updated this turn (tap Retry if HP, items or quests look wrong)', k:'' });
     if (state.level_up === true) makeSave(c, `Chapter end (level ${c.character.level})`, true);
     if (msg.worldTurn) await worldTurn(c, msg.worldTurn, signal);
-    autoSpeak(msg, c); if (S.settings.ui.voice === 'auto') for (const b of arr(bubbles)) if (b.role === 'comp') { const p = arr(c.party).find(x => x.id === b.compId); speak(b.text, p?.ttsVoice, true); }
+    autoSpeak(msg, c); if (S.settings.ui.voice === 'auto') for (const b of arr(bubbles)) if (b.role === 'comp') { speakMessage(c, b, true); }
     let ranTurn = false;
     if (!opts.cont && !c.pendingRoll && !c.deathPending) {
       for (const id of arr(msg.compTurns)) {

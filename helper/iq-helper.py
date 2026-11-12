@@ -5,8 +5,10 @@
 #   2. Search:   /iq/search?q=...  -> SearXNG on this PC if it's running (port 8888),
 #                otherwise DuckDuckGo, otherwise Wikipedia.
 #   3. Reading:  /iq/read?url=...  -> the readable text of one web page (private/local addresses refused).
+#   4. Voices:   /iq/tts (POST {text, voice, speed}) -> natural speech from Kokoro, run on this PC's processor.
+#                One-time install: run this file with --install-voices (Install voices.bat does that).
 # Only the Ironquill website and pages on this PC are allowed to use it.
-import os, html
+import os, html, io, threading, wave
 import html.parser
 import ipaddress
 import json
@@ -32,6 +34,91 @@ except OSError:
 UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36 IronquillHelper/1.0'
 MAX_PAGE = 2_500_000   # bytes read from any one web page
 MAX_TEXT = 16000       # characters of readable text returned
+
+# ---------- voices (Kokoro) ----------
+HERE = os.path.dirname(os.path.abspath(__file__))
+VOICE_DIR = os.path.join(HERE, 'voice')
+VOICE_LIB = os.path.join(VOICE_DIR, 'lib')      # kept apart so it never touches Forge's own packages
+VOICE_MODEL = os.path.join(VOICE_DIR, 'kokoro-v1.0.onnx')
+VOICE_BANK = os.path.join(VOICE_DIR, 'voices-v1.0.bin')
+VOICE_URLS = ['https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/',
+              'https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.1/']
+_kokoro, _kokoro_err, _kokoro_lock = None, '', threading.Lock()
+
+
+def voices_installed():
+    return os.path.isfile(VOICE_MODEL) and os.path.isfile(VOICE_BANK) and os.path.isdir(os.path.join(VOICE_LIB, 'kokoro_onnx'))
+
+
+def kokoro():
+    global _kokoro, _kokoro_err
+    if _kokoro is None and voices_installed():
+        with _kokoro_lock:
+            if _kokoro is None:
+                try:
+                    if VOICE_LIB not in sys.path:
+                        sys.path.insert(0, VOICE_LIB)
+                    from kokoro_onnx import Kokoro
+                    _kokoro = Kokoro(VOICE_MODEL, VOICE_BANK)
+                    print('  voices loaded (%d voices)' % len(_kokoro.get_voices()))
+                except Exception as e:
+                    _kokoro_err = str(e)
+                    print('  voices failed to load: %s' % e)
+    return _kokoro
+
+
+def speak_wav(text, voice, speed):
+    k = kokoro()
+    if not k:
+        raise RuntimeError(_kokoro_err or 'voices are not installed: run Install voices.bat')
+    voices = k.get_voices()
+    if voice not in voices:
+        voice = 'bm_george' if 'bm_george' in voices else voices[0]
+    lang = 'en-gb' if voice[:1] == 'b' else 'en-us'
+    with _kokoro_lock:   # one voice at a time keeps the processor free for everything else
+        audio, rate = k.create(text, voice=voice, speed=speed, lang=lang)
+    import numpy as np
+    pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype('<i2').tobytes()
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(rate); w.writeframes(pcm)
+    return buf.getvalue()
+
+
+def install_voices():
+    import subprocess, urllib.request as ur
+    os.makedirs(VOICE_DIR, exist_ok=True)
+    print('Step 1 of 3: installing the voice engine (about 80 MB)...')
+    r = subprocess.call([sys.executable, '-m', 'pip', 'install', '--upgrade', '--target', VOICE_LIB, 'kokoro-onnx'])
+    if r != 0:
+        print('pip could not install kokoro-onnx (code %s).' % r); return 1
+    for i, (name, path) in enumerate([('voices-v1.0.bin', VOICE_BANK), ('kokoro-v1.0.onnx', VOICE_MODEL)], 2):
+        if os.path.isfile(path) and os.path.getsize(path) > 1_000_000:
+            print('Step %d of 3: %s already downloaded.' % (i, name)); continue
+        for base in VOICE_URLS:
+            try:
+                print('Step %d of 3: downloading %s...' % (i, name))
+                tmp = path + '.part'
+                with ur.urlopen(ur.Request(base + name, headers={'User-Agent': UA}), timeout=60) as resp, open(tmp, 'wb') as f:
+                    total = int(resp.headers.get('Content-Length') or 0); got = 0
+                    while True:
+                        chunk = resp.read(1 << 20)
+                        if not chunk: break
+                        f.write(chunk); got += len(chunk)
+                        if total: print('\r  %d of %d MB' % (got >> 20, total >> 20), end='', flush=True)
+                print()
+                os.replace(tmp, path); break
+            except Exception as e:
+                print('  download failed from %s: %s' % (base, e))
+        else:
+            return 1
+    print('Testing a voice...')
+    try:
+        data = speak_wav('The tavern door creaks open.', 'bm_george', 1.0)
+        print('Voices are ready (%d KB test clip). Restart the picture helper to use them.' % (len(data) >> 10))
+        return 0
+    except Exception as e:
+        print('The voice test failed: %s' % e); return 1
 
 
 def allowed(origin):
@@ -234,7 +321,18 @@ class Helper(http.server.BaseHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
         if u.path == '/iq/health':
-            return self.reply(200, {'ok': True, 'helper': 2, 'forge': forge_up(), 'searxng': searxng_up()})
+            return self.reply(200, {'ok': True, 'helper': 3, 'forge': forge_up(), 'searxng': searxng_up(), 'tts': voices_installed()})
+        if u.path == '/iq/tts' and self.command == 'POST':
+            try:
+                length = int(self.headers.get('Content-Length') or 0)
+                req = json.loads(self.rfile.read(min(length, 20000)) or b'{}')
+                text = re.sub(r'\s+', ' ', str(req.get('text') or '')).strip()[:1500]
+                if not text:
+                    return self.reply(400, {'error': 'no text'})
+                speed = max(0.6, min(1.6, float(req.get('speed') or 1.0)))
+                return self.reply(200, speak_wav(text, str(req.get('voice') or 'bm_george'), speed), 'audio/wav')
+            except Exception as e:
+                return self.reply(503, {'error': str(e)})
         if u.path == '/iq/search':
             term = (q.get('q') or [''])[0].strip()
             if not term:
@@ -290,14 +388,20 @@ class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 
 if __name__ == '__main__':
+    if '--install-voices' in sys.argv:
+        code = install_voices()
+        sys.exit(code)
     try:
         srv = Server(('127.0.0.1', PORT), Helper)
     except OSError as e:
         print('Could not start the helper on port %d (%s). Is it already running in another window?' % (PORT, e))
         sys.exit(1)
-    print('Ironquill helper is running (pictures + research).')
+    print('Outer Realm helper is running (pictures, research and voices).')
     print('  Ironquill (this PC):  http://localhost:%d' % PORT)
     print('  Pictures:             %s (Forge) %s' % (FORGE, 'found' if forge_up() else '- not running yet'))
     print('  Web search:           %s' % ('SearXNG at ' + SEARXNG if searxng_up() else 'DuckDuckGo (SearXNG not running), Wikipedia as backup'))
+    print('  Voices:               %s' % ('ready (Kokoro)' if voices_installed() else 'not installed (run Install voices.bat for natural voices)'))
     print('Keep this window open (minimize it). Close it to stop the helper.')
+    if voices_installed():
+        threading.Thread(target=kokoro, daemon=True).start()   # warm up so the first line is quick
     srv.serve_forever()

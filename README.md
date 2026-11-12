@@ -14,7 +14,8 @@ An AI tabletop RPG that runs on your own PC: the story AI (Ollama), pictures (Fo
 | `js/core.js` | Rules, helpers, built-in content, app state |
 | `js/ai.js` | AI connections and the GM's prompts |
 | `js/turn.js` | One turn: dice referee, web lookup, writer, agency guard, bookkeeper, rolls |
-| `js/story.js` | Session zero, death, voice, storybook, menus, People tracker, multiplayer |
+| `js/story.js` | Session zero, death, storybook, menus, People tracker, multiplayer |
+| `js/voice.js` | Voices: narrator plus a unique male or female voice per character (PC voices or device voices) |
 | `js/companion.js` | Companion mode |
 | `js/research.js` | World research and lookups during play |
 | `js/images.js` | Pictures: Pollinations, Forge on your PC, Drive picture storage |
@@ -23,7 +24,7 @@ An AI tabletop RPG that runs on your own PC: the story AI (Ollama), pictures (Fo
 | `js/home.js` | Home: My Games, Discover Campaigns, Characters, Gallery |
 | `js/panel.js` | Story panel (Character / Campaign / World), "The world shifts", choice cards |
 | `js/events.js` | Click and input handling, startup |
-| `helper/` | Files for your PC: the picture and search helper and its start file |
+| `helper/` | Files for your PC: the picture, search and voice helper, its start file, and `Install voices.bat` |
 | `netlify.toml` | Netlify settings (no build step) |
 
 The scripts are plain files loaded in order; there is nothing to build or install. Netlify publishes every change pushed to GitHub.
@@ -41,6 +42,7 @@ The scripts are plain files loaded in order; there is nothing to build or instal
 | Phone access | Tailscale. PC address **https://michael.tailfc0cb4.ts.net** (Ollama) and port **8443** (the helper) |
 | Saves | Google Drive folder `1aWDwaZ…` (built into the app). The Google OAuth client must list every app address under Authorized JavaScript origins |
 | World builder AI | OpenRouter free key: builds worlds and characters; play stays on your PC |
+| Voices | Kokoro natural voices made by the helper on the PC's processor (`/iq/tts`). One-time install: `Install voices.bat` next to `iq-helper.py`; files go in a `voice` folder beside it, apart from Forge's packages |
 
 **When the app address changes**, update these four places: `OLLAMA_ORIGINS`, the Google OAuth client's Authorized JavaScript origins, `helper/allowed-sites.txt` on the PC (one address per line), and `--cors-allow-origins` in Forge's `webui-user.bat`.
 
