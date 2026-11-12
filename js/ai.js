@@ -86,7 +86,9 @@ async function chat(messages, opts = {}) {
       const onUser = () => ctls.forEach(x => x.abort()); opts.signal?.addEventListener?.('abort', onUser);
       const tm = setTimeout(onUser, 90000);
       try {
-        const out = await Promise.any(list.map((bc, i) => chatOne(bc, messages, { ...opts, model: '', signal: ctls[i].signal }).then(o => {
+        const once = (bc, i) => chatOne(bc, messages, { ...opts, model: '', signal: ctls[i].signal });
+        const tryTwice = (bc, i) => once(bc, i).catch(async e => { if (ctls[i].signal.aborted || !/\b(429|500|502|503|504|overloaded|unavailable|busy)\b/i.test(String(e.message))) throw e; await sleep(2500); return once(bc, i); });
+        const out = await Promise.any(list.map((bc, i) => tryTwice(bc, i).then(o => {
           const t = stripThink(o).trim(); if (!t || REFUSAL.test(t.slice(0, 160))) throw new Error(bc.label + ' declined');
           ctls.forEach((x, j) => { if (j !== i) x.abort(); }); return o;
         })));

@@ -51,6 +51,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const num = v => { const n = Number(v); return Number.isFinite(n) ? Math.round(n) : 0; };
 const arr = v => Array.isArray(v) ? v : (v == null || v === '' ? [] : [v]);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 const deep = o => JSON.parse(JSON.stringify(o));
 const mod = s => Math.floor((num(s) - 10) / 2);
 const fmt = n => (n >= 0 ? '+' : '−') + Math.abs(n);
