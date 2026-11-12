@@ -102,7 +102,8 @@ function toast(msg, ms = 3200) { const t = $('#toast'); t.textContent = msg; t.c
 /* ---------- providers & content ---------- */
 /* Google OAuth Client ID for Drive sync. Not a secret — once you create one,
    paste it here so every device only has to tap "Connect Google Drive". */
-const DEFAULT_CLIENT_ID = '62872295580-f6pf5i15jaoo5mnskkrooe8gfosjo7v8.apps.googleusercontent.com';
+const DEFAULT_CLIENT_ID = '18344580134-e8jbjhhmrieegn4tj57d8is6f7uspq1m.apps.googleusercontent.com';   /* Iron Quill project, michael@bufordlcm.com */
+const OLD_CLIENT_IDS = ['62872295580-f6pf5i15jaoo5mnskkrooe8gfosjo7v8.apps.googleusercontent.com'];
 
 const PRESETS = {
   openrouter: { label:'OpenRouter', short:'OpenRouter', baseUrl:'https://openrouter.ai/api/v1', key:true, keyUrl:'https://openrouter.ai/settings/keys', freeOnly:true,

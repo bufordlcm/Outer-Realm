@@ -22,7 +22,7 @@ const connName = c => `${c.label || PRESETS[c.preset]?.short || 'AI'}${c.model ?
   }
   if (t) { delete t.preset; delete t.baseUrl; delete t.apiKey; delete t.model; }
   delete S.settings.drive.syncKeys;
-  if (!S.settings.drive.clientId && DEFAULT_CLIENT_ID) S.settings.drive.clientId = DEFAULT_CLIENT_ID;
+  if ((!S.settings.drive.clientId || OLD_CLIENT_IDS.includes(S.settings.drive.clientId.trim())) && DEFAULT_CLIENT_ID) S.settings.drive.clientId = DEFAULT_CLIENT_ID;
   if (!folderIdFrom(S.settings.drive.folder) || OLD_DRIVE_FOLDERS.includes(folderIdFrom(S.settings.drive.folder))) S.settings.drive.folder = DEFAULT_DRIVE_FOLDER;
   LS.set('iq.settings', S.settings);
 })();
