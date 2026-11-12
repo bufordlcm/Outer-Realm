@@ -33,7 +33,7 @@ function bookkeeperSpec(c, hasCheck) {
     '"rest": true only if a full night\'s rest or long downtime happened.',
     '"time_of_day": dawn|morning|midday|afternoon|evening|night|late night when time moved on. "days_passed": number when whole days passed. "weather": short phrase when it changed.',
     `"combat": true if a fight started, false if it ended (now: ${c.combat ? 'in combat' : 'not in combat'}).`,
-    hasCheck ? '' : '"check": ONLY if the scene ends with an enemy attack coming at the player: {"kind":"defense","stat":"DEX","dc":13,"reason":"the bandit\'s axe swing","enemy_damage":"d8+1","damage":"d8"} (dc = enemy Defense + 2: minion 12, soldier 15, elite 18; damage = the player\'s weapon die). Otherwise leave it out.',
+    hasCheck ? '' : '"check": ONLY if the scene ends with an enemy attack coming at the player: {"kind":"defense","stat":"DEX","dc":13,"reason":"<what attacks: who and with what>","enemy_damage":"<dice, e.g. d8+1>","damage":"<the player\'s weapon die>"} (dc = enemy Defense + 2: minion 12, soldier 15, elite 18; damage = the player\'s weapon die). Otherwise leave it out.',
     '"ep_gain": 1 minor challenge, 2 real challenge, 3-5 major victory overcome in THIS scene.',
     '"level_up": true only at a major story milestone (end of a chapter). Very rare.',
     '"people": [{"name":"","text":"one sentence: who they are and what the player knows","where":"place","feel":"how they feel about the player: devoted, friendly, neutral, wary or hostile","sex":"male, female or unknown","look":"short physical description if the scene shows one (age, build, hair, clothes)"}] for every NAMED character who appears or is mentioned (not the player, not party companions). Include known people again only if something new was learned.',
@@ -421,8 +421,9 @@ async function finalizeRoll() {
       else extras.push('Avoided the attack.');
     } else label = `${SN(res.statKey)} check to ${r.reason} (DC ${res.dc})`;
     const modStr = res.mods.map(x => `${x.l} ${fmt(x.v)}`).join(', ');
-    const text = `${label}: rolled ${res.d}${modStr ? ` [${modStr}]` : ''} = ${res.total} → ${res.outcome}${res.success ? '' : ` (missed by ${res.dc - res.total})`}.${extras.length ? ' ' + extras.join(' ') : ''}${res.rerolled ? ' (Rerolled with Momentum.)' : ''}`;
-    const rollData = { d: res.d, total: res.total, dc: res.dc, outcome: res.outcome, success: res.success, label, mods: res.mods, extras };
+    const how = String(r.how || '').trim();
+    const text = `${label}${how ? ` — ${c.character.name}'s move, in the player's words: "${how}"` : ''}: rolled ${res.d}${modStr ? ` [${modStr}]` : ''} = ${res.total} → ${res.outcome}${res.success ? '' : ` (missed by ${res.dc - res.total})`}.${extras.length ? ' ' + extras.join(' ') : ''}${res.rerolled ? ' (Rerolled with Momentum.)' : ''}`;
+    const rollData = { d: res.d, total: res.total, dc: res.dc, outcome: res.outcome, success: res.success, label, mods: res.mods, extras, how };
     const prev = deep(r);
     c.pendingRoll = null; S.rollResult = null; S.invokeOpen = false; S.invokeSel = [];
     S.finalizing = false;

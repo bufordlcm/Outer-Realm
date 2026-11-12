@@ -177,7 +177,7 @@ function msgHTML(m, c, isLastGM) {
   if (m.role === 'roll') {
     const r = m.rollData || {};
     return `<div class="msg roll"><div class="rollres"><div class="d20 ${r.d === 20 ? 'crit' : r.d === 1 ? 'fumble' : ''}">${r.d ?? '?'}</div>
-      <div class="t">${esc(r.label || '')}<br>${S.settings.ui.diceMath !== false ? `<span class="bd">${(r.mods || []).map(x => `${esc(x.l)} ${fmt(x.v)}`).join(' · ')}</span><br>
+      <div class="t">${esc(r.label || '')}${r.how ? `<br><i class="rhow">“${esc(r.how)}”</i>` : ''}<br>${S.settings.ui.diceMath !== false ? `<span class="bd">${(r.mods || []).map(x => `${esc(x.l)} ${fmt(x.v)}`).join(' · ')}</span><br>
       ${r.d} ${fmt(r.total - r.d)} = <b>${r.total}</b> vs ${r.dc}` : `<b>${r.total}</b>`} <span class="o ${r.success ? 'success' : 'failure'}">${esc(r.outcome || '')}</span>
       ${(r.extras || []).map(x => `<br>${esc(x)}`).join('')}</div></div>${notesHTML(m.notes)}</div>`;
   }
@@ -208,7 +208,7 @@ function rollCardHTML(c) {
     if (S.ruling) invoke = `<div class="invoke row"><span class="spin sm"></span> The GM is ruling on your traits…</div>`;
     else if (S.invokeOpen) invoke = `<div class="invoke"><div class="hint" style="margin:0 0 8px">Which traits, and how exactly do they help?</div>
       <div class="chips">${pos.map(t => `<button class="chip ${S.invokeSel.includes(t.id) ? 'on' : ''}" data-act="invsel" data-id="${t.id}">${esc(t.name)} <span class="tb ${t.tier}">${t.tier}</span></button>`).join('')}</div>
-      <textarea id="invokeText" rows="2" style="margin-top:8px" placeholder="I listen for each pin clicking into place…">${esc(S.invokeArg || r.argument || '')}</textarea>
+      <textarea id="invokeText" rows="2" style="margin-top:8px" placeholder="I listen for each pin clicking into place…">${esc(S.invokeArg || r.argument || r.how || '')}</textarea>
       <div class="row" style="margin-top:8px"><button class="btn sm gold" data-act="ruling">Ask the GM</button><button class="link" data-act="invclose">Cancel</button></div></div>`;
     else invoke = `<button class="btn sm wide" data-act="invopen" style="margin-top:6px">${icon('spark')} Invoke a trait${r.invokes?.length ? ' again' : ''}</button>`;
   }
@@ -225,6 +225,7 @@ function rollCardHTML(c) {
       <button class="btn gold" data-act="roll" data-mode="counter">Counter<small>${SN(defenseStat(ch, 'counter'))} ${tot('counter')} · DC+3</small></button></div>`;
   } else actions = `<button class="btn gold wide" data-act="roll">Roll the d20</button>`;
   return `<div class="rollcard"><div class="h">${esc(title)}</div><div class="r">${esc(r.reason)}${r.kind === 'defense' && r.enemy_damage ? ` · hits for ${esc(r.enemy_damage)}` : ''}</div>
+    ${!res ? `<label class="rollhow"><span>${r.kind === 'defense' ? 'What do you do?' : 'How do you do it?'} <i>(optional)</i></span><textarea id="rollHow" rows="2" placeholder="${r.kind === 'defense' ? 'e.g. I duck under the swing and thrust at his ribs' : r.kind === 'attack' ? 'e.g. I feint high, then slash at his leg' : 'e.g. I wait for the thunder to cover the noise'}">${esc(r.how || '')}</textarea></label>` : r.how ? `<p class="rollsaid">“${esc(r.how)}”</p>` : ''}
     ${modList}${invoke}${momBtn}
     <div class="d20 bigdie ${res?.d === 20 ? 'crit' : res?.d === 1 ? 'fumble' : ''}" id="bigdie">${res ? res.d : 'd20'}</div>
     ${actions}

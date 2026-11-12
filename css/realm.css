@@ -266,3 +266,9 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 .ditem:hover{border-color:var(--accent)}
 .ttrait{display:inline-block;font-size:12px;font-weight:700;color:var(--gold2);border:1px solid var(--gold);border-radius:999px;padding:1px 8px;margin-right:4px}
 .msg.rollask{margin-top:4px}
+.rollhow{display:block;text-align:left;margin:10px 0 4px}
+.rollhow span{display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px}
+.rollhow span i{font-style:normal;opacity:.7}
+.rollhow textarea{width:100%;min-height:44px;font-size:14.5px}
+.rollsaid,.rhow{color:var(--ink);font-style:italic;opacity:.9}
+.rollsaid{text-align:center;margin:8px 0}

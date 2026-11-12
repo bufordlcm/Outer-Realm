@@ -220,7 +220,8 @@ document.addEventListener('input', e => {
     const ch = c.character; ch.maxHp = Math.max(1, ch.maxHp); ch.hp = clamp(ch.hp, 0, ch.maxHp); ch.momentum = clamp(num(ch.momentum), 0, 3); ch.strain = Math.max(0, num(ch.strain));
     touch(c); renderHUD(); scheduleSync();
     if (el.tagName === 'SELECT' && S.modal) renderModal();
-  } else if (el.id === 'input') autoGrow(el);
+  } else if (el.id === 'rollHow') { const r = cur()?.pendingRoll; if (r) { r.how = el.value.slice(0, 400); touch(cur()); } }
+  else if (el.id === 'input') autoGrow(el);
   else if (el.id === 'askText') S.askDraft = el.value;
   else if (el.dataset.pedit) { const p = arr(cur()?.party).find(x => x.id === el.dataset.pedit); if (p) { p[el.dataset.k] = el.value; touch(cur()); } }
   else if (el.id === 'lookupQ') S.lookupQ = el.value;
