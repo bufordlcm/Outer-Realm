@@ -220,7 +220,7 @@ async function runVoice() {
     }
   } finally { if (gen === VOICE.gen) { VOICE.playing = false; renderSpeakingState(); } }
 }
-function renderSpeakingState() { document.body.classList.toggle('speaking', VOICE.playing); }
+function renderSpeakingState() { document.body.classList.toggle('speaking', VOICE.playing); musicDuck(VOICE.playing); }
 
 /* ---------- what the rest of the app calls ---------- */
 function speakMessage(c, m, append = false) { if (c && m) queueSegments(c, messageSegments(c, m), append); }

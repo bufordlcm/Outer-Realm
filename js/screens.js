@@ -22,6 +22,7 @@ function traitCardHTML(t, i, path = 'traits', bind = 'dpath') {
   </div>`;
 }
 function renderNew(keepScroll) {
+  musicScene(null);
   S.view = 'new';
   if (!S.draft) S.draft = newDraft();
   const D = S.draft; const b = draftBudget(D);
@@ -125,7 +126,7 @@ function renderNew(keepScroll) {
 /* ---------- game ---------- */
 function renderGame() {
   const c = cur(); if (!c) return renderLibrary();
-  S.view = 'game';
+  S.view = 'game'; musicScene(c);
   app().innerHTML = `<div class="game">
     <div class="gbar">
       <button class="exitbtn" data-act="home" aria-label="Exit game">${icon('back')}<span>Exit</span></button>
@@ -133,6 +134,7 @@ function renderGame() {
       ${c.phase === 'session0' ? '' : `<button class="hbtn" data-act="panel" aria-label="Story panel">${icon('panel')}<span>${isCompanion(c) ? 'Story' : 'Panel'}</span></button>
       <button class="hbtn" data-act="party" aria-label="${isCompanion(c) ? 'Cast' : 'Party'}">${icon('users')}<span>${isCompanion(c) ? 'Cast' : 'Party'}${activeParty(c).length ? ' ' + activeParty(c).length : ''}</span></button>
       <button class="hbtn wideonly" data-act="journal" aria-label="Journal">${icon('book')}<span>Journal</span></button>`}
+      <button class="hbtn" data-act="gamesettings" aria-label="Game Settings">${icon('gear')}<span>Game</span></button>
       <button class="hbtn" data-act="menu" aria-label="Menu">${icon('dots')}<span>More</span></button>
     </div>
     <div class="hudwrap" id="hud"></div>
@@ -170,8 +172,8 @@ function msgHTML(m, c, isLastGM) {
   if (m.role === 'roll') {
     const r = m.rollData || {};
     return `<div class="msg roll"><div class="rollres"><div class="d20 ${r.d === 20 ? 'crit' : r.d === 1 ? 'fumble' : ''}">${r.d ?? '?'}</div>
-      <div class="t">${esc(r.label || '')}<br><span class="bd">${(r.mods || []).map(x => `${esc(x.l)} ${fmt(x.v)}`).join(' · ')}</span><br>
-      ${r.d} ${fmt(r.total - r.d)} = <b>${r.total}</b> vs ${r.dc} <span class="o ${r.success ? 'success' : 'failure'}">${esc(r.outcome || '')}</span>
+      <div class="t">${esc(r.label || '')}<br>${S.settings.ui.diceMath !== false ? `<span class="bd">${(r.mods || []).map(x => `${esc(x.l)} ${fmt(x.v)}`).join(' · ')}</span><br>
+      ${r.d} ${fmt(r.total - r.d)} = <b>${r.total}</b> vs ${r.dc}` : `<b>${r.total}</b>`} <span class="o ${r.success ? 'success' : 'failure'}">${esc(r.outcome || '')}</span>
       ${(r.extras || []).map(x => `<br>${esc(x)}`).join('')}</div></div>${notesHTML(m.notes)}</div>`;
   }
   if (m.role === 'sys' && m.narr) return `<div class="msg gm narr2"><div class="narr">${md(m.text)}</div></div>`;
@@ -192,7 +194,7 @@ function rollCardHTML(c) {
   const title = r.kind === 'attack' ? `Attack · Defense ${effDC(r)}` : r.kind === 'defense' ? `Defend · DC ${effDC(r)}` : `${SN(r.stat)} check · DC ${effDC(r)}`;
   const statKey = r.kind === 'defense' ? null : r.stat;
   const mods = res ? res.mods : rollMods(c, r, statKey);
-  const modList = `<div class="mods">${mods.map(x => `<div class="${x.v > 0 ? 'pos' : x.v < 0 ? 'neg' : ''}"><span>${esc(x.l)}${x.why ? `<small>${esc(x.why)}</small>` : ''}</span><span>${fmt(x.v)}</span></div>`).join('')}
+  const modList = S.settings.ui.diceMath === false && !res ? '' : `<div class="mods">${mods.map(x => `<div class="${x.v > 0 ? 'pos' : x.v < 0 ? 'neg' : ''}"><span>${esc(x.l)}${x.why ? `<small>${esc(x.why)}</small>` : ''}</span><span>${fmt(x.v)}</span></div>`).join('')}
     ${r.dcAdj ? `<div class="pos"><span>Good argument — DC lowered</span><span>DC ${fmt(r.dcAdj)}</span></div>` : ''}
     ${r.kind !== 'defense' || res ? `<div class="tot"><span>Total modifier</span><span>${fmt(sumMods(mods))}</span></div>` : ''}</div>`;
   const pos = ch.traits.filter(t => t.polarity === '+');
@@ -277,6 +279,7 @@ function renderModal() {
   const scroll = $('#modalBody')?.scrollTop || 0;
   let title = '', tabs = '', body = '';
   if (S.modal === 'settings') { title = 'Settings'; [tabs, body] = settingsHTML(); }
+  else if (S.modal === 'game') { title = 'Game Settings'; [tabs, body] = gameSettingsHTML(); }
   else if (S.modal === 'sheet') { title = 'Character'; [tabs, body] = sheetHTML(); }
   else if (S.modal === 'journal') { title = 'Journal'; [tabs, body] = journalBookHTML(); }
   else if (S.modal === 'tools') { title = 'Campaign tools'; [tabs, body] = journalHTML(); }
@@ -307,8 +310,6 @@ function settingsHTML() {
       <div class="sect" style="font-size:20px">Add keys</div>
       ${importHTML()}
       <div class="sect" style="font-size:20px">Story settings</div>
-      <label class="f"><span>Scene length</span><select data-bind="text.length">${Object.entries(SCENE_LEN).map(([k, v]) => `<option value="${k}" ${(S.settings.text.length || 'short') === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
-      <p class="hint">Short turns keep the story tight and make small models far more reliable: the GM shows one moment, then hands it back to you.</p>
       <label class="f"><span>Turn quality</span><select data-bind="ai.profile">${Object.entries(AI_PROFILES).map(([k, v]) => `<option value="${k}" ${(S.settings.ai.profile || 'balanced') === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
       <p class="hint">Every turn: the GM writes the scene, then a bookkeeper step updates HP, items, quests, people and choices. The quality setting adds checks on top.</p>
       ${(S.settings.ai.profile || 'balanced') === 'custom' ? `${bindCheck('ai.referee', 'Dice referee: decides whether your action needs a roll, so the GM can\'t skip the dice')}
@@ -329,8 +330,7 @@ function settingsHTML() {
       ${bindCheck('net.auto', 'Let the AI look things up online by itself during play, whenever it needs real facts (real places, people, history, or an existing book, show or game world)')}
       <div class="row"><button class="btn sm" data-act="netcheck">${icon('search')} Check research</button></div>
       ${S.netStatus ? `<p class="hint" style="color:var(--ink)">${esc(S.netStatus)}</p>` : '<p class="hint">Best with the picture helper running on your PC (searches the whole web, with no limits when SearXNG is installed). Without it, research uses Wikipedia.</p>'}
-      <label class="f"><span>How often to roll</span><select data-bind="ai.dice"><option value="normal" ${S.settings.ai.dice !== 'more' ? 'selected' : ''}>Normal: when it's uncertain and matters</option><option value="more" ${S.settings.ai.dice === 'more' ? 'selected' : ''}>More dice: roll whenever there's any doubt</option></select></label>
-      <p class="hint">Want a roll for one action? Add <b>(roll)</b> to what you write, e.g. "I try to talk the guard down (roll)".</p>`;
+      <p class="hint">Dice, scene length and how the game flows are in <button class="link" data-act="gamesettings">Game Settings</button>.</p>`;
   } else if (tab === 'images') {
     body = `<label class="f"><span>Scene images</span><select data-bind="image.mode">
         <option value="pollinations" ${im.mode === 'pollinations' ? 'selected' : ''}>Pollinations (free, open models like Flux)</option>
@@ -358,25 +358,11 @@ function settingsHTML() {
       <p class="hint" id="driveStatus">${esc(S.syncStatus || (Drive.valid() ? 'Connected.' : 'Not connected.'))}</p>`;
   } else {
     body = `<label class="f"><span>Story text size</span><input type="range" min="14" max="24" step="1" data-bind="ui.narr" value="${S.settings.ui.narr}" style="width:100%;accent-color:var(--gold)"></label>
-      ${bindCheck('ui.showChoices', 'Show suggested actions under each scene (turn off to decide everything yourself)')}
-      ${bindCheck('ui.physicalDice', 'Use my own physical dice: the app asks for the number you rolled instead of rolling for you')}
       <label class="f"><span>Empty bar at the bottom of the screen (keeps the Netlify banner off the Send button)</span><select data-bind="ui.bottomGap"><option value="phone" ${(S.settings.ui.bottomGap || 'phone') === 'phone' ? 'selected' : ''}>On phones only</option><option value="always" ${S.settings.ui.bottomGap === 'always' ? 'selected' : ''}>Always</option><option value="off" ${S.settings.ui.bottomGap === 'off' ? 'selected' : ''}>Off</option></select></label>
       ${bindInput('ui.bottomGapPx', 'Bar height (pixels)', { type:'number', hint:'Raise it if the banner still covers anything; lower it to get the space back.' })}
-      ${bindCheck('ui.quick', 'Show quick actions (Make camp, Look around, Talk to the party)')}
-      <div class="sect" style="font-size:20px">Voice</div>
-      ${TTS || VOICE.pc ? `<label class="f"><span>Narration</span><select data-bind="ui.voice"><option value="off" ${S.settings.ui.voice === 'off' ? 'selected' : ''}>Off</option><option value="tap" ${S.settings.ui.voice === 'tap' ? 'selected' : ''}>Tap "Read" to hear a scene</option><option value="auto" ${S.settings.ui.voice === 'auto' ? 'selected' : ''}>Read every scene aloud automatically</option></select></label>
-      <label class="f"><span>Voices from</span><select data-bind="ui.voiceEngine"><option value="auto" ${(S.settings.ui.voiceEngine || 'auto') === 'auto' ? 'selected' : ''}>Automatic: natural PC voices when the helper has them</option><option value="pc" ${S.settings.ui.voiceEngine === 'pc' ? 'selected' : ''}>My PC (natural voices)</option><option value="device" ${S.settings.ui.voiceEngine === 'device' ? 'selected' : ''}>This device's built-in voices</option></select></label>
-      <p class="hint">${VOICE.pc ? '<b style="color:var(--green)">✓ Natural PC voices found.</b> 27 voices, male and female, US and UK.' : 'Natural PC voices: not found. On the PC run <b>Install voices.bat</b> once (in the same folder as the picture helper), then restart the helper.'} <button class="link" data-act="voicecheck">Check again</button></p>
-      ${engine() === 'pc' ? `<label class="f"><span>Narrator voice</span><select data-bind="ui.voicePC">${[...PC_VOICES.m, ...PC_VOICES.f].map(([id, l]) => `<option value="${id}" ${(S.settings.ui.voicePC || PC_NARRATOR) === id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`
-        : `<label class="f"><span>Narrator voice</span><select data-bind="ui.voiceName"><option value="">Device default</option>${ttsVoices().map(v => `<option ${S.settings.ui.voiceName === v.name ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select></label>`}
-      ${bindCheck('ui.charVoices', 'Give every character their own voice: a male or female voice picked automatically and kept for the whole story')}
-      <label class="f"><span>Speed (${S.settings.ui.voiceRate || 1}×)</span><input type="range" min="0.6" max="1.6" step="0.1" data-bind="ui.voiceRate" value="${S.settings.ui.voiceRate || 1}" style="width:100%;accent-color:var(--gold)"></label>
-      <button class="btn sm" data-act="voicetest" style="margin-top:8px">${icon('speaker')} Test voice</button>
-      <p class="hint">The narrator reads the story; lines in quotes are spoken by whoever says them. Change any companion's voice in the Party screen. On iPhone, more built-in voices are under Settings → Accessibility → Spoken Content → Voices.</p>` : '<p class="hint">This browser has no built-in voices.</p>'}
-      <div class="sect" style="font-size:20px">Writing your turn</div>
-      <label class="f"><span>When I type plain text, it means</span><select data-bind="ui.typeMode"><option value="say" ${typeMode() === 'say' ? 'selected' : ''}>What my character says (✋ Action button for what they do)</option><option value="act" ${typeMode() === 'act' ? 'selected' : ''}>What my character does (💬 Say button for what they say)</option></select></label>
-      <p class="hint">The buttons above the text box add the marks for you: ✋ Action puts *asterisks* around what you do, 💬 Say puts "quotes" around what you say, and (( )) Talk to GM is for questions or requests outside the story. Select some text first to wrap it.</p>
-      ${SR ? '<p class="hint">Tap the microphone next to the text box to speak your action.</p>' : ''}
+      <div class="sect" style="font-size:20px">Dice, voice, music &amp; game flow</div>
+      <p class="hint">These live in <b>Game Settings</b>, which you can also open from the ⚙ button while you play.</p>
+      <button class="btn" data-act="gamesettings">${icon('gear')} Open Game Settings</button>
       <div class="sect" style="font-size:20px">Backups</div>
       <p class="hint">A backup file holds every adventure and your settings (keys excluded).</p>
       <div class="row" style="margin-top:10px"><button class="btn" data-act="export">${icon('download')} Download backup</button><button class="btn" data-act="import">${icon('upload')} Restore backup</button></div>
@@ -430,3 +416,17 @@ function connsHTML() {
     <p class="hint">Tap the model box to see this key's models. Bigger models (DeepSeek, Llama 70B, Qwen large, Gemini Flash) follow the rules best.</p>`;
 }
 
+
+/* moved here so Game Settings can show them */
+const voiceSettingsHTML = () => `${TTS || VOICE.pc ? `<label class="f"><span>Narration</span><select data-bind="ui.voice"><option value="off" ${S.settings.ui.voice === 'off' ? 'selected' : ''}>Off</option><option value="tap" ${S.settings.ui.voice === 'tap' ? 'selected' : ''}>Tap "Read" to hear a scene</option><option value="auto" ${S.settings.ui.voice === 'auto' ? 'selected' : ''}>Read every scene aloud automatically</option></select></label>
+      <label class="f"><span>Voices from</span><select data-bind="ui.voiceEngine"><option value="auto" ${(S.settings.ui.voiceEngine || 'auto') === 'auto' ? 'selected' : ''}>Automatic: natural PC voices when the helper has them</option><option value="pc" ${S.settings.ui.voiceEngine === 'pc' ? 'selected' : ''}>My PC (natural voices)</option><option value="device" ${S.settings.ui.voiceEngine === 'device' ? 'selected' : ''}>This device's built-in voices</option></select></label>
+      <p class="hint">${VOICE.pc ? '<b style="color:var(--green)">✓ Natural PC voices found.</b> 27 voices, male and female, US and UK.' : 'Natural PC voices: not found. On the PC run <b>Install voices.bat</b> once (in the same folder as the picture helper), then restart the helper.'} <button class="link" data-act="voicecheck">Check again</button></p>
+      ${engine() === 'pc' ? `<label class="f"><span>Narrator voice</span><select data-bind="ui.voicePC">${[...PC_VOICES.m, ...PC_VOICES.f].map(([id, l]) => `<option value="${id}" ${(S.settings.ui.voicePC || PC_NARRATOR) === id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`
+        : `<label class="f"><span>Narrator voice</span><select data-bind="ui.voiceName"><option value="">Device default</option>${ttsVoices().map(v => `<option ${S.settings.ui.voiceName === v.name ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select></label>`}
+      ${bindCheck('ui.charVoices', 'Give every character their own voice: a male or female voice picked automatically and kept for the whole story')}
+      <label class="f"><span>Speed (${S.settings.ui.voiceRate || 1}×)</span><input type="range" min="0.6" max="1.6" step="0.1" data-bind="ui.voiceRate" value="${S.settings.ui.voiceRate || 1}" style="width:100%;accent-color:var(--gold)"></label>
+      <button class="btn sm" data-act="voicetest" style="margin-top:8px">${icon('speaker')} Test voice</button>
+      <p class="hint">The narrator reads the story; lines in quotes are spoken by whoever says them. Change any companion's voice in the Party screen. On iPhone, more built-in voices are under Settings → Accessibility → Spoken Content → Voices.</p>` : '<p class="hint">This browser has no built-in voices.</p>'}`;
+const typingSettingsHTML = () => `      <label class="f"><span>When I type plain text, it means</span><select data-bind="ui.typeMode"><option value="say" ${typeMode() === 'say' ? 'selected' : ''}>What my character says (✋ Action button for what they do)</option><option value="act" ${typeMode() === 'act' ? 'selected' : ''}>What my character does (💬 Say button for what they say)</option></select></label>
+      <p class="hint">The buttons above the text box add the marks for you: ✋ Action puts *asterisks* around what you do, 💬 Say puts "quotes" around what you say, and (( )) Talk to GM is for questions or requests outside the story. Select some text first to wrap it.</p>
+      ${SR ? '<p class="hint">Tap the microphone next to the text box to speak your action.</p>' : ''}`;

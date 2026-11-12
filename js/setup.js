@@ -1,6 +1,7 @@
 'use strict';
 /* ---------- setup wizard ---------- */
 function renderSetup() {
+  musicScene(null);
   S.view = 'setup';
   const sc = $('.page')?.scrollTop || 0;
   const ready = textReady(); const fid = folderIdFrom(S.settings.drive.folder);

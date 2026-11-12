@@ -353,7 +353,8 @@ function menuHTML() {
     ${S.settings.image.mode !== 'off' ? `<button class="mitem" data-act="picstoggle">${icon('image')}<span><b>Scene pictures: ${S.settings.image.scenes !== false ? 'On' : 'Off'}</b><small>${S.settings.image.scenes !== false ? 'Tap to stop painting scenes. Portraits, photos and Illustrate still work.' : 'Tap to paint a picture when you reach new places'}</small></span><span class="tog ${S.settings.image.scenes !== false ? 'on' : ''}"></span></button>` : ''}
     ${item('storybook', 'download', 'Storybook', 'Your adventure as an illustrated book (print or PDF)')}
     ${item('sync', 'cloud', 'Sync with Google Drive', esc(S.syncStatus || 'Save to and load from your Drive folder'))}
-    ${item('settings', 'gear', 'Settings', 'AI, images, voice, dice, Drive')}
+    ${item('gamesettings', 'gear', 'Game Settings', 'Dice, music, voices, game flow, this story')}
+    ${item('settings', 'gear', 'App setup', 'AI connections, pictures, Google Drive')}
     ${item('guide', 'help', 'Rules &amp; guide', 'How everything works')}
   </div>`;
 }

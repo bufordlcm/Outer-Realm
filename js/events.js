@@ -1,7 +1,7 @@
 'use strict';
 /* ---------- events ---------- */
 document.addEventListener('click', e => {
-  unlockTTS();
+  unlockTTS(); unlockMusic();
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act; const c = cur(); const D = S.draft;
   if (homeAction(act, el) || panelAction(act, el, c)) return;
@@ -69,6 +69,9 @@ document.addEventListener('click', e => {
     case 'galdel': c.gallery = arr(c.gallery).filter(x => x.id !== el.dataset.id); touch(c); scheduleSync(); renderModal(); break;
     case 'modalbg': if (e.target === el) closeModal(); break;
     case 'close': closeModal(); break;
+    case 'gamesettings': openModal('game', S.modal === 'game' ? S.modalTab : null); break;
+    case 'gset': setPath(S.settings, el.dataset.path, JSON.parse(el.dataset.v)); saveSettings(); musicScene(cur()); musicLevel(); renderModal(); break;
+    case 'musicskip': musicSkip(); break;
     case 'tab': S.modalTab = el.dataset.id; S.models = null; renderModal(); $('#modalBody').scrollTop = 0; break;
     case 'home': S.abort?.abort(); renderLibrary(); break;
     case 'new': renderModePick(); break;
@@ -193,6 +196,7 @@ document.addEventListener('input', e => {
   if (el.dataset.bind) {
     const v = el.type === 'checkbox' ? el.checked : el.type === 'number' || el.type === 'range' ? Number(el.value) : el.value;
     setPath(S.settings, el.dataset.bind, v); saveSettings();
+    if (/^ui\.(music|amb)/.test(el.dataset.bind)) { musicScene(cur()); musicLevel(); const sv = el.closest('label')?.querySelector('.sval'); if (sv) sv.textContent = pct(v); }
     if (el.tagName === 'SELECT' || el.dataset.bind === 'drive.folder') { if (el.tagName === 'SELECT') renderModal(); else { const h = el.closest('label')?.nextElementSibling; if (h && h.classList.contains('hint')) { const fid = folderIdFrom(el.value); h.innerHTML = fid ? `Folder ID: <code>${esc(fid)}</code>` : '<span style="color:var(--red)">Paste a Google Drive folder link.</span>'; } } }
   } else if (el.dataset.dpath && S.draft) {
     let v = el.value;

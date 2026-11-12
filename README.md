@@ -18,6 +18,9 @@ An AI tabletop RPG that runs on your own PC: the story AI (Ollama), pictures (Fo
 | `js/story.js` | Session zero, death, storybook, menus, People tracker, multiplayer |
 | `js/turnfmt.js` | How the player writes a turn: plain text = speech (or action, by setting), ✋ Action = *asterisks*, (( )) = to the GM; turned into a clear says/does form for the AI |
 | `js/voice.js` | Voices: narrator plus a unique male or female voice per character (PC voices or device voices) |
+| `js/music.js` | Background music that follows the scene, plus rain/wind/sea/fire/night ambience made in the browser |
+| `js/gamesettings.js` | Game Settings (⚙ Game in the game bar): dice, sound, game flow, this story |
+| `music/` | Free CC BY 4.0 music (credits in `music/CREDITS.md`) |
 | `js/companion.js` | Companion mode |
 | `js/research.js` | World research and lookups during play |
 | `js/images.js` | Pictures: Pollinations, Forge on your PC, Drive picture storage |
@@ -401,6 +404,19 @@ Tapping **New adventure** asks how you want to play:
 Your key is stored only in your browser (and in Drive if you opt in). It is sent only to the AI provider you picked. Image prompts go to the image service. Nothing goes anywhere else.
 
 ---
+
+## Game Settings, music and ambience
+
+Tap **⚙ Game** in the game bar (or More → Game Settings).
+
+- **Dice**: the app rolls or you use your own dice; fewer, normal or more rolls; show the math or just the result.
+- **Sound**: background music on or off, volume, automatic mood or one fixed mood; ambient sounds; all voice settings.
+- **Game flow**: scene length, suggested actions, quick buttons, companions acting on their own, scene pictures, online look-ups, how typing works.
+- **This story**: content rating, GM personality, magic, standing requests.
+
+The bookkeeper tags every scene with a music mood (calm, town, travel, mystic, tense, battle, dread, sad, triumph, sci-fi).
+Combat always plays battle music. Sci-fi stories swap calm music for sci-fi tracks. Music fades between tracks and gets quieter while voices read.
+To add tracks, drop MP3s in `music/` and list them under a mood in `MOODS` at the top of `js/music.js`.
 
 ## Plot roadmaps and the Story Doc
 

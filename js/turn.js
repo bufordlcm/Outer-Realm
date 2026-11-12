@@ -13,7 +13,8 @@ function companionSpec(c) {
     '"new_companions": [{"name":"","role":"","personality":"","voice":"","goals":"","appearance":"","secrets":"","trust":0}] only if someone new clearly became a regular part of the player\'s circle. Adults only.',
     `"photo": {"of":"cast member's name, or \"\" for a picture of the place","prompt":"~30 words: what the photo shows (pose, setting, lighting, mood)"} ONLY when ${c.character.name} asked for a photo/picture/selfie or a character chose to send one in this scene.`,
     '"image_prompt": ONLY when arriving somewhere new: ~40 words for an illustrator (no names, no text). With it, "image_subject": {"kind":"place","name":""}.',
-    '"tension": 0-10, how intense this scene was.'
+    '"tension": 0-10, how intense this scene was.',
+    '"music": the mood of the music that fits how this scene ENDS, one of calm|town|travel|mystic|tense|battle|dread|sad|triumph|scifi.'
   ];
   return f.map(x => '- ' + x).join('\n');
 }
@@ -44,10 +45,11 @@ function bookkeeperSpec(c, hasCheck) {
     '"flaw_reward": {"trait":"exact negative trait name","ep":2,"why":""} if the player played into a negative trait in a way that cost them.',
     '"rumor": a short piece of talk the player overheard, if any.',
     '"tension": 0-10, how intense this scene was.',
+    '"music": the mood of the music that fits how this scene ENDS, one of calm|town|travel|mystic|tense|battle|dread|sad|triumph|scifi.',
     roadmapBookkeep(c).spec,
     party ? '"companion_updates": [{"name":"","trust":1,"hp_change":-4,"status":"active|left|dead"}] (trust -2..2) when a companion was hurt, pleased, upset, left or died.' : '',
     party ? '"companion_checks": [{"name":"","stat":"DEX","dc":15,"reason":""}] when a companion started something risky and the scene stops before the result.' : '',
-    party ? '"companion_turns": ["name"] at most one companion who would naturally speak up or act on their own right now (a decision touching their goals, a direct question, a fight). Usually leave it out.' : '',
+    party && S.settings.ui.compTurns !== false ? '"companion_turns": ["name"] at most one companion who would naturally speak up or act on their own right now (a decision touching their goals, a direct question, a fight). Usually leave it out.' : '',
     '"new_companions": [{"name":"","role":"","personality":"","voice":"","goals":"","appearance":"","secrets":"","stats":{"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10},"trust":1}] only if someone clearly agreed to join and travel with the player.',
     `"player_dead": true only if ${c.character.name} is at 0 HP and truly died in this scene.`,
     isMP(c) && c.players.length > 1 ? `"others_hp": [{"name":"","change":-3}] damage or healing for the OTHER player characters (${c.players.filter(p => p !== c.character).map(p => p.name).join(', ')}); "hp_change" is only for ${c.character.name}.` : ''
@@ -174,7 +176,7 @@ async function gmTurn(opts = {}) {
     if (isOOC && !(c.pendingRoll && state.check)) state.check = null;
 
     const bubbles = isCompanion(c) ? castBubbles(c, msg) : null;
-    applyState(c, msg, state);
+    applyState(c, msg, state); if (S.activeId === c.id) musicScene(c);
     if (isCompanion(c)) { delete msg.image; if (state.image_prompt && compStyle(c) !== 'chat' && S.settings.image.mode !== 'off' && S.settings.image.scenes !== false) msg.image = { prompt: String(state.image_prompt), seed: d(999999) }; attachPhoto(c, msg, bubbles, state.photo); }
     if (fixed) msg.notes.unshift({ t:'✓ Continuity corrected', k:'' });
     if (msg.looked) msg.notes.unshift({ t:`🔎 Looked up ${msg.looked.name} online`, k:'' });
@@ -275,6 +277,7 @@ function applyState(c, msg, st) {
   const tod = String(st.time_of_day || '').toLowerCase().trim(); if (TIME_PARTS.includes(tod)) c.time.part = tod;
   const days = clamp(num(st.days_passed), 0, 60); if (days > 0) { c.time.day += days; msg.worldTurn = days; notes.push({ t:`Day ${c.time.day}`, k:'' }); }
   if (typeof st.weather === 'string' && st.weather.trim()) c.time.weather = st.weather.trim().slice(0, 40);
+  if (typeof st.music === 'string' && MOODS[st.music.trim().toLowerCase()]) c.mood = st.music.trim().toLowerCase();
   if (st.tension != null && st.tension !== '') { c.tensionLog.push(clamp(num(st.tension), 0, 10)); if (c.tensionLog.length > 10) c.tensionLog = c.tensionLog.slice(-10); }
   const fr = st.flaw_reward;
   if (fr && typeof fr === 'object' && num(fr.ep) > 0) { const ep = clamp(num(fr.ep), 1, 3); const ft = ch.traits.find(x => x.polarity === '-' && x.name.toLowerCase() === String(fr.trait || '').toLowerCase()); ch.ep += ep; notes.push({ t:`+${ep} EP for playing ${ft ? ft.name : 'a flaw'}`, k:'gold' }); }
@@ -460,12 +463,12 @@ function withPlan(msgs, plan) { const out = msgs.map(m => ({ ...m })); out[out.l
 const DC_LADDER = '8 very easy, 12 easy, 18 moderate, 20 hard, 25 very hard, 30 nearly impossible (adjust 2-5 for circumstances; an NPC opponent sets it by their skill: drunk guard 8, trained soldier 15, royal spymaster 22)';
 async function refereeCall(c, playerText, signal) {
   const forced = /(^|\s)(\/roll|\(roll\)|#roll)\b/i.test(playerText) || /\b(roll for it|i want to roll|let me roll|make a roll)\b/i.test(playerText);
-  const more = S.settings.ai.dice === 'more';
+  const more = S.settings.ai.dice === 'more', less = S.settings.ai.dice === 'less';
   const raw = await chat([
     { role:'system', content:`You are the DICE REFEREE for a tabletop RPG that uses a d20. Decide whether the player's latest action needs a roll.
 CALL A CHECK when the outcome is uncertain and failing would matter or be interesting: sneaking or hiding, picking locks, stealing, climbing, jumping, chasing or fleeing, forcing something open, searching or noticing something hidden, reading a person's lies or mood, persuading, lying to, bargaining with or intimidating someone who could refuse, recalling obscure lore, resisting poison, fear or magic, casting a risky spell, treating wounds, attacking anyone (kind "attack").
 NO CHECK for safe, routine or certain actions: walking somewhere, ordinary conversation with no stakes, asking a question, buying things at a fair price, looking around a calm place, eating, resting.
-${more ? 'The player wants MORE dice: whenever there is any doubt, call a check.' : 'When it is genuinely uncertain and something is at stake, call a check.'}${forced ? '\nThe player has explicitly asked to roll: you MUST call a check.' : ''}
+${more ? 'The player wants MORE dice: whenever there is any doubt, call a check.' : less ? 'The player wants FEWER dice: call a check only when failure would be dangerous or change the story (fights, real risks, big moments). Let small things simply happen.' : 'When it is genuinely uncertain and something is at stake, call a check.'}${forced ? '\nThe player has explicitly asked to roll: you MUST call a check.' : ''}
 Stats: STR (force), DEX (agility, stealth, aim), CON (endurance), INT (knowledge, reasoning), WIS (perception, insight, willpower), CHA (persuasion, deception, presence).
 DC: ${DC_LADDER}. Set it from the task, never the character's level.
 "applies": only names of the character's NEGATIVE traits or injuries that clearly hinder this attempt.

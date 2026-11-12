@@ -45,7 +45,7 @@ function situationOf(c) {
 }
 
 function renderLibrary() {
-  S.view = 'library';
+  S.view = 'library'; musicScene(null);
   const tab = HOME_TABS[S.homeTab] ? S.homeTab : 'games';
   const body = tab === 'discover' ? discoverHTML() : tab === 'chars' ? charsHTML() : tab === 'gallery' ? homeGalleryHTML() : gamesHTML();
   app().innerHTML = `<div class="home">${topNavHTML(tab)}<main class="hmain">
