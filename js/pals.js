@@ -153,7 +153,7 @@ function renderPalEditor() {
       <div class="sect">Your rules</div>
       <label class="f"><span>Intensity</span><select data-pd="intensity"><option value="gentle" ${D.intensity === 'gentle' ? 'selected' : ''}>Gentle: soft and slow</option><option value="balanced" ${D.intensity !== 'gentle' && D.intensity !== 'bold' ? 'selected' : ''}>Balanced</option><option value="bold" ${D.intensity === 'bold' ? 'selected' : ''}>Bold: intense, takes initiative</option></select></label>
       ${t('limits', 'Hard limits (they will never go here)', 'Anything you never want in your chats, one per line', 2)}
-      <label class="chk"><input type="checkbox" data-pd="adult" ${D.adult ? 'checked' : ''} ${adultOn ? '' : 'disabled'}> <span>Allow 18+ content with this companion${adultOn ? '' : ' (turn on 18+ in Companions → About you first)'}</span></label>
+      <label class="chk"><input type="checkbox" data-pd="adult" ${D.adult ? 'checked' : ''} ${adultOn ? '' : 'disabled'}> <span>Allow 18+ content with this companion</span></label>${adultOn ? '' : '<p class="hint">18+ is off for the whole app. <button class="link" data-act="palme">Turn it on in About you</button> (it asks you to confirm you\'re 18 or older), then tick this box.</p>'}
       ${f('art', 'Picture style', 'photorealistic, natural light, detailed')}
     </div>
     <div class="row wrap" style="margin-bottom:30px"><button class="btn gold" data-act="palsave">${icon('check')} Save${S.palDraftNew ? ' and start chatting' : ''}</button>${!S.palDraftNew ? `<button class="btn ghost" data-act="paldelete" data-id="${D.id}">${icon('trash')} Delete companion</button>` : ''}</div>
@@ -457,7 +457,7 @@ function palAction(act, el) {
     case 'palgstart': if (S.palPick.length < 2) { toast('Pick at least two.'); return true; } closeModal(); palStartChat([...S.palPick]); return true;
     case 'palme': openModal('palme'); return true;
     case 'palmesave': { for (const k of ['name','pronouns','about']) PALS.me[k] = ($('#pme_' + k)?.value || '').trim(); PALS.me.updatedAt = Date.now();
-      const adult = !!$('#pme_adult')?.checked; S.settings.ui.palAdult = adult; S.settings.ui.palAdultAsked = true; saveSettings(); savePals(); closeModal(); renderLibrary(); toast('Saved.'); return true; }
+      const adult = !!$('#pme_adult')?.checked; S.settings.ui.palAdult = adult; S.settings.ui.palAdultAsked = true; saveSettings(); savePals(); closeModal(); if (S.view === 'paledit') renderPalEditor(); else renderLibrary(); toast('Saved.'); return true; }
     case 'palexit': stopVoice(); if (S.palBusy) S.palBusy.ctl.abort(); S.palMenu = false; S.homeTab = 'pals'; renderLibrary(); return true;
     case 'palsend': { const inp = $('#palInput'); const t = (inp?.value || '').trim(); if (!t || !ch) return true; inp.value = '';
       ch.messages.push({ id: uid(), role: 'user', text: t, mode: ch.channel === 'person' ? 'person' : 'text', t: Date.now() }); palTouch(ch); savePals(false); palReply(ch); return true; }
