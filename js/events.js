@@ -1,4 +1,6 @@
 'use strict';
+/* every script is loaded now: bring saved campaigns up to date (one broken save can't stop the app) */
+for (const c of Object.values(S.campaigns)) { try { migrate(c); } catch (e) { console.warn('Could not update a saved campaign', c?.title, e); } }
 /* ---------- events ---------- */
 document.addEventListener('click', e => {
   unlockTTS(); unlockMusic();

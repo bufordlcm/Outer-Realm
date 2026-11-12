@@ -57,7 +57,7 @@ function migrate(c) {
   worldOf(c); c.phase = c.phase || 'play'; c.plan = c.plan || ''; c.session0 = arr(c.session0);
   return c;
 }
-for (const c of Object.values(S.campaigns)) migrate(c);
+/* saved campaigns are migrated in events.js, once every script has loaded (migrate uses helpers from later files) */
 
 /* =========================================================================
    AI: OpenAI-compatible chat
