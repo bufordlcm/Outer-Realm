@@ -78,7 +78,8 @@ document.addEventListener('click', e => {
     case 'gset': setPath(S.settings, el.dataset.path, JSON.parse(el.dataset.v)); saveSettings(); musicScene(cur()); musicLevel(); renderModal(); break;
     case 'musicskip': musicSkip(); break;
     case 'cidreset': S.settings.drive.clientId = DEFAULT_CLIENT_ID; saveSettings(); renderModal(); toast('Client ID fixed. Tap Connect & sync.'); break;
-    case 'helpersame': S.settings.ai.helperModel = ''; saveSettings(); renderModal(); toast('Your story model now does every step. Turns should start faster.'); break;
+    case 'modellist': { const cn = conns().find(x => x.id === el.dataset.id); if (cn) { cn.typing = false; refreshConnUI(); } break; }
+    case 'helpersame': S.settings.ai.helperAuto = 'off'; S.settings.ai.helperModel = ''; saveSettings(); renderModal(); toast('Your story model now does every step. Turns should start faster.'); break;
     case 'tab': S.modalTab = el.dataset.id; S.models = null; renderModal(); $('#modalBody').scrollTop = 0; break;
     case 'home': S.abort?.abort(); renderLibrary(); break;
     case 'new': renderModePick(); break;
@@ -204,7 +205,7 @@ document.addEventListener('input', e => {
   const el = e.target;
   if (el.dataset.bind) {
     const v = el.type === 'checkbox' ? el.checked : el.type === 'number' || el.type === 'range' ? Number(el.value) : el.value;
-    setPath(S.settings, el.dataset.bind, v); saveSettings();
+    setPath(S.settings, el.dataset.bind, v); if (el.dataset.bind === 'ai.helperModel') S.settings.ai.helperAuto = v ? '' : 'off'; saveSettings();
     if (/^ui\.(music|amb)/.test(el.dataset.bind)) { musicScene(cur()); musicLevel(); const sv = el.closest('label')?.querySelector('.sval'); if (sv) sv.textContent = pct(v); }
     if (el.tagName === 'SELECT' || el.dataset.bind === 'drive.folder') { if (el.tagName === 'SELECT') renderModal(); else { const h = el.closest('label')?.nextElementSibling; if (h && h.classList.contains('hint')) { const fid = folderIdFrom(el.value); h.innerHTML = fid ? `Folder ID: <code>${esc(fid)}</code>` : '<span style="color:var(--red)">Paste a Google Drive folder link.</span>'; } } }
   } else if (el.dataset.dpath && S.draft) {
@@ -238,7 +239,8 @@ document.addEventListener('change', e => {
   if (el.dataset.conn) {   /* model typed or picked from the list */
     const c = conns().find(x => x.id === el.dataset.conn); if (!c) return;
     if (el.dataset.field === 'ctx') { c.ctx = Math.max(0, num(el.value)); saveSettings(); return; }
-    c[el.dataset.field] = el.value.trim(); c.status = ''; c.note = ''; saveSettings(); if (c.model) setupConn(c); else refreshConnUI();
+    if (el.value === '__type') { c.typing = true; refreshConnUI(); setTimeout(() => $(`input[data-conn="${c.id}"][data-field="model"]`)?.focus(), 50); return; }
+    c[el.dataset.field] = el.value.trim(); c.status = ''; c.note = ''; if (el.tagName === 'SELECT') c.typing = false; saveSettings(); if (c.model) setupConn(c); else refreshConnUI();
   }
   if (S.view === 'setup' && el.dataset.bind && el.dataset.bind.startsWith('drive.')) renderSetup();
 });

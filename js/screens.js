@@ -302,7 +302,8 @@ function renderModal() {
   else if (S.modal === 'levelup') { title = 'Level up'; body = levelUpHTML(); }
   else if (S.modal === 'askgm') { title = 'Ask ' + gmOf(cur()).name; body = askGMHTML(); }
   else if (S.modal === 'fix') { title = 'Fix the story'; body = fixHTML(); }
-  root.innerHTML = `<div class="modal" data-act="modalbg"><div class="sheet" role="dialog" aria-label="${title}">
+  const again = !!root.querySelector('.modal');   /* re-drawing an open window: don't replay the open animation */
+  root.innerHTML = `<div class="modal ${again ? 'still' : ''}" data-act="modalbg"><div class="sheet" role="dialog" aria-label="${title}">
     <div class="hd"><h2>${title}</h2><button class="iconbtn" data-act="close" aria-label="Close">${icon('x')}</button></div>
     ${tabs ? `<div class="tabs">${tabs}</div>` : ''}<div class="bd" id="modalBody">${body}</div></div></div>`;
   const b = $('#modalBody'); if (b) b.scrollTop = scroll;
@@ -327,7 +328,7 @@ function settingsHTML() {
       ${bindCheck('ai.agency', 'Agency guard: cuts any line where the GM speaks, acts, thinks or feels for your character')}
       ${bindCheck('ai.deliberate', 'Planning: the GM plans privately before writing')}
       ${bindCheck('ai.verify', 'Continuity check: rewrites contradictions (slow on small models)')}` : ''}
-      <div class="kv">${bindInput('text.temperature', 'Creativity (0–1.5)', { type:'number' })}${bindInput('ai.helperModel', 'Helper model (optional)', { ph:'same as story model' })}</div>
+      <div class="kv">${bindInput('text.temperature', 'Creativity (0–1.5)', { type:'number' })}${helperSelectHTML()}</div>
       <p class="hint">The helper model runs the rule steps (referee, guard, bookkeeper). Leave it empty to use your story model for everything. Example: story model <code>Wayfarer</code>, helper <code>dolphin3</code>. On an 8 GB card two models swap in and out, which adds a few seconds per turn.</p>
       ${bindCheck('text.stream', 'Stream text as it\'s written')}
       <div class="sect" style="font-size:20px">World &amp; character builder</div>
@@ -409,6 +410,37 @@ function importHTML() {
       <div class="row" style="margin-top:8px"><input class="grow" type="password" id="manKey" placeholder="Key (if needed)" autocomplete="off"><button class="btn sm" data-act="keymanual">Add</button></div>
     </details>`;
 }
+/* the model picker: a real drop-down with every model this key can use, recommended ones first.
+   (A typed box with suggestions hides the list until you clear it, and phones don't show it at all.) */
+const MODELS_LOADED = new Set();
+function modelSelectHTML(c) {
+  if (!MODELS_LOADED.has(c.id) && !c.modelsLoading && c.baseUrl) { MODELS_LOADED.add(c.id); loadConnModels(c); }   /* fresh list once per visit */
+  const ids = arr(c.models); const info = arr(c.modelInfo);
+  if (c.typing || (!ids.length && !c.modelsLoading)) return `<input class="grow" type="text" data-conn="${c.id}" data-field="model" value="${esc(c.model)}" placeholder="Model name">${ids.length ? `<button class="btn sm ghost" data-act="modellist" data-id="${c.id}">List</button>` : ''}`;
+  const rec = modelCandidates(c, ids.map(id => ({ id }))).slice(0, c.preset === 'ollama' ? 0 : 4).filter(id => ids.includes(id));
+  const free = id => info.find(m => m.id === id)?.free;
+  const label = id => `${id}${free(id) && !/:free$/.test(id) ? ' · free' : ''}`;
+  const opt = (id, cls = '') => `<option value="${esc(id)}" ${id === c.model ? 'selected' : ''} ${cls}>${esc(label(id))}</option>`;
+  const story = c.preset === 'ollama' ? ids.filter(id => STORY_ONLY.test(id)) : [];
+  return `<select class="grow" data-conn="${c.id}" data-field="model">
+    ${!c.model ? '<option value="" selected>Choose a model…</option>' : ''}
+    ${c.model && !ids.includes(c.model) ? `<option value="${esc(c.model)}" selected>${esc(c.model)}</option>` : ''}
+    ${c.modelsLoading && !ids.length ? '<option disabled>Loading models…</option>' : ''}
+    ${rec.length ? `<optgroup label="★ Recommended">${rec.map(id => opt(id, 'style="color:#4ade80"')).join('')}</optgroup>` : ''}
+    ${story.length ? `<optgroup label="★ Story models (best for writing scenes)">${story.map(id => opt(id, 'style="color:#4ade80"')).join('')}</optgroup>` : ''}
+    ${(rest => rest.length ? `<optgroup label="${rec.length || story.length ? 'Other models' : 'Models'} (${rest.length})">${rest.map(id => opt(id)).join('')}</optgroup>` : '')(ids.filter(id => !rec.includes(id) && !story.includes(id)))}
+    <option value="__type">✎ Type a model name…</option></select>`;
+}
+async function loadConnModels(c) {
+  c.modelsLoading = true;
+  try { const list = await listModels(c); c.modelInfo = list.slice(0, 400).map(m => ({ id: m.id, free: !!m.free })); c.models = list.slice(0, 400).map(m => m.id); }
+  catch { c.models = c.models || []; }
+  c.modelsLoading = false; refreshConnUI();
+}
+function helperSelectHTML() {
+  const a = activeConn(); const ids = arr(a?.models); const h = S.settings.ai.helperModel || '';
+  return `<label class="f"><span>Helper model (optional)</span><select data-bind="ai.helperModel"><option value="" ${!h ? 'selected' : ''}>Same as story model (fastest on one graphics card)</option>${h && !ids.includes(h) ? `<option selected>${esc(h)}</option>` : ''}${ids.filter(id => a && id !== a.model).map(id => `<option ${id === h ? 'selected' : ''}>${esc(id)}</option>`).join('')}</select></label>`;
+}
 function connsHTML() {
   const list = conns(); const act = activeConn();
   if (!list.length) return `<p class="hint" style="color:var(--ink)">No AI connected yet. Add a free key below.</p>`;
@@ -419,12 +451,11 @@ function connsHTML() {
           ${!on && connReady(c) ? `<button class="btn sm" data-act="connuse" data-id="${c.id}">Use</button>` : ''}
           <button class="iconbtn sm" data-act="conndel" data-id="${c.id}" aria-label="Remove">${icon('trash')}</button></div>
         <div class="hint" style="margin:2px 0 6px">${esc(maskKey(c.apiKey))} · ${st}</div>
-        <div class="row"><input class="grow" type="text" list="ml_${c.id}" data-conn="${c.id}" data-field="model" value="${esc(c.model)}" placeholder="Model">
-          <datalist id="ml_${c.id}">${(c.models || []).map(m => `<option value="${esc(m)}">`).join('')}</datalist>
+        <div class="row">${modelSelectHTML(c)}
           <button class="btn sm" data-act="conntest" data-id="${c.id}" ${c.status === 'working' ? 'disabled' : ''}>Test</button>
           <button class="btn sm ghost" data-act="connpick" data-id="${c.id}" ${c.status === 'working' ? 'disabled' : ''}>Auto-pick</button></div>
         ${c.preset === 'ollama' || c.preset === 'custom' ? `<label class="f" style="margin-top:8px"><span>AI memory (context length)</span><input type="number" step="1024" min="2048" data-conn="${c.id}" data-field="ctx" value="${esc(c.ctx || PRESETS[c.preset]?.ctx || '')}" placeholder="12288"></label><p class="hint">Must match OLLAMA_CONTEXT_LENGTH on the PC. Bigger remembers more but runs slower.</p>` : ''}</div>`; }).join('')}
-    <p class="hint">Tap the model box to see this key's models. Bigger models (DeepSeek, Llama 70B, Qwen large, Gemini Flash) follow the rules best.</p>`;
+    <p class="hint">Pick a model from the list. <b style="color:var(--green)">★ Recommended</b> ones are listed first. Bigger models (DeepSeek, Llama 70B, Qwen large, Gemini Flash) follow the rules best.</p>`;
 }
 
 

@@ -317,3 +317,4 @@ code{background:var(--panel2);padding:1px 6px;border-radius:6px;font-size:.9em;w
 .mitem .tog{margin-left:auto;flex:none;width:42px;height:24px;border-radius:12px;background:var(--line);position:relative}
 .mitem .tog::after{content:'';position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:left .15s}
 .mitem .tog.on{background:#5a4fd0}.mitem .tog.on::after{left:21px;background:var(--gold2)}
+.modal.still,.modal.still .sheet{animation:none}

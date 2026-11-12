@@ -300,8 +300,8 @@ async function autoPair(conn) {
   if (conn.preset !== 'ollama' || conn.id !== S.settings.ai.active) return;
   const ai = S.settings.ai;
   if (!STORY_ONLY.test(conn.model)) { if (ai.helperAuto && ai.helperModel === ai.helperAuto) { ai.helperModel = ''; ai.helperAuto = ''; toast('Story model can handle the rule steps itself; helper model cleared.', 4500); } return; }
-  if (ai.helperModel.trim()) return;
-  if (!conn.models?.length) { try { conn.models = (await listModels(conn)).slice(0, 80).map(m => m.id); } catch { return; } }
+  if (ai.helperModel.trim() || ai.helperAuto === 'off') return;   /* 'off': the player chose one model for everything */
+  if (!conn.models?.length) { try { conn.models = (await listModels(conn)).slice(0, 400).map(m => m.id); } catch { return; } }
   const others = conn.models.filter(m => m !== conn.model && !STORY_ONLY.test(m));
   let h = ''; for (const re of HELPER_PICK) { h = others.find(m => re.test(m)) || ''; if (h) break; }
   if (h) { ai.helperModel = h; ai.helperAuto = h; toast(`Paired: ${conn.model.split('/').pop()} writes the story, ${h} handles dice and records.`, 6000); }
@@ -312,7 +312,7 @@ async function setupConn(conn, { repick } = {}) {
   conn.status = 'working'; conn.note = 'Finding a free model…'; refreshConnUI();
   try {
     let list = null;
-    const loadList = async () => { if (list) return list; list = []; try { list = await listModels(conn); conn.models = list.slice(0, 80).map(m => m.id); } catch (e) { conn.note = 'Couldn\'t list models (' + e.message + ').'; } return list; };
+    const loadList = async () => { if (list) return list; list = []; try { list = await listModels(conn); conn.models = list.slice(0, 400).map(m => m.id); conn.modelInfo = list.slice(0, 400).map(m => ({ id: m.id, free: !!m.free })); } catch (e) { conn.note = 'Couldn\'t list models (' + e.message + ').'; } return list; };
     if (!conn.model || repick) { conn.model = pickModel(conn, await loadList()); if (!conn.model) throw new Error(conn.note || 'No usable models found for this key.'); }
     conn.note = 'Testing…'; refreshConnUI();
     /* if a model is retired or restricted (404/403), try the next good one automatically */
