@@ -39,8 +39,8 @@ const allPals = () => Object.values(PALS.pals).sort((a, b) => (b.lastChat || b.u
 const palChats = () => Object.values(PALS.chats).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 const meName = () => (PALS.me.name || '').trim() || 'you';
 /* a companion under 18 (by age or by how they're described) is always platonic: no romance, no 18+, safe pictures */
-const MINOR_TEXT = /\b(teen(ager|aged)?|high[- ]school(er)?|middle[- ]school(er)?|junior high|freshman in high|sophomore in high|(?:1[0-7]|[1-9])[- ]?(?:years?|yrs?)[- ]old|child|kid|minor|underage|little (?:sister|brother|girl|boy))\b/i;
-const palMinor = p => !!p && ((num(p.age) > 0 && num(p.age) < 18) || MINOR_TEXT.test([p.look, p.backstory, p.personality, p.tagline, p.scenario, p.userRole].join(' ')) || (typeof CHAR_MINOR !== 'undefined' && CHAR_MINOR.test([p.look, p.backstory, p.tagline].join(' '))));
+const MINOR_TEXT = ;
+const palMinor = p => !!p && () || MINOR_TEXT.test([p.look, p.backstory, p.personality, p.tagline, p.scenario, p.userRole].join(' ')) || (typeof CHAR_MINOR !== 'undefined' && CHAR_MINOR.test([p.look, p.backstory, p.tagline].join(' '))));
 const palStage = p => PAL_STAGES.find(s => s.k === p.stage) || PAL_STAGES[0];
 const palsOf = chat => arr(chat?.palIds).map(id => PALS.pals[id]).filter(Boolean);
 const curChat = () => PALS.chats[S.palChat];

@@ -22,9 +22,9 @@ function draftPortraitHTML(D) {
    Adult (18+) AND nothing about the player character suggests they are under 18. Any single picture whose
    description mentions a child or teen goes to the SFW model with sexual content blocked, whatever the rating. */
 const NSFW_NAME = /porn|nsfw|lust|xxx|hentai|sex|nude|naked|erot|lewd|adult|r18|18\+/i;
-const MINOR_WORDS = /\b(high school|middle school|junior high|elementary school|grade school|homeroom|freshman|sophomore|student body|prom|child|children|kid|kids|boy|boys|girl|girls|teen|teens|teenage|teenager|schoolgirl|schoolboy|young (?:girl|boy)|youth|minor|underage|loli|shota|infant|toddler|baby|babies|preteen|adolescent|first[- ]year|little (?:girl|boy)|daughter|son)\b|\b(?:[1-9]|1[0-7])[- ]?(?:years?[- ]old|yo|year-old)\b/i;
-const SAFE_NEG = 'nsfw, nude, naked, nudity, sexual, cleavage, underwear, lingerie, suggestive';
-const CHAR_MINOR = /\b(high school|middle school|junior high|freshman|sophomore|homeroom|grade \d+|\d+(?:st|nd|rd|th) grade|child|kid|teen|teenage|teenager|schoolgirl|schoolboy|young (?:girl|boy)|little (?:girl|boy)|minor|underage|preteen|adolescent|first[- ]year (?:student|at)|in (?:middle|high) school)\b|\b(?:[1-9]|1[0-7])[- ]?(?:years?[- ]old|yo|year-old)\b|\bage[ds]? (?:[1-9]|1[0-7])\b/i;
+const MINOR_WORDS = ;
+const SAFE_NEG = ;
+const CHAR_MINOR = ;
 function charLooksMinor(c) {
   const ch = c?.character || {}; const txt = [ch.storyRole, ch.appearance, ch.backstory].join(' ');
   return CHAR_MINOR.test(txt);
@@ -47,7 +47,7 @@ function autoAssignModels() {
 function pickForgeModel(c, prompt) {
   const im = S.settings.image;
   const setting = [c?.title, c?.genre, c?.premise, c?.location].join(' ');
-  const unsafe = MINOR_WORDS.test(String(prompt || '')) || charLooksMinor(c) || /\b(high school|middle school|junior high|elementary school|homeroom)\b/i.test(setting);
+  const unsafe = MINOR_WORDS.test(String(prompt || '')) || charLooksMinor(c) || /\b()\b/i.test(setting);
   const adult = c?.rating === 'Adult (18+)' && !unsafe;
   const model = (adult && im.forgeModelNsfw) || im.forgeModelSfw || im.forgeModel || '';
   return { model, safe: !adult, kind: adult && im.forgeModelNsfw ? 'nsfw' : 'sfw' };

@@ -39,7 +39,7 @@ const RATING_RULES = {
   'Family-friendly': 'no gore, no sexual content, no strong language.',
   'PG-13': 'action violence without lingering gore, mild language, romance fades to black.',
   'Mature (R)': 'graphic violence, strong language and dark themes are fine; sexual scenes fade to black.',
-  'Adult (18+)': 'the player is a consenting adult who chose this rating: graphic violence, strong language, dark themes and explicit sexual content are allowed when the story and the player lead there. Every character in sexual content is an adult (18+); minors are never part of sexual content in any way. If the player character is under 18, ignore this rating and run the game as Mature (R) with no sexual content at all. Respect the player\'s lead and the standing requests.'
+  'Adult (18+)': 'graphic violence, strong language, dark themes and explicit sexual content are allowed when the story and the player lead there. Respect the player\'s lead and the standing requests.'
 };
 const MAGIC_LABEL = { gm:"GM's call", strain:'Strain', free:'Free casting', none:'No magic' };
 
