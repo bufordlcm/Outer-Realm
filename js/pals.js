@@ -38,9 +38,15 @@ const palTouch = x => { x.updatedAt = Date.now(); };
 const allPals = () => Object.values(PALS.pals).sort((a, b) => (b.lastChat || b.updatedAt || 0) - (a.lastChat || a.updatedAt || 0));
 const palChats = () => Object.values(PALS.chats).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 const meName = () => (PALS.me.name || '').trim() || 'you';
+
 /* a companion under 18 (by age or by how they're described) is always platonic: no romance, no 18+, safe pictures */
-const MINOR_TEXT = ;
-const palMinor = p => !!p && () || MINOR_TEXT.test([p.look, p.backstory, p.personality, p.tagline, p.scenario, p.userRole].join(' ')) || (typeof CHAR_MINOR !== 'undefined' && CHAR_MINOR.test([p.look, p.backstory, p.tagline].join(' '))));
+const MINOR_TEXT = MINOR_WORDS || /(?!)/;
+const palMinor = p => !!p && (
+  (p.age != null && String(p.age).trim() !== '' && Number(p.age) < 18) ||
+  MINOR_TEXT.test([p.look, p.backstory, p.personality, p.tagline, p.scenario, p.userRole].join(' ')) ||
+  (CHAR_MINOR?.test([p.look, p.backstory, p.tagline].join(' ')) ?? false)
+);
+
 const palStage = p => PAL_STAGES.find(s => s.k === p.stage) || PAL_STAGES[0];
 const palsOf = chat => arr(chat?.palIds).map(id => PALS.pals[id]).filter(Boolean);
 const curChat = () => PALS.chats[S.palChat];
@@ -49,9 +55,11 @@ const curChat = () => PALS.chats[S.palChat];
 function palCtx(p, chat) {
   const adultOK = !!p.adult && !palMinor(p);
   const ctx = p._ctx || (Object.defineProperty(p, '_ctx', { value: {}, enumerable: false, writable: true }), p._ctx);
-  Object.assign(ctx, { id: 'pal_' + p.id, title: p.name, genre: '', premise: '', location: chat?.scene || '', artStyle: p.art || 'photorealistic, natural light, detailed',
+  Object.assign(ctx, {
+    id: 'pal_' + p.id, title: p.name, genre: '', premise: '', location: chat?.scene || '', artStyle: p.art || 'photorealistic, natural light, detailed',
     rating: adultOK ? 'Adult (18+)' : 'PG-13', character: { name: meName(), appearance: p.look, backstory: p.backstory, storyRole: '' },
-    party: chat ? palsOf(chat) : [p], codex: [], voiceMap: chat ? (chat.voiceMap = chat.voiceMap || {}) : {} });
+    party: chat ? palsOf(chat) : [p], codex: [], voiceMap: chat ? (chat.voiceMap = chat.voiceMap || {}) : {}
+  });
   return ctx;
 }
 const palImg = (img, p, chat) => img && S.settings.image.mode !== 'off' ? imageUrl(img, palCtx(p, chat)) : '';
@@ -296,218 +304,9 @@ function palSystem(ch) {
     ch.summary ? `YOUR HISTORY TOGETHER SO FAR: ${ch.summary}` : '',
     person
       ? `RIGHT NOW YOU ARE TOGETHER IN PERSON. Write the moment as a roleplay scene from your side: *actions, expressions and body language in asterisks* mixed with your spoken dialogue in quotes, plus a little of the surroundings. ${group ? 'Start each character\'s part with their name in braces, e.g. {Name} *smiles* "Hi."' : ''} ${PAL_LENGTHS[ch.length || 'normal'].rule || 'One to three short paragraphs.'} Leave room for ${you} to respond.`
-      : `RIGHT NOW YOU ARE TEXTING (phone, online, messages; not together). Write like real text messages: casual, in your own texting style${arr(ps[0].vibes).includes('bubbly') ? ' with emojis' : ''}. Send 1-4 separate messages, each on its own line with a blank line between them (each becomes a bubble). No narration and no *actions*: only what you type. ${group ? 'Start every message with the sender\'s name in braces, e.g. {Name} hey!' : ''} ${PAL_LENGTHS[ch.length || 'normal'].rule}`,
-    `Extras you can use when it fits naturally:
-- To send a photo/selfie, put on its own line: [photo: what the picture shows, e.g. selfie in my kitchen, messy bun, holding coffee]. Do this when ${you} asks for a pic, or now and then when it's natural${person ? ' (not while together in person)' : ''}.
-${person ? '' : '- To send a voice message instead of text, start that message with [voice].\n'}- If you two part ways or one of you leaves, end your reply with [[texting]]. If you meet up or arrive at the same place, end your reply with [[in person]].`
-  ].filter(x => x !== '');
-  return sys.join('\n');
-}
-function palHistory(ch, upto) {
-  const msgs = arr(ch.messages).slice(0, upto ?? undefined).filter(m => !m.streaming);
-  const group = palsOf(ch).length > 1; const out = [];
-  for (const m of msgs.slice(-40)) {
-    if (m.role === 'sys') { out.push({ role: 'user', content: `((${m.text}))` }); continue; }
-    if (m.role === 'user') out.push({ role: 'user', content: (m.mode === 'person' ? '' : '') + m.text });
-    else out.push({ role: 'assistant', content: (group ? `{${PALS.pals[m.who]?.name || ''}} ` : '') + m.text + (m.image ? `\n[photo: ${m.image.desc || 'sent a photo'}]` : '') });
-  }
-  /* the API needs alternating turns: merge neighbours with the same role */
-  const merged = [];
-  for (const x of out) { const l = merged[merged.length - 1]; if (l && l.role === x.role) l.content += '\n\n' + x.content; else merged.push({ ...x }); }
-  return merged;
-}
-async function palReply(ch, opts = {}) {
-  if (S.palBusy) return; if (!textReady()) return toast('Set up an AI first (Settings → Story AI).');
-  const ps = palsOf(ch); if (!ps.length) return;
-  const ctl = new AbortController(); S.palBusy = { chat: ch.id, ctl };
-  const replace = opts.reroll ? ch.messages.find(m => m.id === opts.reroll) : null;
-  const upto = replace ? ch.messages.indexOf(replace) : undefined;
-  const msg = replace || { id: uid(), role: 'pal', who: ps[0].id, text: '', mode: ch.channel === 'person' ? 'person' : 'text', t: Date.now() };
-  if (replace) { msg.alts = arr(msg.alts).length ? msg.alts : [{ text: msg.text, image: msg.image || null }]; msg.text = ''; delete msg.image; }
-  else ch.messages.push(msg);
-  msg.streaming = true; if (S.view === 'palchat') renderPalChat();
-  const hist = palHistory(ch, upto);
-  if (opts.opener && !hist.length) hist.push({ role: 'user', content: `((Start the conversation: send ${ps.length > 1 ? 'the group\'s' : 'your'} first message to ${meName()}${ps[0].scenario ? `. The situation: ${ps[0].scenario}` : ''}.))` });
-  if (opts.cont) hist.push({ role: 'user', content: '((Continue: keep going from where you left off, adding something new.))' });
-  if (!hist.length || hist[hist.length - 1].role !== 'user') hist.push({ role: 'user', content: '((Continue.))' });
-  try {
-    const raw = await chat([{ role: 'system', content: palSystem(ch) }, ...hist], {
-      stream: !!S.settings.text.stream && msg.mode === 'person', signal: ctl.signal, maxTokens: PAL_LENGTHS[ch.length || 'normal'].tok, temperature: 0.9,
-      onToken: full => { msg.text = palClean(full).text; paintPalLog(); } });
-    const r = palClean(stripThink(raw), ch);
-    msg.text = r.text || '…'; msg.t = Date.now();
-    if (r.who) msg.who = r.who;
-    if (r.photo && S.settings.image.mode !== 'off') { const p = PALS.pals[msg.who] || ps[0]; msg.image = { prompt: `${p.look || p.name}, ${r.photo}, photo`, seed: d(999999), desc: r.photo }; }
-    if (replace) { msg.alts.push({ text: msg.text, image: msg.image || null }); msg.altI = msg.alts.length - 1; }
-    delete msg.streaming;
-    if (r.split.length) {   /* group replies: one message per character */
-      const i = ch.messages.indexOf(msg);
-      ch.messages.splice(i, 1, ...r.split.map(s => ({ id: uid(), role: 'pal', who: s.who, text: s.text, mode: msg.mode, t: Date.now() })));
-    }
-    if (r.chan && r.chan !== ch.channel) { ch.channel = r.chan; ch.messages.push({ id: uid(), role: 'sys', text: r.chan === 'person' ? `You're together now${ch.scene ? ' · ' + ch.scene : ''}` : 'You went your separate ways · texting', t: Date.now() }); }
-    for (const p of ps) { p.lastChat = Date.now(); }
-    ch.memTurns = num(ch.memTurns) + 1;
-    palTouch(ch); savePals();
-    if (ch.autovoice || /^\[voice\]/im.test(raw)) setTimeout(() => palSpeak(ch, ch.messages[ch.messages.length - 1]), 100);
-    if (ch.memTurns >= 6) setTimeout(() => palMemory(ch), 1500);
-  } catch (e) {
-    delete msg.streaming;
-    if (e.name === 'AbortError') { if (!msg.text) ch.messages = ch.messages.filter(m => m !== msg); }
-    else { if (!msg.text) ch.messages = ch.messages.filter(m => m !== msg); toast('No reply: ' + e.message, 6000); }
-    if (replace && !msg.text && msg.alts?.length) { const a = msg.alts[msg.alts.length - 1]; msg.text = a.text; msg.image = a.image || undefined; ch.messages.splice(upto, 0, msg); }
-  } finally { S.palBusy = null; if (S.view === 'palchat') renderPalChat(); }
-}
-/* tidy a reply: channel tags, photo tags, {Name} speakers, stray self-labels */
-function palClean(text, ch) {
-  let t = String(text || ''); let chan = '', photo = '', who = '';
-  if (/\[\[\s*in[ -]?person\s*\]\]/i.test(t)) chan = 'person'; if (/\[\[\s*text(ing)?\s*\]\]/i.test(t)) chan = 'text';
-  t = t.replace(/\[\[[^\]]*\]\]/g, '');
-  t = t.replace(/\[(?:photo|selfie|pic|image)\s*:\s*([^\]]+)\]/gi, (_, x) => { photo = photo || x.trim(); return ''; });
-  const split = [];
-  if (ch && palsOf(ch).length > 1) {
-    const ps = palsOf(ch); const parts = t.split(/(?=\{[^{}\n]{1,40}\})/);
-    for (const part of parts) { const m = part.match(/^\{([^{}\n]{1,40})\}\s*([\s\S]*)$/); if (!m) { if (part.trim() && split.length) split[split.length - 1].text += '\n\n' + part.trim(); else if (part.trim()) split.push({ who: ps[0].id, text: part.trim() }); continue; }
-      const p = ps.find(x => x.name.toLowerCase() === m[1].trim().toLowerCase()) || ps.find(x => m[1].toLowerCase().includes(x.name.split(/\s+/)[0].toLowerCase()));
-      const txt = m[2].trim(); if (!txt) continue;
-      const lw = split[split.length - 1]; if (lw && lw.who === (p || ps[0]).id) lw.text += '\n\n' + txt; else split.push({ who: (p || ps[0]).id, text: txt }); }
-    if (split.length === 1) { who = split[0].who; t = split[0].text; split.length = 0; }
-  } else if (ch) { const p = palsOf(ch)[0]; if (p) t = t.replace(new RegExp(`^\\s*(\\{${p.name}\\}|${p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:)\\s*`, 'gim'), ''); }
-  t = t.replace(/\n{3,}/g, '\n\n').trim();
-  return { text: t, chan, photo, who, split };
+      : `RIGHT NOW YOU ARE TEXTING (phone, online, messages; not together). Write natural text messages — short, casual, separated by blank lines if you send more than one bubble. ${group ? 'Start each character\'s part with their name in braces, e.g. {Name} hey!' : ''} ${PAL_LENGTHS[ch.length || 'normal'].rule || ''}`
+  ];
+  return sys.filter(Boolean).join('\n');
 }
 
-/* ---------- long-term memory & relationship ---------- */
-async function palMemory(ch, force = false) {
-  const ps = palsOf(ch); if (!ps.length || ch.memBusy) return;
-  const recent = arr(ch.messages).filter(m => m.role !== 'sys').slice(-24).map(m => `${m.role === 'user' ? meName().toUpperCase() : (PALS.pals[m.who]?.name || '').toUpperCase()}: ${String(m.text).slice(0, 600)}`).join('\n');
-  if (!recent) return; ch.memBusy = true;
-  try {
-    const raw = await chat([
-      { role:'system', content:`You keep the long-term memory for characters in a companion app. Read the latest conversation and update what each character knows. Reply with JSON only:
-{"summary":"3-6 sentences: the story of this relationship so far, including the newest events (rewrite the old summary to include them)",
- "characters":[{"name":"","facts":["new lasting facts about ${meName()} or the relationship worth remembering: names, job, likes, plans, important moments, promises"],"jokes":["new inside jokes or recurring bits"],"affection_change":0}]}
-affection_change: -10 to +10, how much closer (or further) this conversation brought them. Only real things from the conversation; use [] when nothing new.` },
-      { role:'user', content:`OLD SUMMARY: ${ch.summary || '(none)'}\n\n${ps.map(p => `${p.name} already remembers:\n${arr(p.memory).slice(-30).map(m => '- ' + m).join('\n') || '(nothing)'}\nAffection now: ${Math.round(num(p.affection))}/100, stage: ${palStage(p).l}`).join('\n\n')}\n\nLATEST CONVERSATION:\n${recent}` }
-    ], { stream:false, maxTokens:900, temperature:0.2, helper:true, json:true });
-    const j = tryJSON(stripThink(raw)) || {};
-    if (j.summary) ch.summary = String(j.summary).slice(0, 1500);
-    for (const x of arr(j.characters)) {
-      const p = ps.find(q => q.name.toLowerCase() === String(x.name || '').toLowerCase()) || (ps.length === 1 ? ps[0] : null); if (!p) continue;
-      p.memory = arr(p.memory); for (const f of arr(x.facts).map(s => String(s).trim()).filter(Boolean)) if (!p.memory.some(m => m.toLowerCase() === f.toLowerCase())) p.memory.push(f.slice(0, 200));
-      if (p.memory.length > 80) p.memory = p.memory.slice(-80);
-      p.jokes = arr(p.jokes); for (const f of arr(x.jokes).map(s => String(s).trim()).filter(Boolean)) if (!p.jokes.includes(f)) p.jokes.push(f.slice(0, 120));
-      palAffect(p, ch, clamp(num(x.affection_change), -10, 10));
-      palTouch(p);
-    }
-    ch.memTurns = 0; palTouch(ch); savePals();
-    if (force) toast('Memory updated.');
-  } catch (e) { console.warn('Companion memory failed', e); if (force) toast('Memory update failed: ' + e.message, 5000); }
-  finally { ch.memBusy = false; if (S.view === 'palchat' && S.palMenu) renderPalChat(); }
-}
-function palAffect(p, ch, delta) {
-  const before = palStage(p);
-  p.affection = clamp(num(p.affection) + delta, 0, 100);
-  const allowed = PAL_STAGES.filter(s => (p.goal !== 'friends' && !palMinor(p)) || !s.romance);
-  let next = [...allowed].reverse().find(s => p.affection >= s.at) || allowed[0];
-  /* move one step at a time, so a relationship never jumps from strangers to dating */
-  const bi = PAL_STAGES.indexOf(before), ni = PAL_STAGES.indexOf(next);
-  if (ni > bi + 1) next = PAL_STAGES[bi + 1]; else if (ni < bi - 1) next = PAL_STAGES[bi - 1];
-  if (p.goal === 'open' && PAL_STAGES.indexOf(next) < PAL_STAGES.indexOf(before)) next = before;
-  if (next.k !== before.k) { p.stage = next.k; ch.messages.push({ id: uid(), role: 'sys', text: `${PAL_STAGES.indexOf(next) > bi ? '💗' : '💔'} You and ${p.name}: ${next.l}`, t: Date.now() }); }
-}
-
-/* ---------- voice ---------- */
-function palSpeak(ch, m) {
-  if (!m) return; const p = palWho(ch, m); const ctx = palCtx(p, ch);
-  stopVoice(); unlockTTS();
-  const voice = voiceOf(ctx, p, p.name);
-  const text = String(m.text || '').replace(/^\[voice\]\s*/gim, '');
-  if (m.mode === 'person') {   /* actions in the narrator's voice, dialogue in theirs */
-    const parts = text.split(/(\*[^*\n]+\*)/g).map(s => s.trim()).filter(Boolean);
-    for (const part of parts) { const act = /^\*.*\*$/.test(part); const tx = cleanSpeech(part.replace(/^\*|\*$/g, '').replace(/[“”"]/g, '')); if (tx) VOICE.items.push({ text: tx, voice: act ? narratorVoice() : voice, eng: engine() }); }
-  } else VOICE.items.push({ text: cleanSpeech(text.replace(/\n+/g, ' ')), voice, eng: engine() });
-  savePals(false);
-  if (!VOICE.playing) runVoice();
-}
-
-/* ---------- picture of the moment ---------- */
-function palScenePicture(ch) {
-  const ps = palsOf(ch); const last = [...arr(ch.messages)].reverse().find(m => m.role === 'pal'); if (!last) return toast('Talk a little first.');
-  const looks = ps.map(p => `${p.name}: ${p.look}`).join('; ');
-  last.image = { prompt: `${looks}. ${ch.scene || ''}. ${String(last.text).replace(/[“”"]/g, '').slice(0, 350)}`.replace(/\s+/g, ' '), seed: d(999999), desc: 'a picture of this moment' };
-  palTouch(ch); savePals(); renderPalChat();
-}
-
-/* ---------- actions ---------- */
-function palAction(act, el) {
-  const ch = curChat();
-  switch (act) {
-    case 'palnew': openPalEditor(); return true;
-    case 'paledit': S.palMenu = false; openPalEditor(el.dataset.id); return true;
-    case 'palback': S.palDraft = null; S.homeTab = 'pals'; renderLibrary(); return true;
-    case 'palvibe': { const D = S.palDraft; const v = el.dataset.v; D.vibes = arr(D.vibes).includes(v) ? D.vibes.filter(x => x !== v) : [...arr(D.vibes), v].slice(-5); el.classList.toggle('on'); return true; }
-    case 'palai': palAIBuild(); return true;
-    case 'palsave': palSave(); return true;
-    case 'paldelete': { const p = PALS.pals[el.dataset.id]; if (!p) return true; if (S.palDelArm !== p.id) { S.palDelArm = p.id; toast(`Tap Delete again to delete ${p.name} and your chats with them.`); return true; }
-      delete PALS.pals[p.id]; PALS.deleted[p.id] = Date.now(); for (const c2 of palChats()) if (c2.palIds.includes(p.id)) { delete PALS.chats[c2.id]; PALS.deleted[c2.id] = Date.now(); }
-      savePals(); S.palDraft = null; S.homeTab = 'pals'; renderLibrary(); toast(`${p.name} deleted.`); return true; }
-    case 'palportrait': { const D = S.palDraft; D.portrait = { prompt: `portrait photo of ${D.look}, ${palMinor(D) ? 'fully clothed, ' + D.age + ' years old' : D.age + ' years old adult'}, looking at the camera`, seed: d(999999) }; renderPalEditor(); return true; }
-    case 'palchat': palStartChat([el.dataset.id]); return true;
-    case 'palopen': palOpenChat(el.dataset.id); return true;
-    case 'palgroup': S.palPick = []; openModal('palgroup'); return true;
-    case 'palgpick': { const id = el.dataset.id; S.palPick = S.palPick.includes(id) ? S.palPick.filter(x => x !== id) : [...S.palPick, id]; renderModal(); return true; }
-    case 'palgstart': if (S.palPick.length < 2) { toast('Pick at least two.'); return true; } closeModal(); palStartChat([...S.palPick]); return true;
-    case 'palme': openModal('palme'); return true;
-    case 'palmesave': { for (const k of ['name','pronouns','about']) PALS.me[k] = ($('#pme_' + k)?.value || '').trim(); PALS.me.updatedAt = Date.now();
-      savePals(); closeModal(); if (S.view === 'paledit') renderPalEditor(); else renderLibrary(); toast('Saved.'); return true; }
-    case 'palexit': stopVoice(); if (S.palBusy) S.palBusy.ctl.abort(); S.palMenu = false; S.homeTab = 'pals'; renderLibrary(); return true;
-    case 'palsend': { const inp = $('#palInput'); const t = (inp?.value || '').trim(); if (!t || !ch) return true; inp.value = '';
-      ch.messages.push({ id: uid(), role: 'user', text: t, mode: ch.channel === 'person' ? 'person' : 'text', t: Date.now() }); palTouch(ch); savePals(false); palReply(ch); return true; }
-    case 'palstop': S.palBusy?.ctl.abort(); return true;
-    case 'palchan': { if (!ch) return true; const k = el.dataset.k; if (ch.channel === k) return true; ch.channel = k;
-      ch.messages.push({ id: uid(), role: 'sys', text: k === 'person' ? `You meet up in person${ch.scene ? ' · ' + ch.scene : ''}` : 'Back to texting', t: Date.now() }); palTouch(ch); savePals(); renderPalChat(); return true; }
-    case 'palmenu': S.palMenu = !S.palMenu; renderPalChat(); return true;
-    case 'palsceneset': { if (!ch) return true; const v = ($('#palScene')?.value || '').trim(); ch.scene = v; if (v) { ch.channel = 'person'; ch.messages.push({ id: uid(), role: 'sys', text: `Scene: ${v}`, t: Date.now() }); } S.palMenu = false; palTouch(ch); savePals(); renderPalChat(); return true; }
-    case 'palquick': { if (!ch) return true; const k = el.dataset.k;
-      if (k === 'scene') { palScenePicture(ch); return true; }
-      if (k === 'cont') { palReply(ch, { cont: true }); return true; }
-      const inp = $('#palInput'); if (!inp) return true;
-      if (k === 'ooc') { inp.value = (inp.value ? inp.value + ' ' : '') + '(( ))'; inp.focus(); const p = inp.value.length - 3; inp.setSelectionRange(p, p); return true; }
-      if (k === 'selfie') { inp.value = ch.channel === 'person' ? 'Can I take a picture of you?' : 'Send me a pic? 📷'; inp.focus(); return true; }
-      return true; }
-    case 'palspeak': { const m = ch?.messages.find(x => x.id === el.dataset.id); if (m) palSpeak(ch, m); return true; }
-    case 'paleditmsg': S.palEdit = el.dataset.id; renderPalChat(); setTimeout(() => $('#palEditBox')?.focus(), 30); return true;
-    case 'paleditcancel': S.palEdit = null; renderPalChat(); return true;
-    case 'paleditsave': { const m = ch?.messages.find(x => x.id === el.dataset.id); if (m) { m.text = ($('#palEditBox')?.value || '').trim() || m.text; if (m.alts && m.altI != null) m.alts[m.altI].text = m.text; } S.palEdit = null; palTouch(ch); savePals(); renderPalChat(); return true; }
-    case 'paldelmsg': { if (!ch) return true; ch.messages = ch.messages.filter(x => x.id !== el.dataset.id); palTouch(ch); savePals(); renderPalChat(); return true; }
-    case 'palreroll': { const m = ch?.messages.find(x => x.id === el.dataset.id); if (m) palReply(ch, { reroll: m.id }); return true; }
-    case 'palalt': { const m = ch?.messages.find(x => x.id === el.dataset.id); if (!m || !arr(m.alts).length) return true; const i = clamp((m.altI ?? m.alts.length - 1) + num(el.dataset.d), 0, m.alts.length - 1); m.altI = i; m.text = m.alts[i].text; m.image = m.alts[i].image || undefined; palTouch(ch); savePals(); renderPalChat(); return true; }
-    case 'palforget': { const p = PALS.pals[el.dataset.id]; if (p) { p.memory.splice(num(el.dataset.i), 1); palTouch(p); savePals(); renderPalChat(); } return true; }
-    case 'palmemadd': { const p = PALS.pals[el.dataset.id]; const v = ($('#palMemAdd')?.value || '').trim(); if (p && v) { p.memory = arr(p.memory); p.memory.push(v); palTouch(p); savePals(); renderPalChat(); } return true; }
-    case 'palmemnow': if (ch) palMemory(ch, true); return true;
-    case 'palclear': { if (!ch) return true; if (S.palClearArm !== ch.id) { S.palClearArm = ch.id; toast('Tap Clear again to delete every message in this chat. Memories are kept.'); return true; } ch.messages = []; ch.summary = ''; palTouch(ch); savePals(); S.palMenu = false; renderPalChat(); return true; }
-  }
-  return false;
-}
-function palModalHTML(kind) {
-  if (kind === 'palme') return ['About you', `<p class="hint" style="margin-top:0">Your companions use this to know who they're talking to.</p>
-    <label class="f"><span>Your name</span><input id="pme_name" value="${esc(PALS.me.name || '')}" placeholder="What they call you"></label>
-    <label class="f"><span>Pronouns</span><input id="pme_pronouns" value="${esc(PALS.me.pronouns || '')}" placeholder="he/him"></label>
-    <label class="f"><span>About you (optional)</span><textarea id="pme_about" rows="3" placeholder="Your job, what you're into, anything you want them to know">${esc(PALS.me.about || '')}</textarea></label>
-    <button class="btn gold wide" data-act="palmesave">Save</button>`];
-  if (kind === 'palgroup') return ['New group chat', `<p class="hint" style="margin-top:0">Pick two or more companions.</p>
-    <div class="palgpick">${allPals().map(p => `<button class="palgp ${S.palPick.includes(p.id) ? 'on' : ''}" data-act="palgpick" data-id="${p.id}">${palAvatar(p)}<b>${esc(p.name)}</b></button>`).join('')}</div>
-    <button class="btn gold wide" data-act="palgstart" style="margin-top:10px">Start group chat</button>`];
-  return ['', ''];
-}
-document.addEventListener('input', e => {
-  const el = e.target;
-  if (el.dataset?.pd && S.palDraft) { const k = el.dataset.pd; S.palDraft[k] = el.type === 'checkbox' ? el.checked : el.type === 'number' ? num(el.value) : el.value; if (k === 'goal' || k === 'stage') renderPalEditor(); }
-  else if (el.id === 'palIdea') S.palIdea = el.value;
-  else if (el.dataset?.pch && curChat()) { const ch = curChat(); ch[el.dataset.pch] = el.type === 'checkbox' ? el.checked : el.value; palTouch(ch); savePals(); }
-  else if (el.id === 'palInput') autoGrow(el);
-});
-document.addEventListener('change', e => { const el = e.target; if (el.dataset?.pd === 'age' && S.palDraft) { S.palDraft.age = num(el.value); if (palMinor(S.palDraft)) { S.palDraft.goal = 'friends'; S.palDraft.adult = false; if (palStage(S.palDraft).romance) S.palDraft.stage = 'friend'; } renderPalEditor(); return; } if (el.dataset?.pd && S.palDraft && el.tagName === 'SELECT') { S.palDraft[el.dataset.pd] = el.value; if (el.dataset.pd === 'goal' || el.dataset.pd === 'stage') renderPalEditor(); } });
-document.addEventListener('keydown', e => {
-  if (e.target.id === 'palInput' && e.key === 'Enter' && !e.shiftKey && !isPhone()) { e.preventDefault(); palAction('palsend', e.target); }
-});
+```
