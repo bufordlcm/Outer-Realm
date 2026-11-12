@@ -13,7 +13,7 @@ Object.assign(ICON, {
   panel: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/>'
 });
 const LOGO = `<svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" stroke-width="2"/><ellipse cx="16" cy="16" rx="13" ry="5" fill="none" stroke="currentColor" stroke-width="1.6" transform="rotate(-24 16 16)"/><circle cx="16" cy="16" r="4.5" fill="currentColor"/><circle cx="26.5" cy="10" r="1.8" fill="currentColor"/></svg>`;
-const HOME_TABS = { games: ['swords', 'Games'], discover: ['compass', 'Campaigns'], chars: ['person', 'Characters'], gallery: ['image', 'Gallery'] };
+const HOME_TABS = { games: ['swords', 'Games'], pals: ['heart', 'Companions'], discover: ['compass', 'Campaigns'], chars: ['person', 'Characters'], gallery: ['image', 'Gallery'] };
 
 function topNavHTML(active) {
   return `<header class="topnav">
@@ -47,7 +47,7 @@ function situationOf(c) {
 function renderLibrary() {
   S.view = 'library'; musicScene(null);
   const tab = HOME_TABS[S.homeTab] ? S.homeTab : 'games';
-  const body = tab === 'discover' ? discoverHTML() : tab === 'chars' ? charsHTML() : tab === 'gallery' ? homeGalleryHTML() : gamesHTML();
+  const body = tab === 'pals' ? palsHomeHTML() : tab === 'discover' ? discoverHTML() : tab === 'chars' ? charsHTML() : tab === 'gallery' ? homeGalleryHTML() : gamesHTML();
   app().innerHTML = `<div class="home">${topNavHTML(tab)}<main class="hmain">
     ${!textReady() ? `<div class="card notice"><b>Welcome to ${APP}! Let's get you set up.</b><p class="hint" style="color:var(--ink)">About five minutes: connect your AI (your own PC with Ollama, or a free key), and optionally Google Drive.</p><div class="row" style="margin-top:12px"><button class="btn white" data-act="setup">${icon('spark')} Start setup</button>${Drive.configured() && /^https?:/.test(location.protocol) ? `<button class="btn" data-act="sync">${icon('cloud')} I've set up before: connect Drive</button>` : ''}</div></div>` : ''}
     ${body}

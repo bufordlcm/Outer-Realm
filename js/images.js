@@ -458,6 +458,8 @@ async function syncNow(interactive) {
       await Drive.put(folderId, 'Story Log.md', storyMD(c), 'text/markdown');
       await Drive.patch(folderId, { name, appProperties: { iqCampaign: c.id, iqUpdated: String(c.updatedAt || 0) } });
     }
+    /* 3b. companions */
+    try { changed += await syncPals(root); } catch (e) { console.warn('Companions sync', e); }
     /* 4. index */
     await Drive.put(root, INDEX_FILE, JSON.stringify({ app: APP, version: 2, savedAt: Date.now(), settings: publicSettings(), deleted: S.deleted }), 'application/json');
     setSync('Synced with Google Drive · ' + new Date().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' }));
@@ -682,7 +684,7 @@ function finishLevelUp() {
    Rendering
    ========================================================================= */
 const app = () => $('#app');
-function rerender() { if (S.view === 'game' && cur()) renderGame(); else if (S.view === 'new') renderNew(true); else if (S.view === 'setup') renderSetup(); else renderLibrary(); if (S.modal) renderModal(); }
+function rerender() { if (S.view === 'palchat') renderPalChat(); else if (S.view === 'paledit') renderPalEditor(); else if (S.view === 'game' && cur()) renderGame(); else if (S.view === 'new') renderNew(true); else if (S.view === 'setup') renderSetup(); else renderLibrary(); if (S.modal) renderModal(); }
 function openGame(id) { relinkPlayers(S.campaigns[id]); S.activeId = id; S.view = 'game'; LS.set('iq.active', id); S.rollResult = null; S.invokeOpen = false; S.editing = null; if (S.recap && S.recap.id !== id) S.recap = null; renderGame(); makeRecap(S.campaigns[id], false); }
 
 

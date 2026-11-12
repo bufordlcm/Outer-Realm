@@ -405,6 +405,16 @@ Your key is stored only in your browser (and in Drive if you opt in). It is sent
 
 ---
 
+## Companions
+
+The **Companions** tab is its own app inside Outer Realm: AI characters you talk to, separate from the RPG.
+
+- Create a companion by hand, from a one-line idea, or by pasting a finished character from anywhere (the builder AI sorts it).
+- Every chat is **📱 Texting** (message bubbles, voice messages, photos) or **🧍 In person** (a narrated scene with *actions* and dialogue). Tap to switch, or the companion switches when you meet up or part ways.
+- Relationships move from strangers to friends to more (or stay friends only) as you talk; companions remember facts about you, your history and inside jokes (`js/pals.js`).
+- Edit, reroll (with ‹ › to flip between replies), delete or continue any reply; `((double brackets))` direct the story; group chats with several companions.
+- Saved on the device and in Drive as `Companions/companions.json`. 18+ content must be switched on in About you and per companion; every companion must be an adult.
+
 ## Game Settings, music and ambience
 
 Tap **⚙ Game** in the game bar (or More → Game Settings).

@@ -7,6 +7,7 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act; const c = cur(); const D = S.draft;
   if (act.startsWith('bible')) { bibleAction(act, el); return; }
+  if (act.startsWith('pal') && palAction(act, el)) return;
   if (homeAction(act, el) || panelAction(act, el, c) || memoryAction(act, el, c)) return;
   switch (act) {
     case 'party': S.compForm = null; openModal('party'); break;
