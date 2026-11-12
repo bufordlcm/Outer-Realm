@@ -79,12 +79,16 @@ async function chat(messages, opts = {}) {
     const list = builderConns(); let tried = 0;
     for (const bc of list) {
       tried++;
+      /* a busy free model can hang for minutes: give each online AI 75 seconds, then move on */
+      const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 75000);
+      const onUser = () => ctl.abort(); opts.signal?.addEventListener?.('abort', onUser);
       try {
-        const out = await chatOne(bc, messages, { ...opts, model: '' });
+        const out = await chatOne(bc, messages, { ...opts, model: '', signal: ctl.signal });
         const t = stripThink(out).trim();
         if (t && !REFUSAL.test(t.slice(0, 160))) return out;
         console.warn('Builder AI declined:', bc.label);
-      } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Builder AI unavailable:', bc.label, e); }
+      } catch (e) { if (opts.signal?.aborted) throw e; console.warn('Builder AI unavailable or too slow:', bc.label, e); }
+      finally { clearTimeout(tm); opts.signal?.removeEventListener?.('abort', onUser); }
     }
     if (tried) toast(`The online builder AI${tried > 1 ? 's were' : ' was'} busy or declined, so your story AI is building it instead.`, 4500);
   }
