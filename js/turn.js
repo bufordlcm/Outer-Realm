@@ -25,7 +25,7 @@ function bookkeeperSpec(c, hasCheck) {
     `"choices": exactly 3 clearly different things ${c.character.name} might do next, each written as "Short title | the action in one sentence, phrased as the player's action" (title 2-5 words, sentence under 25 words)${hasCheck ? '. Use [] now: a dice roll is pending' : ''}.`,
     '"location": a short place name, ONLY if the character is now somewhere other than CURRENT PLACE.',
     `"hp_change": a negative number for damage ${c.character.name} actually took in this scene, positive for healing. NOT damage the app's dice already applied (see DICE RESULT).`,
-    '"injury": {"name":"Cracked ribs","effect":"-2 to physical rolls until rest"} for a real injury.',
+    '"injury": {"name":"<injury>","effect":"<penalty, e.g. -2 to physical rolls until rest>"} for a real injury.',
     '"gold_change": coins gained (+) or spent/lost (-).',
     '"items_gained": [{"name":"","desc":""}], "items_lost": ["name"] for things actually picked up, given, bought, lost or used up.',
     '"quest_updates": [{"title":"","status":"active|completed|failed"}] when a goal is set, finished or failed.',

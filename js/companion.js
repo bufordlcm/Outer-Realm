@@ -61,9 +61,9 @@ Mara: *leans on the counter* "You're late again."
 
 DIALOGUE AND VOICES (the app reads the story aloud, with a different voice for each character)
 - Put ONLY words spoken out loud inside double quotes "like this".
-- Right before each opening quote, write the speaker's name in curly braces: {Sister Maudlin}"Drink, child." The braces are hidden from the player. Tag every quote, even several from the same speaker. For an unnamed speaker use a short label: {Guard}"Halt!"
+- Right before each opening quote, write the speaker's name in curly braces: {Name}"Their words." The braces are hidden from the player. Tag every quote, even several from the same speaker. For an unnamed speaker use a short label: {Guard}"Halt!"
 - Names, titles, labels and special terms are never in double quotes: write blessed water or *blessed water*, never "blessed water". Thoughts, signs and written words go in *italics*.
-- Example: The sergeant lifts his lantern. {Sergeant Holt}"Who goes there?" Behind him, Elowen steps into the light. {Elowen}"Friends," she says. "We seek the inn."  (wrong: the last quote has no tag; write {Elowen}"We seek the inn.")`;
+- Format: Narration. {Speaker A}"Spoken words." More narration. {Speaker B}"Their reply." {Speaker B}"More from the same speaker, tagged again."`;
 }
 function talkBarHTML(c) {
   if (!isCompanion(c)) return ''; const act = activeParty(c); if (act.length < 2) return '';

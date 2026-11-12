@@ -296,7 +296,7 @@ COMBAT
 
 HEALING AND WOUNDS
 - Downtime (a night's rest, travel, days between chapters) → "rest": true (full HP; injuries and Strain clear). No downtime, no healing except potions, magic or healers (hp_change).
-- A temporary injury → "injury": {"name":"Cracked ribs","effect":"-2 to physical rolls until rest"}.
+- A temporary injury → "injury": {"name":"<injury>","effect":"<penalty, e.g. -2 to physical rolls until rest>"}.
 - A permanent wound (lost eye, crushed leg) → add it to new_traits with "polarity":"-" and a tier by severity. The app pays the player for it.
 
 REWARDS
@@ -330,7 +330,7 @@ THE PARTY (only if companions are listed under THE PARTY)
   "player_dead": true — only if the player character is at 0 HP and truly dies (they ignored clear warnings or chose a fatal risk).
 
 KEEPSAKES — optional state fields
-  "codex": [{"name":"Brother Aldric","kind":"person","text":"what the player has learned about them, one sentence"}] (kind person, place, creature, lore or item) when the player learns something worth recording. Only what the player character knows; never GM secrets.
+  "codex": [{"name":"<name>","kind":"person","text":"what the player has learned about them, one sentence"}] (kind person, place, creature, lore or item) when the player learns something worth recording. Only what the player character knows; never GM secrets.
   "handout": {"title":"Wanted poster","kind":"poster","text":"the exact words written on it"} when the player finds or receives something written (kind note, letter, poster or page).
   "image_subject": {"kind":"place","name":"Greywater Docks"} whenever you give an image_prompt (kind place or character).
 
@@ -480,8 +480,9 @@ function writerCore(c) {
 THE GOLDEN RULE: the player controls ${n}. You control everything else.
 - Never write ${n}'s words, actions, decisions, thoughts or feelings. Not even small ones: no nodding, smiling, stepping forward, reaching, agreeing, deciding, hoping, fearing.
 - Show only what ${n} perceives, and how the world and the other characters act and react.
-- WRONG: "You grin and tell him, 'Deal.' Relief washes over you as you pocket the coin and head for the door."
-- RIGHT: "The merchant spits in his palm and holds it out. 'Deal?' Behind him, the two guards have stopped talking."
+- WRONG: you write that ${n} grins, agrees, pockets something or feels relief.
+- RIGHT: you show what the other characters do and say, then stop and let the player decide.
+- Rules and examples in these instructions only show the FORMAT. Never use their wording, people or events in the story.
 
 HOW TO WRITE A TURN
 - ONE BEAT per turn. Show the immediate result of what the player just did and how the world responds, then STOP at a moment that invites the player to act. Do not skip ahead, do not resolve several things at once, and do not move to a new scene unless the player chose to go there.
@@ -493,9 +494,9 @@ HOW TO WRITE A TURN
 
 DIALOGUE AND VOICES (the app reads the story aloud, with a different voice for each character)
 - Put ONLY words spoken out loud inside double quotes "like this".
-- Right before each opening quote, write the speaker's name in curly braces: {Sister Maudlin}"Drink, child." The braces are hidden from the player. Tag every quote, even several from the same speaker. For an unnamed speaker use a short label: {Guard}"Halt!"
+- Right before each opening quote, write the speaker's name in curly braces: {Name}"Their words." The braces are hidden from the player. Tag every quote, even several from the same speaker. For an unnamed speaker use a short label: {Guard}"Halt!"
 - Names, titles, labels and special terms are never in double quotes: write blessed water or *blessed water*, never "blessed water". Thoughts, signs and written words go in *italics*.
-- Example: The sergeant lifts his lantern. {Sergeant Holt}"Who goes there?" Behind him, Elowen steps into the light. {Elowen}"Friends," she says. "We seek the inn."  (wrong: the last quote has no tag; write {Elowen}"We seek the inn.")`;
+- Format: Narration. {Speaker A}"Spoken words." More narration. {Speaker B}"Their reply." {Speaker B}"More from the same speaker, tagged again."`;
 }
 function writerModules(c) {
   const out = [];
@@ -539,7 +540,10 @@ function buildWriterMessages(c) {
   if (arr(c.party).length) sys.push('', comp ? 'THE CAST (characters you voice)' : 'THE PARTY', comp ? castBrief(c) : partyText(c, true));
   if (c.pinned?.length) sys.push('', 'PINNED FACTS (always true)', ...c.pinned.map(f => '- ' + f));
   if (c.world) sys.push('', 'WORLD', c.world.slice(0, 2500));
-  const people = peopleOf(c).slice(-15); if (people.length) sys.push('', 'PEOPLE THE PLAYER KNOWS', ...people.map(e => `- ${e.name}: ${e.text}`));
+  const people = peopleOf(c).slice(-15); if (people.length) {
+    const here = String(c.location || '').toLowerCase().trim(); const at = e => here && e.where && (String(e.where).toLowerCase().includes(here) || here.includes(String(e.where).toLowerCase()));
+    sys.push('', `PEOPLE THE PLAYER KNOWS. They are NOT in this scene unless they are at the current place (${c.location || 'unknown'}) or the story gives a clear reason for them to arrive. Never drop someone in without explaining how they got there.`, ...people.map(e => `- ${e.name}: ${e.text}${e.where ? ` (last seen: ${e.where}${at(e) ? ', HERE' : ''})` : ''}`));
+  }
   const lore = loreForPrompt(c); if (lore) sys.push('', 'RESEARCHED FACTS (from real sources; stay consistent with them)', lore);
   if (c.secrets) sys.push('', 'GM SECRETS (never state them; let the player uncover them)', c.secrets.slice(0, 1500));
   if (c.plan) sys.push('', 'HIDDEN CAMPAIGN PLAN (steer toward it, adapt to the player)', c.plan.slice(0, 1200));
