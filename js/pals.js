@@ -44,7 +44,7 @@ const curChat = () => PALS.chats[S.palChat];
 
 /* the picture engine and voice engine expect a game; this is the companion's stand-in */
 function palCtx(p, chat) {
-  const adultOK = p.adult && S.settings.ui.palAdult;
+  const adultOK = !!p.adult;
   const ctx = p._ctx || (Object.defineProperty(p, '_ctx', { value: {}, enumerable: false, writable: true }), p._ctx);
   Object.assign(ctx, { id: 'pal_' + p.id, title: p.name, genre: '', premise: '', location: chat?.scene || '', artStyle: p.art || 'photorealistic, natural light, detailed',
     rating: adultOK ? 'Adult (18+)' : 'PG-13', character: { name: meName(), appearance: p.look, backstory: p.backstory, storyRole: '' },
@@ -83,7 +83,7 @@ async function syncPals(root) {
 /* ---------- the Companions home tab ---------- */
 function palsHomeHTML() {
   const pals = allPals(), chats = palChats();
-  if (!S.settings.ui.palAdultAsked && !pals.length) return `<section class="hsec"><div class="card palhero">
+  if (!pals.length) return `<section class="hsec"><div class="card palhero">
       <h2>Companions</h2><p class="hint" style="color:var(--ink);font-size:15px">Characters who actually get you. Build your own companion: their look, voice, personality and the way they talk to you. They remember you, your history and your inside jokes, and your relationship grows the more you talk.</p>
       <p class="hint">Text them like a friend, or meet up in person and play out a scene together. Everything stays on your devices and your Google Drive.</p>
       <div class="row wrap"><button class="btn gold" data-act="palnew">${icon('plus')} Create your first companion</button></div></div></section>`;
@@ -115,7 +115,6 @@ function renderPalEditor() {
   const D = S.palDraft; if (!D) return renderLibrary();
   const f = (k, label, ph = '', type = 'text') => `<label class="f"><span>${label}</span><input type="${type}" data-pd="${k}" value="${esc(D[k] ?? '')}" placeholder="${esc(ph)}"></label>`;
   const t = (k, label, ph = '', rows = 3) => `<label class="f"><span>${label}</span><textarea rows="${rows}" data-pd="${k}" placeholder="${esc(ph)}">${esc(D[k] || '')}</textarea></label>`;
-  const adultOn = !!S.settings.ui.palAdult;
   app().innerHTML = `<div class="home">${topNavHTML('pals')}<main class="hmain palform">
     <div class="row"><button class="btn sm ghost" data-act="palback">${icon('back')} Back</button><h2 style="margin:0 0 0 6px">${S.palDraftNew ? 'New companion' : 'Edit ' + esc(D.name)}</h2></div>
     <div class="card">
@@ -153,7 +152,7 @@ function renderPalEditor() {
       <div class="sect">Your rules</div>
       <label class="f"><span>Intensity</span><select data-pd="intensity"><option value="gentle" ${D.intensity === 'gentle' ? 'selected' : ''}>Gentle: soft and slow</option><option value="balanced" ${D.intensity !== 'gentle' && D.intensity !== 'bold' ? 'selected' : ''}>Balanced</option><option value="bold" ${D.intensity === 'bold' ? 'selected' : ''}>Bold: intense, takes initiative</option></select></label>
       ${t('limits', 'Hard limits (they will never go here)', 'Anything you never want in your chats, one per line', 2)}
-      <label class="chk"><input type="checkbox" data-pd="adult" ${D.adult ? 'checked' : ''} ${adultOn ? '' : 'disabled'}> <span>Allow 18+ content with this companion</span></label>${adultOn ? '' : '<p class="hint">18+ is off for the whole app. <button class="link" data-act="palme">Turn it on in About you</button> (it asks you to confirm you\'re 18 or older), then tick this box.</p>'}
+      <label class="chk"><input type="checkbox" data-pd="adult" ${D.adult ? 'checked' : ''}> <span>Allow 18+ content with this companion (you and they must be adults)</span></label>
       ${f('art', 'Picture style', 'photorealistic, natural light, detailed')}
     </div>
     <div class="row wrap" style="margin-bottom:30px"><button class="btn gold" data-act="palsave">${icon('check')} Save${S.palDraftNew ? ' and start chatting' : ''}</button>${!S.palDraftNew ? `<button class="btn ghost" data-act="paldelete" data-id="${D.id}">${icon('trash')} Delete companion</button>` : ''}</div>
@@ -187,7 +186,7 @@ async function palAIBuild() {
 }
 function palSave() {
   const D = S.palDraft; const err = palValidate(D); if (err) return toast(err, 5000);
-  D.age = Math.max(18, num(D.age)); if (!S.settings.ui.palAdult) D.adult = false;
+  D.age = Math.max(18, num(D.age));
   if (D.goal === 'friends' && palStage(D).romance) D.stage = 'close';
   if (D.goal === 'open') { D.stage = 'partner'; D.affection = Math.max(num(D.affection), 93); }
   else D.affection = Math.max(num(D.affection), palStage(D).at);
@@ -270,7 +269,7 @@ function paintPalLog() { const ch = curChat(); const log = $('#pallog'); if (!ch
 function palSystem(ch) {
   const ps = palsOf(ch); const group = ps.length > 1; const me = PALS.me; const you = meName();
   const person = ch.channel === 'person';
-  const adultAll = ps.every(p => p.adult) && S.settings.ui.palAdult;
+  const adultAll = ps.every(p => p.adult);
   const desc = p => {
     const st = palStage(p);
     return [`### ${p.name} (${p.age}${p.pronouns ? ', ' + p.pronouns : ''})${p.tagline ? ' — ' + p.tagline : ''}`,
@@ -457,7 +456,7 @@ function palAction(act, el) {
     case 'palgstart': if (S.palPick.length < 2) { toast('Pick at least two.'); return true; } closeModal(); palStartChat([...S.palPick]); return true;
     case 'palme': openModal('palme'); return true;
     case 'palmesave': { for (const k of ['name','pronouns','about']) PALS.me[k] = ($('#pme_' + k)?.value || '').trim(); PALS.me.updatedAt = Date.now();
-      const adult = !!$('#pme_adult')?.checked; S.settings.ui.palAdult = adult; S.settings.ui.palAdultAsked = true; saveSettings(); savePals(); closeModal(); if (S.view === 'paledit') renderPalEditor(); else renderLibrary(); toast('Saved.'); return true; }
+      savePals(); closeModal(); if (S.view === 'paledit') renderPalEditor(); else renderLibrary(); toast('Saved.'); return true; }
     case 'palexit': stopVoice(); if (S.palBusy) S.palBusy.ctl.abort(); S.palMenu = false; S.homeTab = 'pals'; renderLibrary(); return true;
     case 'palsend': { const inp = $('#palInput'); const t = (inp?.value || '').trim(); if (!t || !ch) return true; inp.value = '';
       ch.messages.push({ id: uid(), role: 'user', text: t, mode: ch.channel === 'person' ? 'person' : 'text', t: Date.now() }); palTouch(ch); savePals(false); palReply(ch); return true; }
@@ -492,7 +491,6 @@ function palModalHTML(kind) {
     <label class="f"><span>Your name</span><input id="pme_name" value="${esc(PALS.me.name || '')}" placeholder="What they call you"></label>
     <label class="f"><span>Pronouns</span><input id="pme_pronouns" value="${esc(PALS.me.pronouns || '')}" placeholder="he/him"></label>
     <label class="f"><span>About you (optional)</span><textarea id="pme_about" rows="3" placeholder="Your job, what you're into, anything you want them to know">${esc(PALS.me.about || '')}</textarea></label>
-    <label class="chk"><input type="checkbox" id="pme_adult" ${S.settings.ui.palAdult ? 'checked' : ''}> <span>I'm 18 or older and want 18+ content available (you still turn it on per companion)</span></label>
     <button class="btn gold wide" data-act="palmesave">Save</button>`];
   if (kind === 'palgroup') return ['New group chat', `<p class="hint" style="margin-top:0">Pick two or more companions.</p>
     <div class="palgpick">${allPals().map(p => `<button class="palgp ${S.palPick.includes(p.id) ? 'on' : ''}" data-act="palgpick" data-id="${p.id}">${palAvatar(p)}<b>${esc(p.name)}</b></button>`).join('')}</div>
