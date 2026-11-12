@@ -24,7 +24,7 @@ function draftPortraitHTML(D) {
 const NSFW_NAME = /porn|nsfw|lust|xxx|hentai|sex|nude|naked|erot|lewd|adult|r18|18\+/i;
 /* the character themself reads as under 18: an age under 18, teen / school-student words, "a child", etc.
    (a parent's "her kid" or "two kids" doesn't count, so adult characters with families aren't caught) */
-const CHAR_MINOR = /\b(?:(?:1[0-0]|[0-0]);
+const CHAR_MINOR = /\b(?:(?:1[0-0]|[0-0])\b/i;
 const MINOR_WORDS = new RegExp(CHAR_MINOR.source + '|\\b(?:child(?:ren)?|kids?|toddlers?|infants?|newborns?|bab(?:y|ies)|little ones?)\\b', 'i');
 const MINOR_SETTING = /\b(?:(?:elementary|grade|primary|boarding|prep)[- ]schools?|academy|kindergarten|daycare|nursery|orphanage|playground)\b/i;
 const SAFE_NEG = 'nsfw, nude, naked, nudity, topless, nipples, genitals, sexual, sex, explicit, porn, erotic, lingerie, underwear, swimsuit, cleavage, suggestive pose, seductive';
