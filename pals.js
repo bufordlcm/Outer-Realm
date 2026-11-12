@@ -308,7 +308,6 @@ function palSystem(ch) {
   ];
   return sys.filter(Boolean).join('\n');
 }
-
 ```
 /* ---------- reply generation, memory, voice & actions ---------- */
 async function palReply(ch, opts = {}) {
