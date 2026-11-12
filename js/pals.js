@@ -95,9 +95,9 @@ function palsHomeHTML() {
   if (!pals.length) return `<section class="hsec"><div class="card palhero">
       <h2>Companions</h2><p class="hint" style="color:var(--ink);font-size:15px">Characters who actually get you. Build your own companion: their look, voice, personality and the way they talk to you. They remember you, your history and your inside jokes, and your relationship grows the more you talk.</p>
       <p class="hint">Text them like a friend, or meet up in person and play out a scene together. Everything stays on your devices and your Google Drive.</p>
-      <div class="row wrap"><button class="btn gold" data-act="palnew">${icon('plus')} Create your first companion</button></div></div></section>`;
+      <div class="row wrap"><button class="btn gold" data-act="palnew">${icon('plus')} Create your first companion</button><button class="btn" data-act="palbulk">${icon('users')} Add several at once</button></div></div></section>`;
   return `<section class="hsec">
-    <div class="hsechd"><h2>Companions</h2><div class="row"><button class="btn sm" data-act="palgroup" ${pals.length < 2 ? 'disabled title="Make at least two companions first"' : ''}>${icon('users')} Group chat</button><button class="btn sm" data-act="palme">${icon('person')} About you</button><button class="btn gold sm" data-act="palnew">${icon('plus')} New companion</button></div></div>
+    <div class="hsechd"><h2>Companions</h2><div class="row"><button class="btn sm" data-act="palgroup" ${pals.length < 2 ? 'disabled title="Make at least two companions first"' : ''}>${icon('users')} Group chat</button><button class="btn sm" data-act="palme">${icon('person')} About you</button><button class="btn sm" data-act="palbulk">${icon('users')} Bulk add</button><button class="btn gold sm" data-act="palnew">${icon('plus')} New companion</button></div></div>
     ${chats.length ? `<div class="lbl">Recent chats</div><div class="palchats">${chats.slice(0, 8).map(ch => { const ps = palsOf(ch); const last = [...arr(ch.messages)].reverse().find(m => m.role !== 'sys');
       return `<button class="palchatrow" data-act="palopen" data-id="${ch.id}"><span class="pavs">${ps.slice(0, 3).map(p => palAvatar(p)).join('')}</span><span class="pcr"><b>${esc(ch.title || ps.map(p => p.name).join(', '))}</b><small>${ch.channel === 'person' ? '🧍 ' : '📱 '}${esc(String(last?.text || 'New chat').replace(/\[[^\]]*\]|[*{}]/g, '').slice(0, 90))}</small></span><span class="pct">${ch.updatedAt ? new Date(ch.updatedAt).toLocaleDateString([], { month:'short', day:'numeric' }) : ''}</span></button>`; }).join('')}</div>` : ''}
     <div class="lbl">Your companions</div>
@@ -130,7 +130,7 @@ function renderPalEditor() {
       <div class="sect" style="margin-top:0">Quick start</div>
       <p class="hint">Describe who you want in a sentence or two, or paste a finished character from ChatGPT, Claude or anywhere (any format). The AI fills in everything below; change whatever you like.</p>
       <textarea id="palIdea" rows="4" placeholder="e.g. Mara, 27, a sarcastic tattoo artist with a soft heart who pretends she doesn't care, lives above her shop in the city…">${esc(S.palIdea || '')}</textarea>
-      <div class="row wrap" style="margin-top:8px"><button class="btn gold" data-act="palai" ${S.palBuilding ? 'disabled' : ''}>${S.palBuilding ? `<span class="spin sm"></span> Building… <span class="buildsecs"></span>` : icon('spark') + ' Build with AI'}</button></div>
+      <div class="row wrap" style="margin-top:8px"><button class="btn gold" data-act="palai" ${S.palBuilding ? 'disabled' : ''}>${S.palBuilding ? `<span class="spin sm"></span> Building… <span class="buildsecs"></span>` : icon('spark') + ' Build with AI'}</button><button class="btn sm ghost" data-act="palbulkcopy" data-k="prompt">Copy a prompt for ChatGPT / Claude</button><button class="btn sm ghost" data-act="palbulkcopy" data-k="template">Copy the blank template</button>${S.palDraftNew ? `<button class="btn sm ghost" data-act="palbulk">${icon('users')} Add several at once</button>` : ''}</div>
     </div>
     <div class="card palcols">
       <div class="palportrait">${D.portrait ? palAvatar(D, 'palhuge') : `<span class="palhuge pavi" style="background:${palColor(D)}">${initial(D.name)}</span>`}
@@ -422,6 +422,9 @@ function palAction(act, el) {
       renderPalEditor(); return true;
     }
     case 'palai': palAIBuild(); return true;
+    case 'palbulk': S.palBulkLog = ''; openModal('palbulk'); return true;
+    case 'palbulkcopy': palBulkCopy(el.dataset.k); return true;
+    case 'palbulkgo': palBulkBuild(); return true;
     case 'palsave': palSave(); return true;
     case 'paldelete': {
       const id = el.dataset.id; const p = PALS.pals[id];
@@ -531,6 +534,7 @@ function palAction(act, el) {
 
 /* ---------- "About you" and "Group chat" windows (shown by renderModal) ---------- */
 function palModalHTML(kind) {
+  if (kind === 'palbulk') return palBulkHTML();
   if (kind === 'palme') {
     const me = PALS.me;
     return ['About you', `<p class="hint">Every companion knows this about you.</p>
@@ -570,3 +574,171 @@ document.addEventListener('change', e => {
     }
   } else if (el.dataset.pch) savePals();
 });
+
+/* =========================================================================
+   BULK ADD: write one or many companions in ChatGPT / Claude (or by hand) and paste them in.
+   - Text in the template's shape ("### Companion: Name" + "Key: value" lines) is read directly, no AI needed
+   - Anything else (notes, character cards, any format) is sorted by the AI, one or many characters per paste
+   - A companion with the same name as one you already have is updated (their memory and relationship are kept)
+   ========================================================================= */
+const PAL_TEMPLATE = `### Companion: <Name>
+Age: <number, 18 or older for romance or 18+>
+Gender: <female | male | other>  (picks their voice)
+Pronouns: <she/her, he/him, they/them>
+Tagline: <one line that sums them up>
+Vibes: <2-4 of: ${PAL_VIBES.join(', ')}>
+Look: <2-3 sentences: face, hair, eyes, build, clothes, tattoos, how they carry themselves. Used for their pictures.>
+Personality: <3-4 sentences: what they're like, what makes them laugh, what annoys them, their flaws>
+How they talk: <slang, emojis or none, pet names, short or long messages, accent, catchphrases>
+Backstory: <4-6 sentences: where they come from, their life now, job, family, a secret or two>
+Likes: <likes, dislikes and interests>
+Who I am to them: <e.g. my neighbor I keep running into; my best friend since college>
+How it starts: <the situation when we first talk>
+First message: <their first message to me, in character>
+Where it can go: <friends | romance | together>
+Where we start: <strangers | acquaintances | friends | close friends | something more | dating | partners>
+Intensity: <gentle | balanced | bold>
+Hard limits: <anything that must never happen in our chats, or leave blank>
+18+: <yes | no>
+Picture style: <e.g. photorealistic, natural light, detailed>
+`;
+const PAL_PROMPT = `You are an expert character writer for an AI companion and roleplay app. Create companion characters for me from my idea:
+
+[DESCRIBE WHO YOU WANT HERE: how many companions, who they are, their vibe, how they know me, anything that must be true about them]
+
+Rules:
+- Write ONE block per companion, each starting with its own "### Companion: Name" heading, following the template below EXACTLY: same "Key: value" lines, in the same order.
+- Make each one feel like a real person with their own life, opinions, flaws and a distinct voice. Be specific and vivid, no generic filler. If there are several, make them clearly different from each other.
+- "Look" must be concrete and visual, since it is used to draw their picture.
+- "First message" is written in their own voice, the way they would actually text or speak.
+- Never decide what I say, do, think or feel.
+- Every character in any romantic or sexual content is an adult (18 or older).
+- Output ONLY the filled-in blocks as plain text. No commentary before or after.
+
+TEMPLATE (repeat it once per companion):
+
+${PAL_TEMPLATE}`;
+
+const PAL_TPL_KEYS = {
+  name:'name', age:'age', gender:'sex', sex:'sex', pronouns:'pronouns', tagline:'tagline', vibes:'vibes', vibe:'vibes',
+  look:'look', looks:'look', appearance:'look', personality:'personality', 'how they talk':'speech', speech:'speech', voice:'speech',
+  backstory:'backstory', background:'backstory', likes:'likes', interests:'likes', 'likes, dislikes and interests':'likes',
+  'who i am to them':'userRole', 'who you are to them':'userRole', 'how it starts':'scenario', scenario:'scenario',
+  'first message':'greeting', greeting:'greeting', 'where it can go':'goal', goal:'goal', 'where we start':'stage', stage:'stage', 'where you start':'stage',
+  intensity:'intensity', 'hard limits':'limits', limits:'limits', '18+':'adult', adult:'adult', 'picture style':'art', 'art style':'art'
+};
+/* split a paste into one chunk per companion */
+function palBulkSplit(text) {
+  const t = String(text).replace(/\r/g, '');
+  if (/^\s*#{1,4}\s*(?:companion|character)\b/im.test(t)) {
+    const parts = []; let curr = [];
+    for (const line of t.split('\n')) {
+      if (/^\s*#{1,4}\s*(?:companion|character)\b/i.test(line) && curr.join('').trim()) { parts.push(curr.join('\n')); curr = []; }
+      curr.push(line);
+    }
+    if (curr.join('').trim()) parts.push(curr.join('\n'));
+    /* drop any chatter before the first heading ("Here are your companions:") */
+    return parts.map(x => x.trim()).filter(x => /^\s*#{1,4}\s*(?:companion|character)\b/i.test(x) && x.replace(/^\s*#.*$/m, '').trim());
+  }
+  return t.split(/\n\s*(?:-{3,}|={3,}|\*{3,})\s*\n/).map(x => x.trim()).filter(Boolean);
+}
+/* read a chunk written in the template's shape; returns null if it isn't in that shape */
+function palParseTemplate(chunk) {
+  const out = {}; let key = null;
+  const hm = chunk.match(/^\s*#{1,4}\s*(?:companion|character)\s*\d*\s*[:\-–—]\s*(.+)$/im);
+  if (hm && !/^<.*>$/.test(hm[1].trim())) out.name = hm[1].replace(/[*_]/g, '').trim();
+  for (const line of chunk.split('\n')) {
+    if (/^\s*#/.test(line)) { key = null; continue; }
+    const m = line.match(/^\s*(?:[-*]\s*)?\**([A-Za-z0-9+ ,']{2,40}?)\**\s*:\s*(.*)$/);
+    const k = m && PAL_TPL_KEYS[m[1].trim().toLowerCase()];
+    if (k) { key = k; out[k] = m[2].trim(); }
+    else if (key && line.trim()) out[key] = (out[key] ? out[key] + '\n' : '') + line.trim();
+  }
+  const filled = Object.keys(out).filter(k => String(out[k]).trim()).length;
+  return out.name && filled >= 4 ? out : null;
+}
+/* turn parsed or AI fields into a companion (new, or the existing one with the same name) */
+function palFromFields(j) {
+  const val = v => String(v ?? '').replace(/^<.*>$/s, '').trim();
+  const name = val(j.name).slice(0, 80); if (!name) return null;
+  const ex = Object.values(PALS.pals).find(p => p.name.trim().toLowerCase() === name.toLowerCase());
+  const D = ex ? deep(ex) : palBlank();
+  D.name = name;
+  for (const k of ['pronouns','tagline','look','personality','speech','backstory','likes','userRole','scenario','greeting','limits','art']) if (val(j[k])) D[k] = val(j[k]).slice(0, 1500);
+  const sx = val(j.sex).toLowerCase();
+  if (sx) D.sex = /^(f|woman|girl)/.test(sx) ? 'female' : /^(m|man|boy|guy)/.test(sx) ? 'male' : 'other';
+  const age = parseInt(String(j.age ?? '').match(/\d+/)?.[0], 10);   /* keep the real age: a character under 18 must stay under 18 so the safeguards apply */
+  if (age) D.age = age; else if (!num(D.age)) D.age = 25;
+  const vibes = (Array.isArray(j.vibes) ? j.vibes : String(j.vibes || '').split(/[,;/|]/)).map(v => String(v).trim().toLowerCase()).filter(v => PAL_VIBES.includes(v));
+  if (vibes.length) D.vibes = vibes.slice(0, 4);
+  const g = val(j.goal).toLowerCase();
+  if (g) D.goal = /together|open|partner|already/.test(g) ? 'open' : /friend/.test(g) && !/romance/.test(g) ? 'friends' : /romance|more|love|dat/.test(g) ? 'romance' : D.goal;
+  const st = val(j.stage).toLowerCase().replace(/s$/, '');
+  if (st && !ex) { const hit = PAL_STAGES.find(s => s.k === st || s.l.toLowerCase().replace(/s$/, '') === st || (st.includes('close') && s.k === 'close')); if (hit) D.stage = hit.k; }
+  const it = val(j.intensity).toLowerCase(); if (['gentle','balanced','bold'].includes(it)) D.intensity = it;
+  if (j.adult !== undefined && String(j.adult).trim() !== '') D.adult = j.adult === true || /^(y|yes|true|on|allow)/i.test(String(j.adult).trim());
+  /* same relationship rules as saving in the editor */
+  D.age = Math.max(1, Math.round(num(D.age)));
+  if (palMinor(D)) { D.adult = false; D.goal = 'friends'; if (palStage(D).romance) D.stage = 'friend'; }
+  if (D.goal === 'friends' && palStage(D).romance) D.stage = 'close';
+  if (D.goal === 'open') { D.stage = 'partner'; D.affection = Math.max(num(D.affection), 93); }
+  else if (!ex) D.affection = Math.max(num(D.affection), palStage(D).at);
+  return { D, updated: !!ex };
+}
+async function palBulkAI(chunk) {
+  const raw = await chat([
+    { role:'system', content:`You create characters for an AI companion and roleplay app. The player pasted text describing ONE OR MORE characters (any format: notes, a character card, a list, a ChatGPT answer). Make one entry per distinct character and keep every detail the text gives; fill in what is missing so each feels like a real person with their own life, opinions and voice. Keep any age the text states. Reply with ONLY this JSON: {"companions":[${PAL_SPEC}]}` },
+    { role:'user', content: chunk.slice(0, 12000) + (PALS.me.name ? `\n\n(The player's name is ${PALS.me.name}.)` : '') }
+  ], { build:true, stream:false, maxTokens:4000, temperature:0.8, json:true });
+  const j = tryJSON(stripThink(raw)); if (!j) throw new Error('the AI reply wasn\'t usable');
+  return Array.isArray(j) ? j : Array.isArray(j.companions) ? j.companions : j.name ? [j] : [];
+}
+async function palBulkBuild() {
+  const text = ($('#palBulkText')?.value || S.palBulk || '').trim();
+  if (!text) return toast('Paste your companions first.');
+  if (S.palBulkBusy) return;
+  const chunks = palBulkSplit(text);
+  const direct = chunks.map(palParseTemplate);
+  if (direct.some(x => !x) && !textReady()) return toast('Some of this isn\'t in the template\'s shape, so the AI has to sort it. Set up an AI first (Settings → Story AI).', 6000);
+  S.palBulk = text; S.palBulkBusy = true; S.palBulkLog = ''; renderModal();
+  const added = [], updated = [], failed = [];
+  for (let i = 0; i < chunks.length; i++) {
+    S.palBulkLog = `Working on ${i + 1} of ${chunks.length}…`; renderModal();
+    try {
+      const list = direct[i] ? [direct[i]] : await palBulkAI(chunks[i]);
+      if (!list.length) throw new Error('no characters found');
+      for (const f of list) {
+        const r = palFromFields(f); if (!r) continue;
+        palTouch(r.D); PALS.pals[r.D.id] = r.D; (r.updated ? updated : added).push(r.D.name);
+      }
+    } catch (e) { console.warn('Bulk companion failed', e); failed.push(chunks[i].split('\n')[0].replace(/^#+\s*/, '').slice(0, 40) || `part ${i + 1}`); }
+  }
+  if (added.length || updated.length) savePals();
+  S.palBulkBusy = false;
+  S.palBulkLog = [added.length ? `✓ Added ${added.length}: ${added.join(', ')}.` : '', updated.length ? `✓ Updated ${updated.length}: ${updated.join(', ')}.` : '', failed.length ? `✕ Couldn't build: ${failed.join(', ')}. Try those again.` : ''].filter(Boolean).join(' ');
+  if (!failed.length) S.palBulk = '';
+  renderModal();
+  if (S.view === 'library') renderLibrary();
+}
+function palBulkCopy(k) {
+  const t = k === 'template' ? PAL_TEMPLATE : PAL_PROMPT;
+  const done = () => toast(k === 'template' ? 'Template copied. Fill in one block per companion.' : 'Prompt copied. Paste it into ChatGPT or Claude and replace the idea line.');
+  const fail = () => {
+    S.palBulk = t;
+    if (S.modal === 'palbulk') renderModal(); else { S.palBulkLog = ''; openModal('palbulk'); }
+    toast('Couldn\'t copy: it\'s in the paste box, select it and copy.', 5000);
+  };
+  try { navigator.clipboard.writeText(t).then(done, fail); } catch { fail(); }
+}
+function palBulkHTML() {
+  return ['Add companions in bulk', `<p class="hint" style="margin-top:0;color:var(--ink)">Make one companion or a whole cast at once. They're saved to your companions (and Google Drive) ready to chat.</p>
+    <div class="sect" style="font-size:17px">1. Write them with ChatGPT or Claude</div>
+    <p class="hint">Copy the prompt, paste it into ChatGPT or Claude, and replace the idea line with who you want (for example "3 coworkers at a coffee shop"). Then paste the reply into the box below. Or copy the blank template and fill it in yourself, one block per companion.</p>
+    <div class="row wrap"><button class="btn sm" data-act="palbulkcopy" data-k="prompt">${icon('book')} Copy the prompt</button><button class="btn sm ghost" data-act="palbulkcopy" data-k="template">Copy the blank template</button></div>
+    <div class="sect" style="font-size:17px">2. Paste them here</div>
+    <label class="f"><span>One or many companions, any format</span><textarea id="palBulkText" rows="10" placeholder="### Companion: Mara&#10;Age: 27&#10;Gender: female&#10;…&#10;&#10;### Companion: Jace&#10;…">${esc(S.palBulk || '')}</textarea></label>
+    <button class="btn gold wide" data-act="palbulkgo" ${S.palBulkBusy ? 'disabled' : ''}>${S.palBulkBusy ? '<span class="spin sm"></span> Building your companions…' : icon('spark') + ' Build them all'}</button>
+    <p class="hint">Text in the template's shape is read straight in. Anything else (your own notes, character cards from other apps) is sorted by the AI. A companion with the same name as one you have is updated, keeping their memory and relationship.</p>
+    ${S.palBulkLog ? `<p class="hint" style="color:${/✕/.test(S.palBulkLog) ? 'var(--gold2)' : 'var(--green)'}">${esc(S.palBulkLog)}</p>` : ''}`];
+}
+document.addEventListener('input', e => { if (e.target.id === 'palBulkText') S.palBulk = e.target.value; });

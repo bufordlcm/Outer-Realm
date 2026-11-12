@@ -290,7 +290,7 @@ function renderModal() {
   let title = '', tabs = '', body = '';
   if (S.modal === 'settings') { title = 'Settings'; [tabs, body] = settingsHTML(); }
   else if (S.modal === 'bible') { title = 'Story Bible'; body = bibleHTML(); }
-  else if (S.modal === 'palme' || S.modal === 'palgroup') { [title, body] = palModalHTML(S.modal); }
+  else if (S.modal === 'palme' || S.modal === 'palgroup' || S.modal === 'palbulk') { [title, body] = palModalHTML(S.modal); }
   else if (S.modal === 'game') { title = 'Game Settings'; [tabs, body] = gameSettingsHTML(); }
   else if (S.modal === 'sheet') { title = 'Character'; [tabs, body] = sheetHTML(); }
   else if (S.modal === 'journal') { title = 'Journal'; [tabs, body] = journalBookHTML(); }

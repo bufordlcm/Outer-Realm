@@ -86,7 +86,8 @@ document.addEventListener('click', e => {
     case 'tab': S.modalTab = el.dataset.id; S.models = null; renderModal(); $('#modalBody').scrollTop = 0; break;
     case 'home': S.abort?.abort(); renderLibrary(); break;
     case 'new': renderModePick(); break;
-    case 'pickmode': S.draft = newDraft(); S.draft.mode = el.dataset.mode; S.addingPlayer = null; S.replacing = null; renderNew(); break;
+    case 'pickmode': if (el.dataset.mode === 'companion') { S.homeTab = 'pals'; S.view = 'library'; renderLibrary(); window.scrollTo?.(0, 0); break; }   /* Companion mode opens the Companions tab */
+      S.draft = newDraft(); S.draft.mode = el.dataset.mode; S.addingPlayer = null; S.replacing = null; renderNew(); break;
     case 'actor': setActor(c, Number(el.dataset.i)); break;
     case 'addcancel': { const id = S.addingPlayer; S.addingPlayer = null; S.draft = null; if (id && S.campaigns[id]) openGame(id); else renderLibrary(); break; }
     case 'addplayer': if (S.busy) break; addPlayerFlow(c); break;
