@@ -6,7 +6,7 @@ document.addEventListener('click', e => {
   unlockTTS(); unlockMusic();
   const el = e.target.closest('[data-act]'); if (!el) return;
   const act = el.dataset.act; const c = cur(); const D = S.draft;
-  if (homeAction(act, el) || panelAction(act, el, c)) return;
+  if (homeAction(act, el) || panelAction(act, el, c) || memoryAction(act, el, c)) return;
   switch (act) {
     case 'party': S.compForm = null; openModal('party'); break;
     case 'people': openModal('people'); break;

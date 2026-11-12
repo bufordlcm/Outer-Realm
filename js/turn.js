@@ -230,6 +230,7 @@ async function gmTurn(opts = {}) {
     touch(c); renderGame(); scheduleSync();
   }
   if (msg && arr(msg.lookups).length && c.messages.includes(msg)) autoLookups(c, msg.lookups);
+  if (msg && !msg.rollAsk && c.messages.includes(msg) && !again) setTimeout(() => { if (!S.busy) memoryCheck(c); }, 1500);   /* runs while you read and type */
   if (again && cur() === c && !c.messages.some(m => m.role === 'err')) gmTurn({ cont: true });
 }
 /* small models sometimes start with "GM:" or end with a question to the player about what they do */
@@ -254,7 +255,10 @@ function applyDamage(c, amt, notes, crit) {
 
 function applyState(c, msg, st) {
   const ch = c.character; const notes = [];
-  msg.before = snapshot(c);
+  msg.before = snapshot(c); const progBefore = progressKey(c);
+  /* damage or a new injury the scene never showed is dropped: the story has to explain every wound */
+  if (num(st.hp_change) < 0 && !sceneShowsHurt(msg.text)) { console.warn('Dropped unexplained damage', st.hp_change); st.hp_change = 0; }
+  if (st.injury && !sceneShowsHurt(msg.text)) { console.warn('Dropped unexplained injury', st.injury); st.injury = null; }
   msg.choices = arr(st.choices).map(x => String(typeof x === 'object' ? (x.text || x.action || '') : x).trim()).filter(Boolean).slice(0, 4);
 
   applyRoadmap(c, st, notes);
@@ -323,6 +327,7 @@ function applyState(c, msg, st) {
   }
   applyParty(c, st, msg, notes);
   applyKeepsakes(c, st, msg, notes);
+  trackProgress(c, progBefore);
   msg.notes = notes;
 }
 

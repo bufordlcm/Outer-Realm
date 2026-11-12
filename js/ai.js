@@ -13,6 +13,7 @@ function textReady() { return conns().some(connReady); }
 const maskKey = k => !k ? 'no key' : k.length <= 12 ? '••••' : k.slice(0, 6) + '…' + k.slice(-4);
 const connName = c => `${c.label || PRESETS[c.preset]?.short || 'AI'}${c.model ? ' · ' + c.model.replace(/^models\//, '').replace(/:free$/, '') : ''}`;
 (function migrateSettings() {
+  if (!S.settings.text.lenV2) { if ((S.settings.text.length || 'short') === 'short') S.settings.text.length = 'long'; S.settings.text.lenV2 = true; }   /* richer scenes by default (Mike asked for long, detailed play) */
   const t = S.settings.text;
   if (t && t.baseUrl && !conns().length) {
     const preset = PRESETS[t.preset] ? t.preset : 'custom';
@@ -471,9 +472,9 @@ function aiOn(key) {
   return !!AI_PROFILES[p][key];
 }
 const SCENE_LEN = {
-  short:  { label:'Short: one quick beat (recommended)', rule:'Keep it SHORT: 40-120 words, one or two small paragraphs.', tokens: 320 },
-  medium: { label:'Medium', rule:'60-180 words, at most two paragraphs.', tokens: 480 },
-  long:   { label:'Long', rule:'100-280 words, at most three paragraphs.', tokens: 720 }
+  short:  { label:'Short: quick turns (fastest)', rule:'Length: 80-150 words, one or two paragraphs.', tokens: 380 },
+  medium: { label:'Medium: detailed scenes', rule:'Length: 150-280 words, two or three paragraphs: the result of the action, how the people and the world react, and the new situation.', tokens: 620 },
+  long:   { label:'Long: rich, detailed scenes (slower)', rule:'Length: 250-450 words, three to five paragraphs. Make it rich: what the player sees, hears and smells, what the other characters say and do in real dialogue, what changes because of the action, and a clear new situation at the end.', tokens: 1000 }
 };
 const sceneLen = () => SCENE_LEN[S.settings.text.length] || SCENE_LEN.short;
 
@@ -489,7 +490,9 @@ THE GOLDEN RULE: the player controls ${n}. You control everything else.
 - Rules and examples in these instructions only show the FORMAT. Never use their wording, people or events in the story.
 
 HOW TO WRITE A TURN
-- ONE BEAT per turn. Show the immediate result of what the player just did and how the world responds, then STOP at a moment that invites the player to act. Do not skip ahead, do not resolve several things at once, and do not move to a new scene unless the player chose to go there.
+- Each turn shows the result of what the player just did and how the world and the other characters respond, then stops at a moment that invites the player to act. Don't skip past choices the player should make, and don't resolve several of the player's actions at once.
+- Every scene must CHANGE something: new information, a new problem or danger, a person acting on their own goals, a shift in someone's attitude, or a move to a new place. Never repeat descriptions, phrases or situations from earlier scenes.
+- Keep the story consistent: if the player is hurt, show how it happened; if an attack was dodged or countered, the player was not hit by it.
 - ${sceneLen().rule}
 - Second person ("you"), present tense, concrete sensory detail. Other characters talk in their own voices with real dialogue and want things of their own.
 - The world is honest and dangerous: actions have consequences and failure is real. Stay consistent with everything below.
@@ -559,9 +562,11 @@ function buildWriterMessages(c) {
   sys.push(...(isMP(c) && c.players.length > 1 ? ['', 'THE OTHER PLAYER CHARACTERS (controlled by other players: never act for them)', otherPlayersBrief(c)] : []));
   sys.push('', 'PACING', `Recent scene intensity (0-10): ${c.tensionLog.slice(-4).join(', ') || 'none yet'}. Alternate tense scenes with quieter ones.`);
   if (c.gmNotes) sys.push('', 'THE PLAYER\'S STANDING REQUESTS', c.gmNotes);
+  { const mp = memoryPrompt(c); if (mp) sys.push('', mp); }
   sys.push('', 'NOW', `Place: ${c.location || 'unknown'} · ${timeLabel(c).replace(/ · /g, ', ')}${c.combat ? ' · IN COMBAT' : ''}`);
   const quests = arr(c.quests).filter(q => q.status === 'active').map(q => q.title); if (quests.length) sys.push(`Active quests: ${quests.join('; ')}`);
-  if (!comp) for (const x of writerModules(c)) sys.push('', x);   /* dice / combat / party rules switch on and off, so they go last */
+  if (!comp) for (const x of writerModules(c)) sys.push('', x);
+  { const pd = pacingDirective(c); if (pd) sys.push('', pd); }   /* dice / combat / party rules switch on and off, so they go last */
   const out = [{ role:'system', content: sys.join('\n') }];
   const start = Math.max(c.summarizedUpTo || 0, c.messages.length - (keepRecent() + SUMMARIZE_AFTER));
   for (const m of c.messages.slice(start)) {

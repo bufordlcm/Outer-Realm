@@ -29,7 +29,7 @@ function turnSettled(c) {
 }
 
 /* ---------- the slide-out panel ---------- */
-const PANEL_TABS = c => isCompanion(c) ? { char: 'You', camp: 'Story', world: 'Cast' } : { char: 'Character', camp: 'Campaign', world: 'World' };
+const PANEL_TABS = c => isCompanion(c) ? { char: 'You', camp: 'Story', world: 'Cast', mem: 'Memory' } : { char: 'Character', camp: 'Campaign', world: 'World', mem: 'Memory' };
 function renderPanel() {
   const c = cur(); let el = $('#spanel');
   if (!c || !S.panel || S.view !== 'game') { el?.remove(); $('#spanelbg')?.remove(); return; }
@@ -40,8 +40,8 @@ function renderPanel() {
   }
   const scroll = el.querySelector('.pscroll')?.scrollTop || 0;
   el.innerHTML = `<div class="phead"><h2>${esc(c.title)}</h2><button class="iconbtn" data-act="panelclose" aria-label="Close">${icon('x')}</button></div>
-    <div class="ptabs">${Object.entries(tabs).map(([k, l]) => `<button class="${t === k ? 'on' : ''}" data-act="paneltab" data-t="${k}">${icon(k === 'char' ? 'person' : k === 'camp' ? 'scroll' : 'globe')}${l}</button>`).join('')}</div>
-    <div class="pscroll">${t === 'camp' ? panelCampHTML(c) : t === 'world' ? panelWorldHTML(c) : panelCharHTML(c)}</div>`;
+    <div class="ptabs">${Object.entries(tabs).map(([k, l]) => `<button class="${t === k ? 'on' : ''}" data-act="paneltab" data-t="${k}">${icon(k === 'char' ? 'person' : k === 'camp' ? 'scroll' : k === 'mem' ? 'book' : 'globe')}${l}</button>`).join('')}</div>
+    <div class="pscroll">${t === 'mem' ? panelMemHTML(c) : t === 'camp' ? panelCampHTML(c) : t === 'world' ? panelWorldHTML(c) : panelCharHTML(c)}</div>`;
   el.querySelector('.pscroll').scrollTop = scroll;
 }
 function panelCharHTML(c) {
