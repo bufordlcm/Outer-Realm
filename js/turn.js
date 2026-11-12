@@ -98,15 +98,29 @@ async function gmTurn(opts = {}) {
     if (isCompanion(c)) msg.companion = true;
     const trig = c.messages[pi - 1];
     const prevAct = c.messages.slice(0, pi).reverse().find(m => m.role === 'player' || m.role === 'roll');
-    const playerText = prevAct && !prevAct.hidden ? (prevAct.gm || prevAct.text) : '';
+    let playerText = prevAct && !prevAct.hidden ? (prevAct.gm || prevAct.text) : '';
+    if (prevAct?.role === 'roll') {   /* resolving a roll: the action is the player's message before it */
+      const act = c.messages.slice(0, c.messages.indexOf(prevAct)).reverse().find(m => m.role === 'player' && !m.ooc);
+      playerText = `${act && !act.hidden ? (act.gm || act.text) : ''}\n[DICE RESULT: ${prevAct.text}]`.trim();
+    }
     const isOOC = trig?.role === 'player' && trig.ooc;
 
     /* 1. dice referee: does the player's action need a roll? */
     let refCheck = null;
-    if (aiOn('referee') && !isCompanion(c) && !opts.cont && trig?.role === 'player' && !trig.hidden && !trig.ooc) {
+    if (aiOn('referee') && !isCompanion(c) && !opts.cont && !opts.noRoll && trig?.role === 'player' && !trig.hidden && !trig.ooc) {
       msg.phase = 'Deciding whether this needs a roll…'; renderLog(true);
       try { refCheck = await refereeCall(c, trig.gm || trig.text, signal); } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Referee failed', e); }
-      if (refCheck) { const L = msgs[msgs.length - 1]; L.content = L.content.replace(REPLY_NOTE, '') + refereeNote(refCheck) + REPLY_NOTE; }
+      /* a roll is needed: ask for it right away. The GM writes one scene afterwards, with the result. */
+      if (refCheck) {
+        const ck = normCheck(refCheck, c);
+        msg.text = ''; msg.rollAsk = true; msg.check = ck; msg.notes = []; msg.choices = []; delete msg.streaming; delete msg.phase;
+        msg.before = snapshot(c);
+        c.pendingRoll = { ...ck, msgId: msg.id, invokes: [], dcAdj: 0, momentumPlus: false };
+        S.rollResult = null; S.invokeOpen = false; S.invokeSel = [];
+        const tagged = turnTraits(c, trig.text).filter(t => t.polarity === '+');
+        if (tagged.length) { msg.checking = 'Checking how your traits help…'; renderLog(); try { await traitRuling(c, c.pendingRoll, tagged, trig.gm || trig.text, signal); } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Trait ruling failed', e); } delete msg.checking; }
+        return;
+      }
     }
     /* 1b. the AI decides for itself whether it needs to look something up online */
     if (scoutOn() && !opts.cont && trig?.role === 'player' && !trig.hidden && String(trig.text || '').trim().length >= 8) {
@@ -154,7 +168,7 @@ async function gmTurn(opts = {}) {
       msg.checking = 'Checking the scene…'; renderLog();
       try {
         const g = await agencyGuard(c, msg.text, playerText, signal);
-        if (g) { msg.original = msg.text; msg.text = g.text; msg.cut = g.cut; cut = g.cut.length; }
+        if (g) { msg.original = msg.text; msg.text = g.text; msg.cut = g.cut; cut = g.rewrote ? 0 : g.cut.length; }
       } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Agency guard failed', e); }
     }
     /* 5. the bookkeeper turns the scene into game data */
@@ -405,6 +419,21 @@ async function finalizeRoll() {
   } finally { S.finalizing = false; }
 }
 
+async function traitRuling(c, r, traits, arg, signal) {
+  const lastGM = [...c.messages].reverse().find(m => m.role === 'gm' && !m.rollAsk)?.text || '';
+  const raw = await chat([
+    { role:'system', content:'You are the Game Master ruling on whether a player\'s positive traits help one specific check in a tabletop RPG. Be fair and consistent. "full" = the trait clearly and specifically helps this exact action as described. "partial" = it helps indirectly or only somewhat. "none" = it doesn\'t fit or the description is vague. Instead of (or as well as) a bonus you may reward a good argument by lowering the DC by 1-4 (dc_change as a negative number). Reply with JSON only: {"rulings":[{"trait":"exact trait name","fit":"full|partial|none","reason":"under 15 words"}],"dc_change":0}' },
+    { role:'user', content:`SCENE:\n${lastGM.slice(-1400)}\n\nCHECK: ${r.kind} — ${r.stat} vs DC ${r.dc} to ${r.reason}\n\nTRAITS INVOKED:\n${traits.map(traitLine).join('\n')}\n\nWHAT THE PLAYER WROTE: ${arg}` }
+  ], { stream:false, maxTokens:400, temperature:0.3, signal });
+  const j = tryJSON(stripThink(raw)) || {};
+  const rulings = arr(j.rulings);
+  r.invokes = traits.map(t => {
+    const ru = rulings.find(x => String(x.trait || '').toLowerCase().includes(t.name.toLowerCase()) || t.name.toLowerCase().includes(String(x.trait || '').toLowerCase())) || rulings[traits.indexOf(t)] || {};
+    const fit = ['full','partial','none'].includes(String(ru.fit).toLowerCase()) ? String(ru.fit).toLowerCase() : 'none';
+    return { id: t.id, name: t.name, tier: t.tier, fit, reason: String(ru.reason || '').slice(0, 120) };
+  });
+  r.dcAdj = clamp(num(j.dc_change), -5, 0);
+}
 async function askRuling() {
   const c = cur(); const r = c?.pendingRoll; if (!r || S.ruling) return;
   const arg = ($('#invokeText')?.value || '').trim();
@@ -412,23 +441,8 @@ async function askRuling() {
   if (!traits.length) return toast('Pick at least one trait to invoke.');
   if (!arg) return toast('Say how you use it. Specific beats vague.');
   S.invokeArg = arg; S.ruling = true; renderLog();
-  const lastGM = [...c.messages].reverse().find(m => m.role === 'gm')?.text || '';
-  try {
-    const raw = await chat([
-      { role:'system', content:'You are the Game Master ruling on whether a player\'s positive traits help one specific check in a tabletop RPG. Be fair and consistent. "full" = the trait clearly and specifically helps this exact action as described. "partial" = it helps indirectly or only somewhat. "none" = it doesn\'t fit or the description is vague. Instead of (or as well as) a bonus you may reward a good argument by lowering the DC by 1-4 (dc_change as a negative number). Reply with JSON only: {"rulings":[{"trait":"exact trait name","fit":"full|partial|none","reason":"under 15 words"}],"dc_change":0}' },
-      { role:'user', content:`SCENE:\n${lastGM.slice(-1400)}\n\nCHECK: ${r.kind} — ${r.stat} vs DC ${r.dc} to ${r.reason}\n\nTRAITS INVOKED:\n${traits.map(traitLine).join('\n')}\n\nPLAYER'S ARGUMENT: ${arg}` }
-    ], { stream:false, maxTokens:400, temperature:0.3 });
-    const j = tryJSON(stripThink(raw)) || {};
-    const rulings = arr(j.rulings);
-    r.invokes = traits.map(t => {
-      const ru = rulings.find(x => String(x.trait || '').toLowerCase().includes(t.name.toLowerCase()) || t.name.toLowerCase().includes(String(x.trait || '').toLowerCase())) || rulings[traits.indexOf(t)] || {};
-      const fit = ['full','partial','none'].includes(String(ru.fit).toLowerCase()) ? String(ru.fit).toLowerCase() : 'none';
-      return { id: t.id, name: t.name, tier: t.tier, fit, reason: String(ru.reason || '').slice(0, 120) };
-    });
-    r.dcAdj = clamp(num(j.dc_change), -5, 0);
-    r.argument = arg; S.invokeOpen = false;
-    touch(c);
-  } catch (e) { toast('Ruling failed: ' + e.message, 5000); }
+  try { await traitRuling(c, r, traits, arg); r.argument = arg; S.invokeOpen = false; touch(c); }
+  catch (e) { toast('Ruling failed: ' + e.message, 5000); }
   finally { S.ruling = false; renderLog(); }
 }
 
@@ -507,7 +521,8 @@ A sentence BREAKS the rule if it gives ${name}:
 A sentence is FINE if it:
 - briefly retells what the player wrote their character does or says (in other words is fine);
 - describes what ${name} sees, hears, smells, or physical sensations like cold, pain or the ground shaking;
-- describes NPCs, companions, the world, or what NPCs say or do to ${name}.
+- describes NPCs, companions, the world, or what NPCs say or do to ${name};
+- shows how ${name}'s attempt turns out when a DICE RESULT is given (succeeding, failing, slipping, landing the blow).
 ${playerText ? '' : 'This is the OPENING scene: the player has not acted yet, so ANY action, words, thoughts or feelings for ' + name + ' break the rule.'}
 Lines marked "← check this one" are only a hint; judge them yourself.
 Reply with JSON only: {"bad":[numbers of the sentences that break the rule]}  ({"bad":[]} if none do).` },
@@ -516,6 +531,15 @@ Reply with JSON only: {"bad":[numbers of the sentences that break the rule]}  ({
   const j = tryJSON(stripThink(raw));
   const bad = new Set(arr(j?.bad).map(n => num(n) - 1).filter(i => i >= 0 && i < items.length));
   if (!bad.size) return null;
+  /* rewrite the flagged sentences so the scene still flows (cutting them leaves holes the story then trips over) */
+  try {
+    const marked = items.map((x, i) => (bad.has(i) ? '>>' : '') + x.s.trim()).join(' ');
+    const fixed = stripThink(await chat([
+      { role:'system', content:`You edit one scene from a tabletop RPG. Sentences marked >> make the player character (${name}, "you") do, say, think or feel something the player did not write. Rewrite ONLY those sentences: turn them into what the world, the place or the other characters do, or drop them. Keep every other sentence word for word, keep every character, place and detail, and keep it reading smoothly. Never add new events or characters. Reply with the finished scene only, without the >> marks.` },
+      { role:'user', content:`WHAT THE PLAYER WROTE:\n${playerText || '(opening scene)'}\n\nSCENE:\n${marked}` }
+    ], { stream:false, signal, maxTokens: Math.min(900, Math.ceil(scene.length / 2.5) + 80), temperature:0.3 })).replace(/>>/g, '').trim();
+    if (fixed && fixed.length >= scene.length * 0.5 && fixed.length <= scene.length * 1.6 + 60) return { text: tidyScene(fixed), cut: [...bad].sort((a, b) => a - b).map(i => items[i].s.trim()), rewrote: true };
+  } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Agency rewrite failed', e); }
   const keep = items.filter((_, i) => !bad.has(i));
   const kept = keep.map(x => x.s).join('').trim();
   if (kept.length < scene.length * 0.35) return null;   /* cutting most of the scene would wreck it; leave it to Retry */

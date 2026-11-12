@@ -40,6 +40,8 @@ document.addEventListener('click', e => {
     case 'speak': { const m = c?.messages.find(x => x.id === el.dataset.mid); if (m) { if (voiceBusy()) stopVoice(); else speakMessage(c, m); } break; }
     case 'voicestop': stopVoice(); break;
     case 'fmt': fmtInsert(el.dataset.k); break;
+    case 'drawer': toggleDrawer(el.dataset.k); break;
+    case 'drawpick': drawerPick(el); break;
     case 'rmnext': case 'rmback': { if (!c) break; const n = parseRoadmap(c.roadmap).length; c.rmAct = clamp(num(c.rmAct) + (act === 'rmnext' ? 1 : -1), 0, n); touch(c); saveCampaigns(); renderModal(); break; }
     case 'voicecheck': checkPCVoices(true).then(() => { renderModal(); toast(VOICE.pc ? 'Natural PC voices found.' : 'No PC voices found. Run Install voices.bat on the PC, then restart the helper.'); }); break;
     case 'voicetest': speak(`${gmOf(c || {}).name || 'The Narrator'} clears their throat. The tale begins.`); break;
@@ -158,7 +160,8 @@ document.addEventListener('click', e => {
     case 'invclose': S.invokeOpen = false; renderLog(); break;
     case 'invsel': { const id = el.dataset.id; S.invokeArg = $('#invokeText')?.value || ''; S.invokeSel = S.invokeSel.includes(id) ? S.invokeSel.filter(x => x !== id) : [...S.invokeSel, id]; renderLog(); break; }
     case 'ruling': askRuling(); break;
-    case 'skiproll': c.pendingRoll = null; S.rollResult = null; S.invokeOpen = false; touch(c); renderLog(); renderDock(); $('#input')?.focus(); break;
+    case 'skiproll': { const rm = c.messages.find(m => m.id === c.pendingRoll?.msgId); if (rm?.rollAsk) { c.messages = c.messages.filter(m => m !== rm); c.pendingRoll = null; S.rollResult = null; touch(c); renderLog(); gmTurn({ noRoll: true }); break; } }
+      c.pendingRoll = null; S.rollResult = null; S.invokeOpen = false; touch(c); renderLog(); renderDock(); $('#input')?.focus(); break;
     case 'regen': regenerate(); break;
     case 'uncut': { const m = c?.messages.find(x => x.id === el.dataset.mid); if (m?.original) { m.text = m.original; delete m.original; delete m.cut; m.notes = arr(m.notes).filter(n => !n.t.startsWith('✂')); touch(c); renderLog(); scheduleSync(); } break; }
     case 'retry': c.messages = c.messages.filter(m => m.role !== 'err'); gmTurn(); break;

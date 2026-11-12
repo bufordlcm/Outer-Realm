@@ -39,8 +39,10 @@ function gameSettingsHTML() {
       <p class="hint">Free music under the <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a> license. ${MUSIC_CREDITS.map(m => `Music by <b>${esc(m.who)}</b> (<a href="${m.url}" target="_blank" rel="noopener">${esc(m.url.replace('https://', ''))}</a>)`).join('; ')}. Tracks were re-encoded to load faster; nothing else was changed.</p>`;
   } else if (tab === 'flow') {
     const im = S.settings.image;
-    body = `<label class="f" style="margin-top:0"><span>Scene length</span><select data-bind="text.length">${Object.entries(SCENE_LEN).map(([k, v]) => `<option value="${k}" ${(S.settings.text.length || 'short') === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
+    body = `<label class="f"><span>Scene length</span><select data-bind="text.length">${Object.entries(SCENE_LEN).map(([k, v]) => `<option value="${k}" ${(S.settings.text.length || 'short') === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
       <p class="hint">Short scenes keep things moving: the GM shows one moment, then hands it back to you.</p>
+      <div class="sect" style="font-size:18px;margin-top:0">"The world shifts" box under scenes</div>
+      ${seg('ui.shifts', [['big', 'Only big changes', 'Items, gold, quests, wounds, level ups'], ['all', 'Everything', 'Also EP, rumors, time, trust, fixes'], ['off', 'Never', 'Check the Panel instead']])}
       ${bindCheck('ui.showChoices', 'Suggested actions: show 3 ideas for what to do next under each scene')}
       ${bindCheck('ui.quick', 'Quick buttons: Make camp, Look around, Talk to the party')}
       ${bindCheck('ui.compTurns', 'Companions speak up and act on their own when it fits')}

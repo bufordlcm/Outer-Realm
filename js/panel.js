@@ -8,8 +8,11 @@ const TRUST_TAG = t => t >= 2 ? 'devoted' : t >= 1 ? 'friendly' : t <= -2 ? 'hos
 const tagHTML = f => f ? `<span class="rtag ${f}">${f}</span>` : '';
 
 /* ---------- the world shifts ---------- */
+/* only the changes worth stopping for: things gained or lost, quests, wounds, levels, party changes */
+const BIG_NOTE = /^(\+ |− |[+−-]?\d+ gold|New trait|Lasting wound|Injury|New quest|Quest |Level up|Down!|Rested|✉ Handout|.+ (joined the party|left the party|rejoined|has died|has fallen)$)/;
 function shiftHTML(notes) {
-  notes = arr(notes); if (!notes.length) return '';
+  const mode = S.settings.ui.shifts || 'big'; if (mode === 'off') return '';
+  notes = arr(notes); if (mode === 'big') notes = notes.filter(n => BIG_NOTE.test(String(n.t || ''))); if (!notes.length) return '';
   const ic = k => k === 'bad' ? icon('heart') : k === 'gold' ? icon('spark') : icon('scroll');
   return `<div class="shift"><div class="sh">${icon('globe')} The world shifts</div>${notes.map(n => `<div class="srow ${n.k || ''}"><span class="si">${ic(n.k)}</span><span>${esc(n.t)}</span></div>`).join('')}</div>`;
 }

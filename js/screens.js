@@ -160,6 +160,11 @@ function renderHUD() {
 function msgHTML(m, c, isLastGM) {
   if (m.hidden) return '';
   const notesHTML = n => (n || []).length ? `<div class="notes">${n.map(x => `<span class="note ${x.k || ''}">${esc(x.t)}</span>`).join('')}</div>` : '';
+  if (m.role === 'gm' && m.rollAsk) {
+    const card = c.pendingRoll && c.pendingRoll.msgId === m.id && !S.busy ? rollCardHTML(c) : '';
+    const chk = m.checking ? `<div class="notes"><span class="note"><span class="spin sm" style="display:inline-block;vertical-align:-3px;margin-right:6px"></span>${esc(m.checking)}</span></div>` : '';
+    return card || chk ? `<div class="msg gm rollask" data-id="${m.id}">${chk}${card}${card && isLastGM ? `<div class="msgacts"><button data-act="undo">${icon('undo')} Undo turn</button></div>` : ''}</div>` : '';
+  }
   if (m.role === 'gm') {
     const spk = TTS && S.settings.ui.voice !== 'off' ? `<button data-act="speak" data-mid="${m.id}">${icon('speaker')} Read</button>` : '';
     const acts = m.streaming || S.busy || m.checking ? '' : isLastGM ? `<div class="msgacts">${spk}<button data-act="regen">${icon('redo')} Retry</button><button data-act="undo">${icon('undo')} Undo turn</button><button data-act="editmsg" data-mid="${m.id}">${icon('book')} Edit</button><button data-act="fixopen">${icon('spark')} Fix story</button>${m.original ? `<button data-act="uncut" data-mid="${m.id}">${icon('undo')} Put cut lines back</button>` : ''}${!m.image && S.settings.image.mode !== 'off' ? `<button data-act="illustrate" data-mid="${m.id}">${icon('image')} Illustrate</button>` : ''}</div>` : `<div class="msgacts">${spk}<button data-act="editmsg" data-mid="${m.id}">${icon('book')} Edit</button></div>`;
@@ -264,7 +269,7 @@ function renderDock() {
 }
 function autoGrow(el) { if (!el) return; el.style.height = 'auto'; el.style.height = Math.min(150, el.scrollHeight) + 'px'; }
 function sendInput() {
-  const inp = $('#input'); if (!inp) return; const t = inp.value.trim(); if (!t) return; inp.value = '';
+  const inp = $('#input'); if (!inp) return; const t = inp.value.trim(); if (!t) return; inp.value = ''; S.drawer = null;
   if (cur()?.phase === 'session0') { session0Say(t); return; }
   if (S.ooc) { S.ooc = false; playerAct(`(( ${t} ))`, 'player', { ooc: true }); return; }
   const c = cur(); const mode = typeMode();

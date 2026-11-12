@@ -252,3 +252,17 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 .segbtn.on b{color:var(--gold2)}
 .sval{font-style:normal;color:var(--gold2);margin-left:6px}
 @media (max-width:420px){ .exitbtn span{display:none} .hbtn{min-width:42px} }
+
+/* gear & trait drawer above the text box */
+.fmtbtn.on{border-color:var(--gold);color:var(--gold2);background:#25235c}
+.drawer{max-width:860px;margin:0 auto 8px;border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:10px 12px}
+.dhd{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.dhd span{color:var(--muted);font-size:12.5px;flex:1}
+.ditems{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;max-height:150px;flex-wrap:wrap;overflow-y:auto}
+.ditem{flex:0 0 auto;max-width:240px;text-align:left;display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:10px;padding:7px 10px}
+.ditem b{font-size:13.5px}
+.ditem small{font-size:11.5px;color:var(--muted);line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ditem.flaw b{color:#f0a3a3}
+.ditem:hover{border-color:var(--accent)}
+.ttrait{display:inline-block;font-size:12px;font-weight:700;color:var(--gold2);border:1px solid var(--gold);border-radius:999px;padding:1px 8px;margin-right:4px}
+.msg.rollask{margin-top:4px}

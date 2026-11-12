@@ -402,7 +402,7 @@ function buildMessages(c) {
   const out = [{ role:'system', content: sys.join('\n') }];
   const start = Math.max(c.summarizedUpTo || 0, c.messages.length - (keepRecent() + SUMMARIZE_AFTER));
   for (const m of c.messages.slice(start)) {
-    if (m.streaming || m.role === 'sys' || m.role === 'err') continue;
+    if (m.streaming || m.role === 'sys' || m.role === 'err' || m.rollAsk) continue;
     let role, content;
     if (m.role === 'gm') { role = 'assistant'; content = m.text + (m.check ? `\n<state>{"check":${JSON.stringify({ kind: m.check.kind, stat: m.check.stat, dc: m.check.dc, reason: m.check.reason })}}</state>` : ''); }
     else if (m.role === 'roll') { role = 'user'; content = '[DICE] ' + m.text; }
@@ -554,7 +554,7 @@ function buildWriterMessages(c) {
   const out = [{ role:'system', content: sys.join('\n') }];
   const start = Math.max(c.summarizedUpTo || 0, c.messages.length - (keepRecent() + SUMMARIZE_AFTER));
   for (const m of c.messages.slice(start)) {
-    if (m.streaming || m.role === 'sys' || m.role === 'err' || m.fromGM) continue;
+    if (m.streaming || m.role === 'sys' || m.role === 'err' || m.fromGM || m.rollAsk) continue;
     let role, content;
     if (m.role === 'gm') { role = 'assistant'; content = m.raw || m.text; }
     else if (m.role === 'roll') { role = 'user'; content = '[DICE] ' + m.text; }
@@ -569,6 +569,7 @@ function buildWriterMessages(c) {
   if (lastMsg && lastMsg.role === 'player' && !lastMsg.ooc && !lastMsg.hidden) out[out.length - 1].content += comp
     ? (compStyle(c) === 'chat' ? `\n\n(${c.character.name} sent this. Reply in character with a short, natural chat message${talkTarget(c) && talkTarget(c) !== 'all' ? ' from ' + talkTarget(c).name : ''}, in "Name: message" format. Don't write anything for ${c.character.name}.)` : `\n\n(${c.character.name} does and says exactly what I wrote above, nothing more. Don't write anything for ${c.character.name}. Let the cast${compStyle(c) === 'story' ? ' and the world' : ''} respond in their own voices, using "Name:" lines, then stop.)`)
     : `\n\n(GM: ${c.character.name} does exactly what I wrote above and nothing more. Don't give ${c.character.name}${isMP(c) && c.players.length > 1 ? ' or the other player characters' : ''} any other actions, words, thoughts or feelings. Show how the world and the other characters respond in one short beat, then stop.)`;
+  else if (lastMsg && lastMsg.role === 'roll' && !comp) out[out.length - 1].content += `\n\n(GM: the dice have decided. In ONE scene, show ${c.character.name}'s attempt exactly as the player described it, how it turns out according to the dice, and how the world and the other characters react. Don't give ${c.character.name} any extra actions, words, thoughts or feelings. Then stop.)`;
   out[out.length - 1].content += REPLY_NOTE;
   return out;
 }
