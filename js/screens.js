@@ -356,7 +356,7 @@ function settingsHTML() {
     const fid = folderIdFrom(S.settings.drive.folder);
     body = `<p class="hint" style="color:var(--ink)">Each adventure gets its own subfolder in your Drive folder, holding <b>campaign.json</b> (the save), <b>Character Sheet.md</b> and <b>Story Log.md</b>. Your settings live in <b>${INDEX_FILE}</b>.</p>
       ${bindInput('drive.folder', 'Drive folder link', { ph:'https://drive.google.com/drive/folders/…', hint: fid ? `Folder ID: <code>${esc(fid)}</code>` : '<span style="color:var(--red)">Paste a Google Drive folder link.</span>' })}
-      ${bindInput('drive.clientId', 'Google OAuth Client ID', { ph:'xxxxxxxx.apps.googleusercontent.com' })}
+      ${bindInput('drive.clientId', 'Google OAuth Client ID', { ph:'xxxxxxxx.apps.googleusercontent.com', hint: /^GOCSPX/i.test(S.settings.drive.clientId || '') ? '<span style="color:var(--red)">That\'s the client <b>secret</b>, not the Client ID. The Client ID ends in .apps.googleusercontent.com.</span> <button class="link" data-act="cidreset">Use the built-in one</button>' : '' })}
       <p class="hint">One-time setup in Google Cloud Console — see the README. Add this exact address as an <b>Authorized JavaScript origin</b>: <code>${esc(/^https?:/.test(location.protocol) ? location.origin : '(host the app first — Drive can\'t work from a local file)')}</code>. Because the app writes into a folder you made, it asks for full Drive access; Google will show an "unverified app" screen — choose Advanced → Continue.</p>
       ${bindCheck('drive.autoSync', 'Sync automatically after every turn')}
       <p class="hint">Keys: put a file named <b>ironquill-keys…</b> in the folder (or use Settings → Story AI → Save keys to Drive) and every device loads your AI keys when it connects.</p>
