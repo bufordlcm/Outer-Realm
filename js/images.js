@@ -21,47 +21,36 @@ function draftPortraitHTML(D) {
    Models are shown as "SFW" / "NSFW", never by file name. An adventure only uses the NSFW model when it is rated
    Adult (18+) AND nothing about the player character suggests they are under 18. Any single picture whose
    description mentions a child or teen goes to the SFW model with sexual content blocked, whatever the rating. */
-const NSFW_NAME = null;
-const SFW_NAME = null;
-const MINOR_WORDS = null;
-const SAFE_NEG = null;
-
-// Use /(?!)/ so null regexes safely return false instead of matching empty strings
-const NEVER_MATCH = /(?!)/;
-const CHAR_MINOR = MINOR_WORDS || NEVER_MATCH;
-const safeFwName = SFW_NAME || NEVER_MATCH;
-const safeNsfwName = NSFW_NAME || NEVER_MATCH;
-
+const NSFW_NAME = /porn|nsfw|lust|xxx|hentai|sex|nude|naked|erot|lewd|adult|r18|18\+/i;
+/* the character themself reads as under 18: an age under 18, teen / school-student words, "a child", etc.
+   (a parent's "her kid" or "two kids" doesn't count, so adult characters with families aren't caught) */
+const CHAR_MINOR = /\b(?:(?:1[0-0]|[0-0]);
+const MINOR_WORDS = new RegExp(CHAR_MINOR.source + '|\\b(?:child(?:ren)?|kids?|toddlers?|infants?|newborns?|bab(?:y|ies)|little ones?)\\b', 'i');
+const MINOR_SETTING = /\b(?:(?:elementary|grade|primary|boarding|prep)[- ]schools?|academy|kindergarten|daycare|nursery|orphanage|playground)\b/i;
+const SAFE_NEG = 'nsfw, nude, naked, nudity, topless, nipples, genitals, sexual, sex, explicit, porn, erotic, lingerie, underwear, swimsuit, cleavage, suggestive pose, seductive';
 function charLooksMinor(c) {
-  const ch = c?.character || {};
-  const txt = [ch.storyRole, ch.appearance, ch.backstory].filter(Boolean).join(' ');
+  const ch = c?.character || {}; const txt = [ch.storyRole, ch.appearance, ch.backstory].join(' ');
   return CHAR_MINOR.test(txt);
 }
-
-const modelKind = m => safeNsfwName.test(String(m || '')) ? 'nsfw' : 'sfw';
-
+const modelKind = m => NSFW_NAME.test(m) ? 'nsfw' : 'sfw';
 function modelLabel(m) {
   if (!m) return 'Whatever Forge has loaded';
-  const all = [...new Set([...(S.forgeModels || []), S.settings?.image?.forgeModelSfw, S.settings?.image?.forgeModelNsfw].filter(Boolean))];
-  const same = all.filter(x => modelKind(x) === modelKind(m));
-  const n = same.indexOf(m);
+  const all = [...new Set([...(S.forgeModels || []), S.settings.image.forgeModelSfw, S.settings.image.forgeModelNsfw].filter(Boolean))];
+  const same = all.filter(x => modelKind(x) === modelKind(m)); const n = same.indexOf(m);
   return (modelKind(m) === 'nsfw' ? 'NSFW' : 'SFW') + (same.length > 1 ? ' ' + (n + 1) : '');
 }
-
 function autoAssignModels() {
-  const im = S.settings.image;
-  const all = S.forgeModels || [];
+  const im = S.settings.image; const all = S.forgeModels || [];
   if (!im.forgeModelSfw && im.forgeModel && modelKind(im.forgeModel) === 'sfw') im.forgeModelSfw = im.forgeModel;
   if (!im.forgeModelNsfw && im.forgeModel && modelKind(im.forgeModel) === 'nsfw') im.forgeModelNsfw = im.forgeModel;
   if (!im.forgeModelSfw || (all.length && !all.includes(im.forgeModelSfw))) im.forgeModelSfw = all.find(m => modelKind(m) === 'sfw') || all[0] || '';
   if (!im.forgeModelNsfw || (all.length && !all.includes(im.forgeModelNsfw))) im.forgeModelNsfw = all.find(m => modelKind(m) === 'nsfw') || '';
   saveSettings();
 }
-
 function pickForgeModel(c, prompt) {
   const im = S.settings.image;
-  const setting = [c?.title, c?.genre, c?.premise, c?.location].filter(Boolean).join(' ');
-  const unsafe = CHAR_MINOR.test(String(prompt || '')) || charLooksMinor(c) || CHAR_MINOR.test(setting);
+  const setting = [c?.title, c?.genre, c?.premise, c?.location].join(' ');
+  const unsafe = MINOR_WORDS.test(String(prompt || '')) || charLooksMinor(c) || MINOR_SETTING.test(setting);
   const adult = c?.rating === 'Adult (18+)' && !unsafe;
   const model = (adult && im.forgeModelNsfw) || im.forgeModelSfw || im.forgeModel || '';
   return { model, safe: !adult, kind: adult && im.forgeModelNsfw ? 'nsfw' : 'sfw' };
@@ -106,52 +95,24 @@ function localImageUrl(prompt, seed, c) {
   if (!LOCAL.jobs[job.k]) { LOCAL.jobs[job.k] = job; LOCAL.queue.push(job); setTimeout(pumpLocal, 0); }
   return localPH(job.k);
 }
-aasync function pumpLocal() {
-  if (LOCAL.running) return;
-  LOCAL.running = true;
+async function pumpLocal() {
+  if (LOCAL.running) return; LOCAL.running = true;
   try {
     while (LOCAL.queue.length) {
-      /* never paint while the story AI is mid-turn: they'd fight over the graphics card */
-      for (let i = 0; i < 120 && S.busy; i++) await new Promise(r => setTimeout(r, 500));
-      const job = LOCAL.queue.shift();
-      if (!job || LOCAL.url[job.k]) continue;
-
-      const neg = [S.settings.image.forgeNeg || FORGE_NEG, job.safe ? SAFE_NEG : ''].filter(Boolean).join(', ');
-      const payload = {
-        prompt: job.prompt,
-        negative_prompt: neg,
-        seed: job.seed,
-        width: job.W,
-        height: job.H,
-        steps: job.P.steps,
-        cfg_scale: job.P.cfg,
-        sampler_name: job.P.sampler,
-        scheduler: job.P.scheduler,
-        ...(job.model ? { override_settings: { sd_model_checkpoint: job.model } } : {})
-      };
-
+      /* never paint while the story AI is mid-turn: they'd fight over the graphics card (low-memory warnings, slow turns) */
+      for (let w = 0; S.busy && S.settings.image.forgeShare !== false && w < 600; w++) await new Promise(r => setTimeout(r, 1000));
+      const job = LOCAL.queue.pop();   /* newest first: the scene you're looking at paints before old thumbnails */
       try {
-        const res = await fetch(`${forgeUrl()}/sdapi/v1/txt2img`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        const b64 = data?.images?.[0];
-        if (!b64) throw new Error('No image returned');
-        const dataUrl = 'data:image/png;base64,' + b64;
-        LOCAL.url[job.k] = dataUrl;
-        await IDB.put(job.k, dataUrl);
-      } catch (e) {
-        LOCAL.fail[job.k] = true;
-        (LOCAL.failAt ||= {})[job.k] = Date.now();
-      } finally {
-        delete LOCAL.jobs[job.k];
-      }
+        let blob = await IDB.get(job.k);
+        if (!blob) { blob = await DriveImg.get(job.k); if (blob) IDB.put(job.k, blob); }
+        if (!blob && job.alt) { blob = await IDB.get(job.alt) || await DriveImg.get(job.alt); if (blob) IDB.put(job.k, blob); }
+        if (!blob) { blob = await forgeGenerate(job); await IDB.put(job.k, blob); if (S.settings.image.driveSave !== false && Drive.configured()) DriveImg.queue(job.k); }
+        LOCAL.url[job.k] = URL.createObjectURL(blob);
+      } catch (e) { LOCAL.fail[job.k] = e.message || String(e); (LOCAL.failAt = LOCAL.failAt || {})[job.k] = Date.now(); }
+      delete LOCAL.jobs[job.k]; swapLocal(job.k);
     }
-  } finally {
-    LOCAL.running = false;
-  }
+  } finally { LOCAL.running = false; }
+}
 let libRefresh = null;
 function swapLocal(k) {
   const ph = localPH(k); const nu = LOCAL.url[k] || localFailURL(k);
@@ -237,8 +198,9 @@ function imageUrl(img, c) {
   const [W, H] = SIZES[s.size] || SIZES.landscape; const seed = img.seed || 1; const p = encodeURIComponent(prompt);
   if (s.mode === 'template' && s.template.trim()) return s.template.trim().replaceAll('{prompt}', p).replaceAll('{seed}', seed).replaceAll('{width}', W).replaceAll('{height}', H);
   const model = encodeURIComponent(s.polliModel || 'flux');
-  if (s.polliKey.trim()) return `https://gen.pollinations.ai/image/${p}?model=${model}&width=${W}&height=${H}&seed=${seed}&nologo=true&key=${encodeURIComponent(s.polliKey.trim())}`;
-  return `https://image.pollinations.ai/prompt/${p}?model=${model}&width=${W}&height=${H}&seed=${seed}&nologo=true`;
+  const safe = pickForgeModel(c, img.prompt).safe ? '&safe=true' : '';
+  if (s.polliKey.trim()) return `https://gen.pollinations.ai/image/${p}?model=${model}&width=${W}&height=${H}&seed=${seed}&nologo=true${safe}&key=${encodeURIComponent(s.polliKey.trim())}`;
+  return `https://image.pollinations.ai/prompt/${p}?model=${model}&width=${W}&height=${H}&seed=${seed}&nologo=true${safe}`;
 }
 function sceneHTML(m, c) {
   if (!m.image || S.settings.image.mode === 'off') return '';
@@ -572,7 +534,7 @@ Reply with ONLY this JSON:
 function buildTimer() {
   clearInterval(buildTimer.t);
   buildTimer.t = setInterval(() => {
-    const st = S.worlding || S.drafting; if (!st) return clearInterval(buildTimer.t);
+    const st = S.worlding || S.drafting || S.palBuilding; if (!st) return clearInterval(buildTimer.t);
     document.querySelectorAll('.buildsecs').forEach(el => { el.textContent = Math.round((Date.now() - st) / 1000) + 's'; });
   }, 1000);
 }

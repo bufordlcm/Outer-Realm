@@ -122,14 +122,32 @@ def install_voices():
 
 
 def allowed(origin):
-    return origin in ALLOWED or origin.startswith('http://localhost') or origin.startswith('http://127.0.0.1')
+    # exact host match: a prefix test would also let in sites like http://localhost.evil.example
+    if origin.rstrip('/') in ALLOWED:
+        return True
+    try:
+        u = urllib.parse.urlparse(origin)
+        return u.scheme in ('http', 'https') and u.hostname in ('localhost', '127.0.0.1') and not u.path.strip('/')
+    except ValueError:
+        return False
 
 
-def fetch(url, data=None, timeout=20, headers=None, limit=MAX_PAGE):
+class _PublicOnlyRedirects(urllib.request.HTTPRedirectHandler):
+    # a public page must not be able to redirect the reader onto this PC or the home network
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not public_url(newurl):
+            raise urllib.error.HTTPError(newurl, 403, 'redirect to a private address blocked', headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_public_opener = urllib.request.build_opener(_PublicOnlyRedirects)
+
+
+def fetch(url, data=None, timeout=20, headers=None, limit=MAX_PAGE, public=False):
     h = {'User-Agent': UA, 'Accept-Encoding': 'identity', 'Accept-Language': 'en-US,en;q=0.9'}
     h.update(headers or {})
     req = urllib.request.Request(url, data=data, headers=h)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
+    with (_public_opener.open if public else urllib.request.urlopen)(req, timeout=timeout) as r:
         raw = r.read(limit)
         charset = r.headers.get_content_charset() or 'utf-8'
         return r.status, raw.decode(charset, errors='replace'), r.headers.get('Content-Type', '')
@@ -281,7 +299,7 @@ def read(url):
         for pg in pages.values():
             if pg.get('extract'):
                 return pg.get('title', title), pg['extract'][:MAX_TEXT]
-    st, body, ctype = fetch(url)
+    st, body, ctype = fetch(url, public=True)
     if 'html' not in ctype and 'xml' not in ctype and not body.lstrip().startswith('<'):
         return url, body[:MAX_TEXT]
     return readable(body)
@@ -337,7 +355,10 @@ class Helper(http.server.BaseHTTPRequestHandler):
             term = (q.get('q') or [''])[0].strip()
             if not term:
                 return self.reply(400, {'error': 'missing q'})
-            n = max(1, min(10, int((q.get('n') or ['6'])[0] or 6)))
+            try:
+                n = max(1, min(10, int((q.get('n') or ['6'])[0] or 6)))
+            except ValueError:
+                n = 6
             engine, res = search(term, n)
             print('  search [%s] %s -> %d results' % (engine, term[:60], len(res)))
             return self.reply(200, {'engine': engine, 'results': res})
@@ -354,10 +375,12 @@ class Helper(http.server.BaseHTTPRequestHandler):
         return self.reply(404, {'error': 'unknown'})
 
     def forward(self, method):
+        # check every request, Forge's too: otherwise any website open in your browser could
+        # send commands to Forge through this helper (it would just not see the answer)
+        origin = self.headers.get('Origin') or ''
+        if origin and not allowed(origin):
+            return self.reply(403, {'error': 'not allowed'})
         if self.path.startswith('/iq/'):
-            origin = self.headers.get('Origin') or ''
-            if origin and not allowed(origin):
-                return self.reply(403, {'error': 'not allowed'})
             return self.ironquill()
         length = int(self.headers.get('Content-Length') or 0)
         body = self.rfile.read(length) if length else None
