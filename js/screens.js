@@ -413,23 +413,35 @@ function importHTML() {
 /* the model picker: a real drop-down with every model this key can use, recommended ones first.
    (A typed box with suggestions hides the list until you clear it, and phones don't show it at all.) */
 const MODELS_LOADED = new Set();
+/* the model picker: our own list instead of a native drop-down, so it looks the same on every phone and
+   desktop (phones ignore colours inside native drop-downs). Recommended models are green and on top. */
+function modelGroups(c) {
+  const ids = arr(c.models); const info = arr(c.modelInfo);
+  const rec = c.preset === 'ollama' ? [] : modelCandidates(c, ids.map(id => ({ id }))).slice(0, 4).filter(id => ids.includes(id));
+  const story = c.preset === 'ollama' ? ids.filter(id => STORY_ONLY.test(id)) : [];
+  const rest = ids.filter(id => !rec.includes(id) && !story.includes(id));
+  const free = id => info.find(m => m.id === id)?.free && !/:free$/.test(id);
+  return { rec, story, rest, free };
+}
+function modelListHTML(c) {
+  const q = String(S.modelQ || '').toLowerCase().trim(); const g = modelGroups(c);
+  const f = list => list.filter(id => !q || id.toLowerCase().includes(q));
+  const row = (id, good) => `<button class="mrow ${good ? 'good' : ''} ${id === c.model ? 'cur' : ''}" data-act="modelset" data-id="${c.id}" data-m="${esc(id)}">${good ? '★ ' : ''}${esc(id)}${g.free(id) ? '<small>free</small>' : ''}${id === c.model ? '<small>in use</small>' : ''}</button>`;
+  const sec = (label, list, good) => f(list).length ? `<div class="mgrp">${label}</div>${f(list).map(id => row(id, good)).join('')}` : '';
+  const all = [...g.rec, ...g.story, ...g.rest];
+  const body = (c.modelsLoading && !all.length ? '<p class="hint">Loading models…</p>' : '')
+    + sec('★ Recommended', g.rec, true) + sec('★ Story models (best for writing scenes)', g.story, true)
+    + sec(g.rec.length || g.story.length ? 'Other models' : 'Models', g.rest, false)
+    + (q && !all.some(id => id.toLowerCase() === q) ? `<button class="mrow" data-act="modelset" data-id="${c.id}" data-m="${esc(S.modelQ.trim())}">✎ Use “${esc(S.modelQ.trim())}”</button>` : '')
+    + (!all.length && !c.modelsLoading && !q ? '<p class="hint">No models found for this key. Type a model name above.</p>' : '');
+  return body;
+}
 function modelSelectHTML(c) {
   if (!MODELS_LOADED.has(c.id) && !c.modelsLoading && c.baseUrl) { MODELS_LOADED.add(c.id); loadConnModels(c); }   /* fresh list once per visit */
-  const ids = arr(c.models); const info = arr(c.modelInfo);
-  if (c.typing || (!ids.length && !c.modelsLoading)) return `<input class="grow" type="text" data-conn="${c.id}" data-field="model" value="${esc(c.model)}" placeholder="Model name">${ids.length ? `<button class="btn sm ghost" data-act="modellist" data-id="${c.id}">List</button>` : ''}`;
-  const rec = modelCandidates(c, ids.map(id => ({ id }))).slice(0, c.preset === 'ollama' ? 0 : 4).filter(id => ids.includes(id));
-  const free = id => info.find(m => m.id === id)?.free;
-  const label = id => `${id}${free(id) && !/:free$/.test(id) ? ' · free' : ''}`;
-  const opt = (id, cls = '') => `<option value="${esc(id)}" ${id === c.model ? 'selected' : ''} ${cls}>${esc(label(id))}</option>`;
-  const story = c.preset === 'ollama' ? ids.filter(id => STORY_ONLY.test(id)) : [];
-  return `<select class="grow" data-conn="${c.id}" data-field="model">
-    ${!c.model ? '<option value="" selected>Choose a model…</option>' : ''}
-    ${c.model && !ids.includes(c.model) ? `<option value="${esc(c.model)}" selected>${esc(c.model)}</option>` : ''}
-    ${c.modelsLoading && !ids.length ? '<option disabled>Loading models…</option>' : ''}
-    ${rec.length ? `<optgroup label="★ Recommended">${rec.map(id => opt(id, 'style="color:#4ade80"')).join('')}</optgroup>` : ''}
-    ${story.length ? `<optgroup label="★ Story models (best for writing scenes)">${story.map(id => opt(id, 'style="color:#4ade80"')).join('')}</optgroup>` : ''}
-    ${(rest => rest.length ? `<optgroup label="${rec.length || story.length ? 'Other models' : 'Models'} (${rest.length})">${rest.map(id => opt(id)).join('')}</optgroup>` : '')(ids.filter(id => !rec.includes(id) && !story.includes(id)))}
-    <option value="__type">✎ Type a model name…</option></select>`;
+  const open = S.modelPick === c.id; const good = modelGroups(c);
+  const isGood = c.model && (good.rec.includes(c.model) || good.story.includes(c.model));
+  return `<button class="mpick grow ${isGood ? 'good' : ''}" data-act="modelpick" data-id="${c.id}">${c.model ? `${isGood ? '★ ' : ''}${esc(c.model)}` : 'Choose a model…'}<span class="mchev">${open ? '▲' : '▼'}</span></button>`
+    + (open ? `</div><div class="mpanel"><input id="modelQ" data-cid="${c.id}" placeholder="Search, or type any model name…" value="${esc(S.modelQ || '')}" autocomplete="off"><div class="mlist" id="mlist">${modelListHTML(c)}</div></div><div class="row" style="margin-top:6px">` : '');
 }
 async function loadConnModels(c) {
   c.modelsLoading = true;

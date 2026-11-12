@@ -78,6 +78,8 @@ document.addEventListener('click', e => {
     case 'gset': setPath(S.settings, el.dataset.path, JSON.parse(el.dataset.v)); saveSettings(); musicScene(cur()); musicLevel(); renderModal(); break;
     case 'musicskip': musicSkip(); break;
     case 'cidreset': S.settings.drive.clientId = DEFAULT_CLIENT_ID; saveSettings(); renderModal(); toast('Client ID fixed. Tap Connect & sync.'); break;
+    case 'modelpick': S.modelPick = S.modelPick === el.dataset.id ? null : el.dataset.id; S.modelQ = ''; refreshConnUI(); break;
+    case 'modelset': { const cn = conns().find(x => x.id === el.dataset.id); if (cn && el.dataset.m) { cn.model = el.dataset.m.trim(); cn.status = ''; cn.note = ''; S.modelPick = null; S.modelQ = ''; saveSettings(); setupConn(cn); } break; }
     case 'modellist': { const cn = conns().find(x => x.id === el.dataset.id); if (cn) { cn.typing = false; refreshConnUI(); } break; }
     case 'helpersame': S.settings.ai.helperAuto = 'off'; S.settings.ai.helperModel = ''; saveSettings(); renderModal(); toast('Your story model now does every step. Turns should start faster.'); break;
     case 'tab': S.modalTab = el.dataset.id; S.models = null; renderModal(); $('#modalBody').scrollTop = 0; break;
@@ -225,6 +227,7 @@ document.addEventListener('input', e => {
     touch(c); renderHUD(); scheduleSync();
     if (el.tagName === 'SELECT' && S.modal) renderModal();
   } else if (el.id === 'rollHow') { const r = cur()?.pendingRoll; if (r) { r.how = el.value.slice(0, 400); touch(cur()); } }
+  else if (el.id === 'modelQ') { S.modelQ = el.value; const c2 = conns().find(x => x.id === el.dataset.cid); const l = $('#mlist'); if (c2 && l) l.innerHTML = modelListHTML(c2); }
   else if (el.id === 'input') autoGrow(el);
   else if (el.id === 'askText') S.askDraft = el.value;
   else if (el.dataset.pedit) { const p = arr(cur()?.party).find(x => x.id === el.dataset.pedit); if (p) { p[el.dataset.k] = el.value; touch(cur()); } }
