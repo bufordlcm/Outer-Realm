@@ -221,8 +221,10 @@ function liveNarration(partial) {
   s = s.replace(/<[a-z]{0,6}$/i, '').replace(/`{1,2}$/, '');
   return s.replace(/^\s*(GM|Game Master|Narrator)\s*:\s*/i, '').trimEnd();
 }
+/* {Name} speaker tags tell the voice system who is talking; they are never shown */
+const stripSpeakerTags = t => String(t || '').replace(/\{[^{}\n]{1,40}\}(?=\s*[“"])/g, '').replace(/\{[^{}\n]{0,40}$/, '');
 function md(t) {
-  return String(t || '').trim().split(/\n{2,}/).map(p => '<p>' + esc(p)
+  return stripSpeakerTags(t).trim().split(/\n{2,}/).map(p => '<p>' + esc(p)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|[^*\w])\*(?!\s)([^*\n]+?)\*(?!\w)/g, '$1<em>$2</em>')
     .replace(/(^|[\s(])_(?!\s)([^_\n]+?)_(?=$|[\s.,!?)])/g, '$1<em>$2</em>')
@@ -487,7 +489,13 @@ HOW TO WRITE A TURN
 - Second person ("you"), present tense, concrete sensory detail. Other characters talk in their own voices with real dialogue and want things of their own.
 - The world is honest and dangerous: actions have consequences and failure is real. Stay consistent with everything below.
 - Never list options or choices, never add notes, headings, numbers, stats or JSON. Only story text.
-- Text inside (( double parentheses )) is an out-of-character question: answer it briefly as yourself and don't advance the story.`;
+- Text inside (( double parentheses )) is an out-of-character question: answer it briefly as yourself and don't advance the story.
+
+DIALOGUE AND VOICES (the app reads the story aloud, with a different voice for each character)
+- Put ONLY words spoken out loud inside double quotes "like this".
+- Right before each opening quote, write the speaker's name in curly braces: {Sister Maudlin}"Drink, child." The braces are hidden from the player. Tag every quote, even several from the same speaker. For an unnamed speaker use a short label: {Guard}"Halt!"
+- Names, titles, labels and special terms are never in double quotes: write blessed water or *blessed water*, never "blessed water". Thoughts, signs and written words go in *italics*.
+- Example: The sergeant lifts his lantern. {Sergeant Holt}"Who goes there?" Behind him, Elowen steps into the light. {Elowen}"Friends," she says. "We seek the inn."  (wrong: the last quote has no tag; write {Elowen}"We seek the inn.")`;
 }
 function writerModules(c) {
   const out = [];

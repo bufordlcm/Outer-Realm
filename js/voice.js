@@ -97,22 +97,44 @@ function sceneSegments(c, text, fallback = null) {
   const t = cleanSpeech(text); const cast = voiceCast(c);
   const findName = s => { for (const x of cast) { const re = new RegExp(`(^|[^\\w'])${x.key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[^\\w]|$)`); if (re.test(s)) return x; } return null; };
   const segs = []; let last = { m: null, f: null, any: null };
-  const re = /[“"]([^”"]{1,800})[”"]/g; let i = 0, m;
+  const re = /(?:\{([^{}\n]{1,40})\}\s*)?[“"]([^”"]{1,800})[”"]/g; let i = 0, m;
   const push = (who, text) => { text = text.replace(/\s+/g, ' ').trim(); if (!text || !/[a-z0-9]/i.test(text)) return; const p = segs[segs.length - 1]; if (p && p.who === who) p.text += ' ' + text; else segs.push({ who, text }); };
   while ((m = re.exec(t))) {
+    /* "blessed water", "the Pale Mother": short quoted names or labels are narration, not speech.
+       Speech ends with punctuation inside the quotes, runs five words or more, or has a speech tag next to it. */
+    const tag = (m[1] || '').trim();
+    if (tag) {   /* the GM named the speaker: no guessing needed */
+      push(null, t.slice(i, m.index));
+      const g = /^\W*(she|her)\b/i.test(t.slice(re.lastIndex, re.lastIndex + 30)) ? 'female' : /^\W*(he|his|him)\b/i.test(t.slice(re.lastIndex, re.lastIndex + 30)) ? 'male' : '';
+      let who = findName(tag);
+      if (!who) { c.voiceMap = c.voiceMap || {}; const k = tag.toLowerCase(); const ent = c.voiceMap[k] = c.voiceMap[k] || { name: tag }; if (g && !ent.sex) ent.sex = g; who = { name: tag, ent }; }
+      const gg = genderOf(who.ent || who); if (gg) last[gg] = who; last.any = who;
+      push(who, m[2]); i = re.lastIndex; continue;
+    }
+    const inner = m[2].trim(); const tagNext = SPEECH_TAG.test(t.slice(re.lastIndex, re.lastIndex + 60)) || /^\s*,?\s*(she|he|they)\s+\w+s\b/i.test(t.slice(re.lastIndex, re.lastIndex + 30));
+    const speech = /[.,!?…—–-]$/.test(inner) || inner.split(/\s+/).length >= 5 || tagNext;
+    if (!speech) { const p = segs[segs.length - 1]; const chunkText = t.slice(i, re.lastIndex).replace(/[“”"]/g, ''); if (p && p.who === null) p.text += ' ' + chunkText.replace(/\s+/g, ' ').trim(); else push(null, chunkText); i = re.lastIndex; continue; }
     const before = t.slice(i, m.index); push(null, before);
     const rawAfter = t.slice(re.lastIndex, re.lastIndex + 140).split(/(?<=[.!?])\s|[“"]/)[0];
     /* text after a quote only names the speaker when it's a tag ("…," she says / "…!" Holt shouts), not a new sentence */
-    const isTag = /[,—–-]\s*$/.test(m[1]) || /^\s*[a-z]/.test(rawAfter) || (/[!?]\s*$/.test(m[1]) && SPEECH_TAG.test(rawAfter));
+    const isTag = /[,—–-]\s*$/.test(m[2]) || /^\s*[a-z]/.test(rawAfter) || (/[!?]\s*$/.test(m[2]) && SPEECH_TAG.test(rawAfter));
     const after = isTag ? rawAfter : '';
     const lead = (before.split(/(?<=[.!?])\s+/).filter(x => x.trim()).pop() || '').slice(-140);
     let who = findName(after);
-    if (!who) { const pron = after.toLowerCase(); if (/^\W*(she|her)\b/.test(pron) && last.f) who = last.f; else if (/^\W*(he|his|him)\b/.test(pron) && last.m) who = last.m; }
+    /* "…," he mutters: a man is speaking. Use the last man who spoke, or an unnamed one ("the guard") with a male voice */
+    const tagG = /^\W*(she|her)\b/i.test(after) ? 'f' : /^\W*(he|his|him)\b/i.test(after) ? 'm' : '';
+    if (!who && tagG) {
+      const nounHit = lead.match(/\b(?:a|an|the|one)\s+((?:old|young|tall|fat|thin|grey|gray|nearby|other)\s+)?([a-z]+)\b(?![^.]*\b(?:a|an|the)\s+[a-z]+\b)/i);
+      const recent = last[tagG];
+      if (recent && (!nounHit || genderOf(recent.ent || recent) === tagG && findName(lead) === recent)) who = recent;
+      else if (recent && !nounHit) who = recent;
+      else { const nm = nounHit ? 'the ' + nounHit[2].toLowerCase() : (tagG === 'f' ? 'a woman' : 'a man'); c.voiceMap = c.voiceMap || {}; const ent = c.voiceMap[nm] = c.voiceMap[nm] || { name: nm, sex: tagG === 'f' ? 'female' : 'male' }; who = { name: nm, ent }; }
+    }
     if (!who) who = findName(lead);
     if (!who) { const pron = lead.toLowerCase(); if (/\bshe\b|\bher\b/.test(pron) && last.f) who = last.f; else if (/\bhe\b|\bhis\b|\bhim\b/.test(pron) && last.m) who = last.m; }
     if (!who) who = last.any || fallback;
     if (who) { const g = genderOf(who.ent || who); if (g) last[g] = who; last.any = who; }
-    push(who || { name: 'Stranger', ent: null }, m[1]);
+    push(who || { name: 'Stranger', ent: null }, m[2]);
     i = re.lastIndex;
   }
   push(null, t.slice(i));
@@ -120,14 +142,14 @@ function sceneSegments(c, text, fallback = null) {
 }
 /* what to say for one message, with whose voice */
 function messageSegments(c, m) {
-  if (m.role === 'comp') {
-    const p = arr(c.party).find(x => x.id === m.compId); const me = p ? { name: p.name, ent: p } : { name: m.name || 'Companion', ent: null };
-    const t = cleanSpeech(m.text);
-    if (/[“"]/.test(t)) return sceneSegments(c, t, me);
-    const segs = []; t.split(/(\*[^*]+\*)/).forEach(part => { const a = /^\*.*\*$/.test(part); const s = part.replace(/\*/g, '').trim(); if (s) segs.push({ who: a ? null : me, text: s }); });
-    return segs;
+  /* one known speaker: *actions in asterisks* are narration, everything else is that speaker talking */
+  const own = (me, text) => { const segs = []; cleanSpeech(stripSpeakerTags(text)).split(/(\*[^*]+\*)/).forEach(part => { const act = /^\*.*\*$/.test(part); const s = part.replace(/\*/g, '').replace(/[“”"]/g, '').trim(); if (s && /[a-z0-9]/i.test(s)) segs.push({ who: act ? null : me, text: s }); }); return segs; };
+  if (m.role === 'comp') { const p = arr(c.party).find(x => x.id === m.compId); return own(p ? { name: p.name, ent: p } : { name: m.name || 'Companion', ent: null }, m.text); }
+  if (m.role === 'player') {   /* the player: quoted words are their character speaking, the rest is what they do (read by the narrator) */
+    const me = { name: c.character.name, ent: c.character }; const t = cleanSpeech(m.text);
+    if (!/[“"]/.test(t)) return [{ who: null, text: t }];
+    const segs = []; t.split(/([“"][^”"]+[”"])/).forEach(part => { const q = /^[“"]/.test(part); const s = part.replace(/[“”"]/g, '').trim(); if (s) segs.push({ who: q ? me : null, text: s }); }); return segs;
   }
-  if (m.role === 'player') return [{ who: { name: c.character.name, ent: c.character }, text: cleanSpeech(m.text) }];
   return sceneSegments(c, m.text);
 }
 

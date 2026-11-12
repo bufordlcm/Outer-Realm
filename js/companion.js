@@ -57,7 +57,13 @@ Mara: *leans on the counter* "You're late again."
 - Actions go in *asterisks* and speech in "quotes". In a group they can talk to each other too.
 - Narration (the scene, atmosphere, events) goes on lines without a name. Keep it brief. The world moves on its own: time passes, things happen, other people come and go.
 - ${sceneLen().rule}
-- Stay inside the world. Never mention being an AI, rules or stats. Text inside (( double parentheses )) is an out-of-character question: answer it briefly as the narrator.`;
+- Stay inside the world. Never mention being an AI, rules or stats. Text inside (( double parentheses )) is an out-of-character question: answer it briefly as the narrator.
+
+DIALOGUE AND VOICES (the app reads the story aloud, with a different voice for each character)
+- Put ONLY words spoken out loud inside double quotes "like this".
+- Right before each opening quote, write the speaker's name in curly braces: {Sister Maudlin}"Drink, child." The braces are hidden from the player. Tag every quote, even several from the same speaker. For an unnamed speaker use a short label: {Guard}"Halt!"
+- Names, titles, labels and special terms are never in double quotes: write blessed water or *blessed water*, never "blessed water". Thoughts, signs and written words go in *italics*.
+- Example: The sergeant lifts his lantern. {Sergeant Holt}"Who goes there?" Behind him, Elowen steps into the light. {Elowen}"Friends," she says. "We seek the inn."  (wrong: the last quote has no tag; write {Elowen}"We seek the inn.")`;
 }
 function talkBarHTML(c) {
   if (!isCompanion(c)) return ''; const act = activeParty(c); if (act.length < 2) return '';

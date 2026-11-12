@@ -369,7 +369,7 @@ function storyMD(c) {
   const lines = [`# ${c.title}`, '', `*${c.genre || ''}*`, '', c.premise, '', '---', ''];
   for (const m of c.messages) {
     if (m.hidden || m.role === 'err' || m.streaming) continue;
-    if (m.role === 'gm') lines.push(m.text, '');
+    if (m.role === 'gm') lines.push(stripSpeakerTags(m.text), '');
     else if (m.role === 'player') lines.push(`> **${c.character.name}:** ${m.text}`, '');
     else if (m.role === 'roll') lines.push(`*🎲 ${m.text}*`, '');
     else if (m.role === 'sys') lines.push(`**${m.text}**`, '');

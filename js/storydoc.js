@@ -85,7 +85,7 @@ function docSections(c) {
     premise: c.premise || '', world: c.world || '', roadmap: c.roadmap || '', progress: roadmapProgressText(c), secrets: c.secrets || '',
     factions: arr(c.factions).map(f => `${f.name}: ${f.desc || ''}`.trim()).join('\n'),
     people: peopleOf(c).map(e => `${e.name}: ${String(e.text || '').replace(/\n/g, ' ')}`).join('\n'),
-    pinned: arr(c.pinned).join('\n'), memory: arr(c.memory).join('\n'), summary: c.summary || '',
+    pinned: arr(c.pinned).join('\n'), memory: arr(c.memory).join('\n'), summary: stripSpeakerTags(c.summary || ''),
     character: [`${ch.name || ''}${ch.storyRole ? ', ' + ch.storyRole : ''}${isCompanion(c) ? '' : ` · Level ${ch.level || 1} · HP ${ch.hp}/${ch.maxHp} · ${ch.gold ?? 0} gold`}`, ch.appearance || '', ch.backstory || ''].filter(Boolean).join('\n'),
     notes: c.gmNotes || ''
   };
