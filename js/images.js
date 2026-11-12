@@ -416,7 +416,19 @@ async function syncNow(interactive) {
     const idx = idxId ? await Drive.getJSON(idxId) : null;
     if (idx) { for (const [id, t] of Object.entries(idx.deleted || {})) S.deleted[id] = Math.max(S.deleted[id] || 0, t); if (mergeSettings(idx.settings)) changed++; }
     /* 2. adventure folders */
-    const folders = (await Drive.list(`'${root}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`)).filter(f => f.appProperties?.iqCampaign);
+    const allFolders = await Drive.list(`'${root}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`);
+    /* adventure folders copied or uploaded from another Drive lose their hidden tag: find their campaign.json and tag them again */
+    const seen = LS.get('iq.adoptSeen', {});
+    for (const f of allFolders) {
+      if (f.appProperties?.iqCampaign || seen[f.id]) continue;
+      seen[f.id] = 1;
+      try {
+        const fid = await Drive.fileId(f.id, 'campaign.json'); const data = fid ? await Drive.getJSON(fid) : null;
+        if (data && data.id) { f.appProperties = { iqCampaign: data.id, iqUpdated: String(data.updatedAt || 0) }; await Drive.patch(f.id, { appProperties: f.appProperties }); }
+      } catch (e) { console.warn('Could not read folder', f.name, e); }
+    }
+    LS.set('iq.adoptSeen', seen);
+    const folders = allFolders.filter(f => f.appProperties?.iqCampaign);
     const remote = {}; for (const f of folders) remote[f.appProperties.iqCampaign] = f;
     for (const [id, f] of Object.entries(remote)) {
       const rUpd = num(f.appProperties.iqUpdated);
