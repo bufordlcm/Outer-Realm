@@ -62,11 +62,13 @@ function panelCampHTML(c) {
   const seg = 6, on = Math.round(danger * seg);
   const where = `${c.location || 'Unknown place'} · ${timeLabel(worldOf(c))}`;
   return `<div class="lbl">${icon('scroll')} ${isCompanion(c) ? 'The story' : 'Objective'}</div><p class="ptext">${esc(c.goal || String(c.premise || '').slice(0, 400))}</p>
+    ${(() => { const r = roadmapState(c); if (!r) return ''; const n = r.acts.length, at = Math.min(num(c.rmAct), n); return `<div class="lbl">${icon('book')} Chapter ${Math.min(at + 1, n)} of ${n}</div><div class="meter chap">${r.acts.map((_, i) => `<i class="${i < at ? 'on done' : i === at ? 'on' : ''}"></i>`).join('')}</div>`; })()}
     <div class="lbl">${icon('compass')} Now</div><p class="ptext">${esc(where)}${c.combat ? ' · <b>In combat</b>' : ''}</p>
     ${!isCompanion(c) && live.length ? `<div class="lbl">Danger</div><div class="meter">${Array.from({ length: seg }, (_, i) => `<i class="${i < on ? 'on' : ''}"></i>`).join('')}</div><p class="hint">Something is building in the world. It grows when time passes or things go wrong.</p>` : ''}
     <div class="lbl">${icon('swords')} Quests <span class="count">${quests.filter(q => q.status !== 'active').length}/${quests.length}</span></div>
     ${quests.length ? quests.slice().sort((a, b) => (a.status === 'active' ? 0 : 1) - (b.status === 'active' ? 0 : 1)).map(q => `<div class="quest2 ${q.status}"><span>${esc(q.title)}</span><em>${q.status === 'completed' ? 'Done' : q.status === 'failed' ? 'Failed' : 'Active'}</em></div>`).join('') : '<p class="hint">Quests appear here as the story gives them to you.</p>'}
-    <button class="btn wide" data-act="journal" style="margin-top:14px">${icon('book')} Journal: quests, map, notes</button>`;
+    <button class="btn wide" data-act="journal" style="margin-top:14px">${icon('book')} Journal: quests, map, notes</button>
+    ${c.storyDoc?.id ? `<a class="btn wide" href="${StoryDoc.url(c.storyDoc.id)}" target="_blank" rel="noopener" style="margin-top:8px">${icon('scroll')} Open the Story Doc</a><p class="hint">Edit it in Google Docs. Your changes reach the GM after the next sync.</p>` : (Drive.configured() ? '<p class="hint">The Story Doc is created in your Drive folder on the next sync.</p>' : '')}`;
 }
 function panelWorldHTML(c) {
   const party = activeParty(c); const people = peopleOf(c).slice().reverse();

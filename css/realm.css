@@ -231,3 +231,6 @@ input:focus,textarea:focus,select:focus{border-color:var(--accent) !important;ou
 .hpbar{background:#262a55 !important}
 .hpbar i{background:linear-gradient(90deg,#f43f5e,#fb7185) !important}
 .hpbar.ok i{background:linear-gradient(90deg,#34d399,#4ade9b) !important}
+.meter.chap i.on{background:linear-gradient(90deg,#8f80ff,#b3a8ff)}
+.meter.chap i.on.done{background:#5a4fd0}
+a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:center;justify-content:center;gap:8px}

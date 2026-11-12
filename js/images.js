@@ -429,14 +429,18 @@ async function syncNow(interactive) {
       }
     }
     for (const id of Object.keys(S.campaigns)) if (S.deleted[id] && S.deleted[id] >= (S.campaigns[id].updatedAt || 0)) { delete S.campaigns[id]; changed++; }
+    /* 2b. Story Docs: pick up anything edited in Google Docs */
+    let docs = {};
+    try { docs = await StoryDoc.listAll(); changed += await StoryDoc.pullEdits(docs, id => remote[id]?.id); } catch (e) { console.warn('Story Docs', e); }
     saveCampaigns();
     /* 3. push local adventures that are newer */
     for (const c of Object.values(S.campaigns)) {
       const f = remote[c.id]; const rUpd = num(f?.appProperties?.iqUpdated);
-      if (f && rUpd >= (c.updatedAt || 0)) continue;
+      if (f && rUpd >= (c.updatedAt || 0)) { if (!docs[f.id]) try { await StoryDoc.write(c, f.id, null); saveCampaigns(); } catch (e) { console.warn('Story Doc', e); } continue; }
       const name = safeName(c.title);
       let folderId = f?.id;
       if (!folderId) folderId = await Drive.createFolder(name, root, { iqCampaign: c.id, iqUpdated: String(c.updatedAt || 0) });
+      try { await StoryDoc.write(c, folderId, docs[folderId] || (c.storyDoc?.folder === folderId ? c.storyDoc : null)); } catch (e) { console.warn('Story Doc', e); }
       await Drive.put(folderId, 'campaign.json', JSON.stringify(c), 'application/json');
       await Drive.put(folderId, 'Character Sheet.md', characterMD(c), 'text/markdown');
       await Drive.put(folderId, 'Story Log.md', storyMD(c), 'text/markdown');
@@ -460,7 +464,8 @@ function setSync(t) { S.syncStatus = t; const a = $('#syncline'); if (a) a.textC
    ========================================================================= */
 function newDraft(sc = SCENARIOS[0]) {
   return { scenario: sc.id, title: sc.title, genre: sc.genre, premise: sc.premise, tone: sc.tone, art: sc.art, rating:'PG-13', magicCost: sc.magic || 'gm', gmNotes:'',
-    worldPrompt:'', world:'', secrets:'', plan:'', threats:[], factions:[], gmPreset:'storyteller', gmName:'', gmStyle:'',
+    worldPrompt:'', world: sc.world || '', secrets: sc.secrets || '', plan: sc.plan || '', roadmap: sc.roadmap || '', threats: (sc.threats || []).map(t => ({ ...t })), factions: (sc.factions || []).map(f => ({ ...f })),
+    people: (sc.people || []).map(p => ({ ...p })), pinned: [...(sc.pinned || [])], gmPreset:'storyteller', gmName:'', gmStyle:'',
     concept:'', name:'', pronouns:'', storyRole:'', appearance:'', backstory:'',
     stats: Object.fromEntries(STATS.map(k => [k, 8])), traits: [], gear: (sc.gear || []).map(normGear), signatures: [], tpToEp: 0, gold: START_GOLD };
 }
@@ -494,11 +499,13 @@ const WORLD_RULES = `You design the setting for IRONQUILL, a solo tabletop RPG r
 - secrets: 3-5 bullet lines of hidden truths and plot threads the GM will reveal only through play (a traitor, a hidden cause, a coming threat).
 - magic_cost: "free" for worlds where casters use magic freely (e.g. wizarding schools), "strain" where magic is costly or rare, "none" where the player has no magic.
 - art_style: a short phrase for an illustrator matching the world's look.
-- plan: 3-5 sentences of hidden campaign direction: acts, likely twists, and how the story will test the character.
+- plan: 3-5 sentences of hidden campaign direction: likely twists, and how the story will test the character.
+- roadmap: the plot in 3-5 acts, as text. Each act on its own line as "Act 1: Short title | the act's goal", followed by 3-4 beats, each on a line starting "- ". Beats are things that can happen in the world (discoveries, arrivals, reveals, dangers), never things the player character must decide or do.
+- people: 4-6 key characters: {"name","text":"one sentence: who they are","where","sex":"male|female","feel":"friendly|neutral|wary|hostile"}. Adults only.
 - threats: 2-3 dangers that advance over time if ignored, each with max 4-8 and what happens when it fills.
 - factions: 3-5 groups with a one-line description each.
 Reply with ONLY this JSON:
-{"title":"","genre":"","premise":"","tone":"","art_style":"","magic_cost":"free","world":"- ...","secrets":"- ...","plan":"","threats":[{"name":"","max":6,"effect":""}],"factions":[{"name":"","desc":""}]}`;
+{"title":"","genre":"","premise":"","tone":"","art_style":"","magic_cost":"free","world":"- ...","secrets":"- ...","plan":"","roadmap":"Act 1: ... | ...\n- ...","threats":[{"name":"","max":6,"effect":""}],"factions":[{"name":"","desc":""}],"people":[{"name":"","text":"","where":"","sex":"","feel":""}]}`;
 async function worldWithAI() {
   const D = S.draft; if (!D || S.worlding) return;
   if (!textReady()) { toast('Set up your Story AI first.'); return openModal('settings', 'ai'); }
@@ -515,6 +522,8 @@ async function worldWithAI() {
     if (['free','strain','none'].includes(j.magic_cost)) D.magicCost = j.magic_cost;
     D.world = list(j.world).slice(0, 3000); D.secrets = list(j.secrets).slice(0, 1500);
     D.plan = String(j.plan || '').slice(0, 2000); D.threats = arr(j.threats).slice(0, 5); D.factions = arr(j.factions).slice(0, 8);
+    D.roadmap = (Array.isArray(j.roadmap) ? j.roadmap.map(a => typeof a === 'string' ? a : `Act ${a.act || ''}: ${a.title || ''} | ${a.goal || ''}\n${arr(a.beats).map(b => '- ' + b).join('\n')}`).join('\n') : String(j.roadmap || '')).slice(0, 3000);
+    if (arr(j.people).length) D.people = arr(j.people).slice(0, 8).filter(p => p?.name);
     D.scenario = 'custom';
     toast('World ready — read it over and change anything. GM secrets stay hidden unless you open them.', 5000);
   } catch (e) { toast(e.message, 6000); }
@@ -559,7 +568,7 @@ function createCampaign(s0 = false) {
     id, rules: 2, title: D.title.trim() || D.name.trim() + '\'s Tale', genre: D.genre.trim(), premise: D.premise.trim(), tone: D.tone.trim(), rating: D.rating,
     artStyle: D.art.trim(), gmNotes: D.gmNotes.trim(), magicCost: D.magicCost, world: (D.world || '').trim(), secrets: (D.secrets || '').trim(),
     gm: { preset: D.gmPreset || 'storyteller', name: (D.gmName || '').trim() || 'The Narrator', style: (D.gmStyle || '').trim() }, pinned: [], saves: [], tableTalk: [],
-    plan: (D.plan || '').trim(), threats: [], factions: [], phase: s0 ? 'session0' : 'play', session0: [], createdAt: Date.now(), updatedAt: Date.now(),
+    plan: (D.plan || '').trim(), roadmap: (D.roadmap || '').trim(), rmAct: 0, rmDone: [], threats: [], factions: [], phase: s0 ? 'session0' : 'play', session0: [], createdAt: Date.now(), updatedAt: Date.now(),
     character: { name: D.name.trim(), pronouns: D.pronouns.trim(), storyRole: D.storyRole.trim(), appearance: D.appearance.trim(), backstory: D.backstory.trim(),
       stats: { ...D.stats }, level: 1, hp: maxHp, maxHp, ep: Math.max(0, num(D.tpToEp)), tp: b.left, gold: num(D.gold),
       traits: D.traits.map(t => ({ ...t, source:'build' })), gear: D.gear.filter(g => g.name.trim()), signatures: D.signatures.filter(s => s.name.trim()), injuries: [], momentum: 0, strain: 0 },

@@ -12,6 +12,7 @@ An AI tabletop RPG that runs on your own PC: the story AI (Ollama), pictures (Fo
 | `css/app.css` | Base styles for every screen |
 | `css/realm.css` | The Outer Realm look (navy and violet theme, home screens, story panel, choice cards) |
 | `js/core.js` | Rules, helpers, built-in content, app state |
+| `js/stories.js` | The built-in stories written out in full: world, secrets, factions, threats, key people, plot roadmap. Add new stories here |
 | `js/ai.js` | AI connections and the GM's prompts |
 | `js/turn.js` | One turn: dice referee, web lookup, writer, agency guard, bookkeeper, rolls |
 | `js/story.js` | Session zero, death, storybook, menus, People tracker, multiplayer |
@@ -19,6 +20,7 @@ An AI tabletop RPG that runs on your own PC: the story AI (Ollama), pictures (Fo
 | `js/companion.js` | Companion mode |
 | `js/research.js` | World research and lookups during play |
 | `js/images.js` | Pictures: Pollinations, Forge on your PC, Drive picture storage |
+| `js/storydoc.js` | Plot roadmap (acts and beats the GM steers toward) and the two-way Story Doc: one Google Doc per story in its Drive folder |
 | `js/screens.js` | Character builder, game screen, settings |
 | `js/setup.js` | Setup wizard, keys, backup |
 | `js/home.js` | Home: My Games, Discover Campaigns, Characters, Gallery |
@@ -396,3 +398,11 @@ Tapping **New adventure** asks how you want to play:
 ## Privacy
 
 Your key is stored only in your browser (and in Drive if you opt in). It is sent only to the AI provider you picked. Image prompts go to the image service. Nothing goes anywhere else.
+
+---
+
+## Plot roadmaps and the Story Doc
+
+**Roadmap.** Every story can have a plot roadmap: `Act 1: Title | goal` on one line, then that act's beats on lines starting with `-`. The GM steers gently toward the current act's beats (the player's choices always come first), the bookkeeper ticks beats off as they happen, and a "Chapter N begins" note appears when an act closes. Edit it in the builder (under the spoilers), in Story tools, or in the Story Doc. The story panel shows "Chapter N of M".
+
+**Story Doc.** On each Drive sync the app writes a Google Doc called *Story Doc* inside the story's Drive folder: premise, world, roadmap, where the story is now, secrets, factions, people, pinned facts, things to remember, story so far, player character, and notes for the GM. Edit any section in Google Docs (keep the `§` headings) and the next sync pulls your changes into the story, so the GM uses them from the next turn. "Where the story is now" and "Player character" are written by the app only.

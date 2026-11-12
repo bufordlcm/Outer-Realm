@@ -44,6 +44,7 @@ function bookkeeperSpec(c, hasCheck) {
     '"flaw_reward": {"trait":"exact negative trait name","ep":2,"why":""} if the player played into a negative trait in a way that cost them.',
     '"rumor": a short piece of talk the player overheard, if any.',
     '"tension": 0-10, how intense this scene was.',
+    roadmapBookkeep(c).spec,
     party ? '"companion_updates": [{"name":"","trust":1,"hp_change":-4,"status":"active|left|dead"}] (trust -2..2) when a companion was hurt, pleased, upset, left or died.' : '',
     party ? '"companion_checks": [{"name":"","stat":"DEX","dc":15,"reason":""}] when a companion started something risky and the scene stops before the result.' : '',
     party ? '"companion_turns": ["name"] at most one companion who would naturally speak up or act on their own right now (a decision touching their goals, a direct question, a fight). Usually leave it out.' : '',
@@ -64,7 +65,8 @@ async function bookkeep(c, scene, ctx, signal) {
     peopleOf(c).length ? `KNOWN PEOPLE: ${peopleOf(c).map(e => e.name).join(', ')}` : '',
     activeParty(c).length ? `PARTY COMPANIONS: ${activeParty(c).map(p => `${p.name} (trust ${fmt(p.trust)}, HP ${p.hp}/${p.maxHp})`).join(', ')}` : '',
     c.factions.length ? `FACTIONS: ${c.factions.map(f => f.name).join(', ')}` : '',
-    c.threats.filter(t => !t.triggered).length ? `HIDDEN THREATS: ${c.threats.filter(t => !t.triggered).map(t => t.name).join('; ')}` : ''
+    c.threats.filter(t => !t.triggered).length ? `HIDDEN THREATS: ${c.threats.filter(t => !t.triggered).map(t => t.name).join('; ')}` : '',
+    isCompanion(c) ? '' : roadmapBookkeep(c).state
   ].filter(Boolean).join('\n');
   const msgs = [
     { role:'system', content:`You are the BOOKKEEPER for a tabletop RPG app. Read the newest scene and report what changed, as one JSON object. Only report what the scene actually shows happened; never invent events. Leave out every field that didn't change.\n\nFIELDS:\n${bookkeeperSpec(c, hasCheck)}\n\nReply with the JSON object only.` },
@@ -228,6 +230,7 @@ function applyState(c, msg, st) {
   msg.before = snapshot(c);
   msg.choices = arr(st.choices).map(x => String(typeof x === 'object' ? (x.text || x.action || '') : x).trim()).filter(Boolean).slice(0, 4);
 
+  applyRoadmap(c, st, notes);
   if (typeof st.combat === 'boolean') { if (c.combat && !st.combat) ch.momentum = 0; c.combat = st.combat; }
   const hp = num(st.hp_change);
   if (hp < 0) applyDamage(c, -hp, notes, false);

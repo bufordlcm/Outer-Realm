@@ -53,7 +53,7 @@ function migrate(c) {
   }
   c.messages = (c.messages || []).filter(m => !m.streaming);
   c.gm = c.gm || { preset:'storyteller', name:'The Narrator', style:'' };
-  c.pinned = arr(c.pinned); c.saves = arr(c.saves); c.tableTalk = arr(c.tableTalk);
+  c.pinned = arr(c.pinned); c.saves = arr(c.saves); c.tableTalk = arr(c.tableTalk); c.roadmap = c.roadmap || ''; c.rmAct = num(c.rmAct); c.rmDone = arr(c.rmDone);
   worldOf(c); c.phase = c.phase || 'play'; c.plan = c.plan || ''; c.session0 = arr(c.session0);
   return c;
 }
@@ -384,6 +384,7 @@ function buildMessages(c) {
   worldOf(c);
   sys.push('', 'TIME', timeLabel(c).replace(/ · /g, ', '));
   if (c.plan) sys.push('', "CAMPAIGN PLAN (hidden from the player: steer toward it and adapt to the player's choices)", c.plan);
+  if (c.roadmap) sys.push('', roadmapPrompt(c));
   if (c.planNotes.length) sys.push('', 'GM PRIVATE NOTES', ...c.planNotes.slice(-8).map(n => '- ' + n));
   if (c.threats.length) sys.push('', 'THREATS (hidden clocks: advance them when the player ignores them or things get worse; when one fills, it happens)', ...c.threats.map(t => `- ${t.name}: ${t.progress}/${t.max}${t.triggered ? ' (HAS HAPPENED)' : ''}, when full: ${t.effect}`));
   if (c.factions.length) sys.push('', 'FACTIONS (player standing: -5 hostile to +5 devoted)', ...c.factions.map(f => `- ${f.name}: ${fmt(f.rep)}${f.desc ? ', ' + f.desc : ''}`));
@@ -530,6 +531,7 @@ function buildWriterMessages(c) {
   const lore = loreForPrompt(c); if (lore) sys.push('', 'RESEARCHED FACTS (from real sources; stay consistent with them)', lore);
   if (c.secrets) sys.push('', 'GM SECRETS (never state them; let the player uncover them)', c.secrets.slice(0, 1500));
   if (c.plan) sys.push('', 'HIDDEN CAMPAIGN PLAN (steer toward it, adapt to the player)', c.plan.slice(0, 1200));
+  if (c.roadmap) sys.push('', roadmapPrompt(c));
   if (c.planNotes.length) sys.push(...c.planNotes.slice(-4).map(n => '- ' + n));
   const live = c.threats.filter(t => !t.triggered); if (live.length) sys.push('', 'HIDDEN THREATS', ...live.map(t => `- ${t.name} (${t.progress}/${t.max}): ${t.effect}`));
   if (c.factions.length) sys.push('', 'FACTIONS (player standing)', c.factions.map(f => `${f.name} ${fmt(f.rep)}`).join(', '));
