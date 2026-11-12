@@ -6,8 +6,8 @@
    ========================================================================= */
 
 const APP = 'Outer Realm';
-const DEFAULT_DRIVE_FOLDER = 'https://drive.google.com/drive/folders/1aWDwaZMkUamrvVr7u8ErpXrJfdkXivEr';
-const OLD_DRIVE_FOLDERS = ['1OmcF_QlkQbFngOgVjhxDZuYh6OeBkDeN'];
+const DEFAULT_DRIVE_FOLDER = 'https://drive.google.com/drive/folders/1OmcF_QlkQbFngOgVjhxDZuYh6OeBkDeN';   /* Iron Quill Stories, michael@bufordlcm.com */
+const OLD_DRIVE_FOLDERS = ['1aWDwaZMkUamrvVr7u8ErpXrJfdkXivEr'];
 const INDEX_FILE = '_ironquill-index.json';
 const KEYS_FILE = 'ironquill-keys.json';
 const KEEP_RECENT = 14;
