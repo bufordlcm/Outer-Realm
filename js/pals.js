@@ -38,13 +38,16 @@ const palTouch = x => { x.updatedAt = Date.now(); };
 const allPals = () => Object.values(PALS.pals).sort((a, b) => (b.lastChat || b.updatedAt || 0) - (a.lastChat || a.updatedAt || 0));
 const palChats = () => Object.values(PALS.chats).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 const meName = () => (PALS.me.name || '').trim() || 'you';
+/* a companion under 18 (by age or by how they're described) is always platonic: no romance, no 18+, safe pictures */
+const MINOR_TEXT = /\b(teen(ager|aged)?|high[- ]school(er)?|middle[- ]school(er)?|junior high|freshman in high|sophomore in high|(?:1[0-7]|[1-9])[- ]?(?:years?|yrs?)[- ]old|child|kid|minor|underage|little (?:sister|brother|girl|boy))\b/i;
+const palMinor = p => !!p && ((num(p.age) > 0 && num(p.age) < 18) || MINOR_TEXT.test([p.look, p.backstory, p.personality, p.tagline, p.scenario, p.userRole].join(' ')) || (typeof CHAR_MINOR !== 'undefined' && CHAR_MINOR.test([p.look, p.backstory, p.tagline].join(' '))));
 const palStage = p => PAL_STAGES.find(s => s.k === p.stage) || PAL_STAGES[0];
 const palsOf = chat => arr(chat?.palIds).map(id => PALS.pals[id]).filter(Boolean);
 const curChat = () => PALS.chats[S.palChat];
 
 /* the picture engine and voice engine expect a game; this is the companion's stand-in */
 function palCtx(p, chat) {
-  const adultOK = !!p.adult;
+  const adultOK = !!p.adult && !palMinor(p);
   const ctx = p._ctx || (Object.defineProperty(p, '_ctx', { value: {}, enumerable: false, writable: true }), p._ctx);
   Object.assign(ctx, { id: 'pal_' + p.id, title: p.name, genre: '', premise: '', location: chat?.scene || '', artStyle: p.art || 'photorealistic, natural light, detailed',
     rating: adultOK ? 'Adult (18+)' : 'PG-13', character: { name: meName(), appearance: p.look, backstory: p.backstory, storyRole: '' },
@@ -128,7 +131,7 @@ function renderPalEditor() {
         <button class="btn sm" data-act="palportrait" ${S.settings.image.mode === 'off' || !D.look ? 'disabled' : ''}>${icon('image')} ${D.portrait ? 'New picture' : 'Make their picture'}</button>
         ${S.settings.image.mode === 'off' ? '<p class="hint">Turn on pictures in Settings → Images.</p>' : !D.look ? '<p class="hint">Describe their look first.</p>' : ''}</div>
       <div class="grow">
-        <div class="kv">${f('name', 'Name', 'Mara')}${f('age', 'Age (18+)', '25', 'number')}</div>
+        <div class="kv">${f('name', 'Name', 'Mara')}${f('age', 'Age', '25', 'number')}</div>
         <div class="kv"><label class="f"><span>Gender (for their voice)</span><select data-pd="sex"><option value="">Choose…</option><option value="female" ${D.sex === 'female' ? 'selected' : ''}>Female</option><option value="male" ${D.sex === 'male' ? 'selected' : ''}>Male</option><option value="other" ${D.sex === 'other' ? 'selected' : ''}>Other / nonbinary</option></select></label>${f('pronouns', 'Pronouns', 'she/her')}</div>
         ${f('tagline', 'One-line tagline', 'Sarcastic tattoo artist with a soft heart')}
         <div class="lbl">Personality vibe</div><div class="chips">${PAL_VIBES.map(v => `<button class="chip ${arr(D.vibes).includes(v) ? 'on' : ''}" data-act="palvibe" data-v="${v}">${v}</button>`).join('')}</div>
@@ -146,13 +149,14 @@ function renderPalEditor() {
     </div>
     <div class="card">
       <div class="sect" style="margin-top:0">Relationship</div>
-      <label class="f"><span>Where it can go</span><select data-pd="goal">${Object.entries(PAL_GOALS).map(([k, l]) => `<option value="${k}" ${D.goal === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
-      <label class="f"><span>Where you start</span><select data-pd="stage">${PAL_STAGES.filter(s => D.goal !== 'friends' || !s.romance).map(s => `<option value="${s.k}" ${D.stage === s.k ? 'selected' : ''}>${s.l}</option>`).join('')}</select></label>
+      ${palMinor(D) ? `<p class="hint" style="color:var(--gold2)">${esc(D.name || 'They')} ${num(D.age) && num(D.age) < 18 ? `is ${num(D.age)}` : 'is described as under 18'}, so this is a platonic relationship: friends, family, teammates or mentoring. Romance and 18+ are off.</p>` : ''}
+      <label class="f"><span>Where it can go</span><select data-pd="goal" ${palMinor(D) ? 'disabled' : ''}>${Object.entries(PAL_GOALS).filter(([k]) => !palMinor(D) || k === 'friends').map(([k, l]) => `<option value="${k}" ${D.goal === k || palMinor(D) ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="f"><span>Where you start</span><select data-pd="stage">${PAL_STAGES.filter(s => (D.goal !== 'friends' && !palMinor(D)) || !s.romance).map(s => `<option value="${s.k}" ${D.stage === s.k ? 'selected' : ''}>${s.l}</option>`).join('')}</select></label>
       <p class="hint">${esc(palStage(D).d)} The relationship moves on its own as you talk.</p>
       <div class="sect">Your rules</div>
       <label class="f"><span>Intensity</span><select data-pd="intensity"><option value="gentle" ${D.intensity === 'gentle' ? 'selected' : ''}>Gentle: soft and slow</option><option value="balanced" ${D.intensity !== 'gentle' && D.intensity !== 'bold' ? 'selected' : ''}>Balanced</option><option value="bold" ${D.intensity === 'bold' ? 'selected' : ''}>Bold: intense, takes initiative</option></select></label>
       ${t('limits', 'Hard limits (they will never go here)', 'Anything you never want in your chats, one per line', 2)}
-      <label class="chk"><input type="checkbox" data-pd="adult" ${D.adult ? 'checked' : ''}> <span>Allow 18+ content with this companion (you and they must be adults)</span></label>
+      ${palMinor(D) ? '' : `<label class="chk"><input type="checkbox" data-pd="adult" ${D.adult ? 'checked' : ''}> <span>Allow 18+ content with this companion</span></label>`}
       ${f('art', 'Picture style', 'photorealistic, natural light, detailed')}
     </div>
     <div class="row wrap" style="margin-bottom:30px"><button class="btn gold" data-act="palsave">${icon('check')} Save${S.palDraftNew ? ' and start chatting' : ''}</button>${!S.palDraftNew ? `<button class="btn ghost" data-act="paldelete" data-id="${D.id}">${icon('trash')} Delete companion</button>` : ''}</div>
@@ -162,9 +166,6 @@ function renderPalEditor() {
 function palValidate(D) {
   if (!String(D.name || '').trim()) return 'Give them a name.';
   if (!num(D.age)) return 'Fill in their age (the Age box near the top).';
-  if (num(D.age) < 18) return `Their age is set to ${num(D.age)}: companions have to be 18 or older.`;
-  const txt = [D.look, D.backstory, D.personality, D.tagline, D.scenario].join(' ');
-  if (CHAR_MINOR.test(txt) || /\b(teen(ager)?|high school(er)?|middle school|child|kid|minor|underage|years? old\b[^.]{0,8}\b1[0-7]\b)/i.test(txt)) return 'Companions must be adults: remove anything that describes them as under 18.';
   return '';
 }
 const PAL_SPEC = `{"name":"","age":25,"sex":"female|male|other","pronouns":"","tagline":"one line","look":"2-3 sentences: face, hair, eyes, build, clothes, distinctive details (for pictures too)","personality":"3-4 sentences","vibes":["2-4 of: ${PAL_VIBES.join(', ')}"],"speech":"how they talk and text: slang, emojis, pet names, message length","backstory":"4-6 sentences","likes":"likes, dislikes, interests","userRole":"who the player is to them","scenario":"how the first conversation starts","greeting":"their first message to the player, in character"}`;
@@ -187,7 +188,8 @@ async function palAIBuild() {
 }
 function palSave() {
   const D = S.palDraft; const err = palValidate(D); if (err) return toast(err, 5000);
-  D.age = Math.max(18, num(D.age));
+  D.age = Math.max(1, Math.round(num(D.age)));
+  if (palMinor(D)) { D.adult = false; D.goal = 'friends'; if (palStage(D).romance) D.stage = 'friend'; }
   if (D.goal === 'friends' && palStage(D).romance) D.stage = 'close';
   if (D.goal === 'open') { D.stage = 'partner'; D.affection = Math.max(num(D.affection), 93); }
   else D.affection = Math.max(num(D.affection), palStage(D).at);
@@ -270,14 +272,14 @@ function paintPalLog() { const ch = curChat(); const log = $('#pallog'); if (!ch
 function palSystem(ch) {
   const ps = palsOf(ch); const group = ps.length > 1; const me = PALS.me; const you = meName();
   const person = ch.channel === 'person';
-  const adultAll = ps.every(p => p.adult);
+  const minors = ps.filter(palMinor); const adultAll = !minors.length && ps.every(p => p.adult);
   const desc = p => {
     const st = palStage(p);
     return [`### ${p.name} (${p.age}${p.pronouns ? ', ' + p.pronouns : ''})${p.tagline ? ' — ' + p.tagline : ''}`,
       p.look && `Look: ${p.look}`, p.personality && `Personality: ${p.personality}`, arr(p.vibes).length && `Vibe: ${p.vibes.join(', ')}`,
       p.speech && `How they talk: ${p.speech}`, p.backstory && `Backstory: ${p.backstory}`, p.likes && `Likes/dislikes: ${p.likes}`,
       p.userRole && `Who ${you} is to them: ${p.userRole}`,
-      `Relationship with ${you} now: ${st.l} (affection ${Math.round(num(p.affection))}/100). ${st.d}${p.goal === 'friends' ? ' This stays platonic: friendship only, never romance.' : ''}`,
+      `Relationship with ${you} now: ${st.l} (affection ${Math.round(num(p.affection))}/100). ${st.d}${palMinor(p) ? ` ${p.name} is a minor: the relationship is strictly platonic and age-appropriate (friend, family, teammate, mentor). Never flirt, never romance, nothing sexual or suggestive, ever; if the conversation heads that way, ${p.name} shuts it down and changes the subject.` : p.goal === 'friends' ? ' This stays platonic: friendship only, never romance.' : ''}`,
       `Intensity: ${p.intensity === 'gentle' ? 'gentle, soft and slow-burn' : p.intensity === 'bold' ? 'bold: confident, takes initiative, intense' : 'balanced'}.`,
       p.limits && `HARD LIMITS (never, under any circumstances): ${p.limits.replace(/\n+/g, '; ')}`,
       arr(p.memory).length && `What ${p.name} remembers:\n${p.memory.slice(-25).map(m => '- ' + m).join('\n')}`,
@@ -288,7 +290,7 @@ function palSystem(ch) {
     `Stay fully in character as a real person with your own life, moods, opinions and memory. Never mention being an AI, a model or a story. Be warm and engaging, follow ${you}'s lead, and also bring your own ideas, questions, feelings and plans so the conversation goes somewhere. React to what ${you} actually said. Don't repeat yourself.`,
     `Never write ${you}'s words, actions, thoughts or feelings. Only your own.`,
     `If ${you} writes something in ((double brackets)), it is a direction from the player about the story or your behaviour: follow it without commenting on it.`,
-    adultAll ? `This is an adults-only app and every character is an adult (18+). Romantic and sexual content is allowed when the relationship and the moment lead there and ${you} wants it; follow ${you}'s lead and stay within the hard limits.` : `Keep things PG-13: affection and flirting are fine, nothing explicit.`,
+    minors.length ? `Keep everything wholesome and age-appropriate: ${minors.map(p => p.name).join(', ')} ${minors.length > 1 ? 'are minors' : 'is a minor'}. No romance, flirting or sexual content of any kind.` : adultAll ? `This is an adults-only app and every character is an adult (18+). Romantic and sexual content is allowed when the relationship and the moment lead there and ${you} wants it; follow ${you}'s lead and stay within the hard limits.` : `Keep things PG-13: affection and flirting are fine, nothing explicit.`,
     '', ...ps.map(desc), '',
     ch.scene ? `CURRENT SETTING: ${ch.scene}` : '',
     ch.summary ? `YOUR HISTORY TOGETHER SO FAR: ${ch.summary}` : '',
@@ -405,7 +407,7 @@ affection_change: -10 to +10, how much closer (or further) this conversation bro
 function palAffect(p, ch, delta) {
   const before = palStage(p);
   p.affection = clamp(num(p.affection) + delta, 0, 100);
-  const allowed = PAL_STAGES.filter(s => p.goal !== 'friends' || !s.romance);
+  const allowed = PAL_STAGES.filter(s => (p.goal !== 'friends' && !palMinor(p)) || !s.romance);
   let next = [...allowed].reverse().find(s => p.affection >= s.at) || allowed[0];
   /* move one step at a time, so a relationship never jumps from strangers to dating */
   const bi = PAL_STAGES.indexOf(before), ni = PAL_STAGES.indexOf(next);
@@ -449,7 +451,7 @@ function palAction(act, el) {
     case 'paldelete': { const p = PALS.pals[el.dataset.id]; if (!p) return true; if (S.palDelArm !== p.id) { S.palDelArm = p.id; toast(`Tap Delete again to delete ${p.name} and your chats with them.`); return true; }
       delete PALS.pals[p.id]; PALS.deleted[p.id] = Date.now(); for (const c2 of palChats()) if (c2.palIds.includes(p.id)) { delete PALS.chats[c2.id]; PALS.deleted[c2.id] = Date.now(); }
       savePals(); S.palDraft = null; S.homeTab = 'pals'; renderLibrary(); toast(`${p.name} deleted.`); return true; }
-    case 'palportrait': { const D = S.palDraft; D.portrait = { prompt: `portrait photo of ${D.look}, ${D.age} years old adult, looking at the camera`, seed: d(999999) }; renderPalEditor(); return true; }
+    case 'palportrait': { const D = S.palDraft; D.portrait = { prompt: `portrait photo of ${D.look}, ${palMinor(D) ? 'fully clothed, ' + D.age + ' years old' : D.age + ' years old adult'}, looking at the camera`, seed: d(999999) }; renderPalEditor(); return true; }
     case 'palchat': palStartChat([el.dataset.id]); return true;
     case 'palopen': palOpenChat(el.dataset.id); return true;
     case 'palgroup': S.palPick = []; openModal('palgroup'); return true;
@@ -505,7 +507,7 @@ document.addEventListener('input', e => {
   else if (el.dataset?.pch && curChat()) { const ch = curChat(); ch[el.dataset.pch] = el.type === 'checkbox' ? el.checked : el.value; palTouch(ch); savePals(); }
   else if (el.id === 'palInput') autoGrow(el);
 });
-document.addEventListener('change', e => { const el = e.target; if (el.dataset?.pd && S.palDraft && el.tagName === 'SELECT') { S.palDraft[el.dataset.pd] = el.value; if (el.dataset.pd === 'goal' || el.dataset.pd === 'stage') renderPalEditor(); } });
+document.addEventListener('change', e => { const el = e.target; if (el.dataset?.pd === 'age' && S.palDraft) { S.palDraft.age = num(el.value); if (palMinor(S.palDraft)) { S.palDraft.goal = 'friends'; S.palDraft.adult = false; if (palStage(S.palDraft).romance) S.palDraft.stage = 'friend'; } renderPalEditor(); return; } if (el.dataset?.pd && S.palDraft && el.tagName === 'SELECT') { S.palDraft[el.dataset.pd] = el.value; if (el.dataset.pd === 'goal' || el.dataset.pd === 'stage') renderPalEditor(); } });
 document.addEventListener('keydown', e => {
   if (e.target.id === 'palInput' && e.key === 'Enter' && !e.shiftKey && !isPhone()) { e.preventDefault(); palAction('palsend', e.target); }
 });
