@@ -161,7 +161,8 @@ function renderPalEditor() {
 }
 function palValidate(D) {
   if (!String(D.name || '').trim()) return 'Give them a name.';
-  if (num(D.age) < 18) return 'Companions must be adults (18 or older).';
+  if (!num(D.age)) return 'Fill in their age (the Age box near the top).';
+  if (num(D.age) < 18) return `Their age is set to ${num(D.age)}: companions have to be 18 or older.`;
   const txt = [D.look, D.backstory, D.personality, D.tagline, D.scenario].join(' ');
   if (CHAR_MINOR.test(txt) || /\b(teen(ager)?|high school(er)?|middle school|child|kid|minor|underage|years? old\b[^.]{0,8}\b1[0-7]\b)/i.test(txt)) return 'Companions must be adults: remove anything that describes them as under 18.';
   return '';
