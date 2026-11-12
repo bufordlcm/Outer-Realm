@@ -92,6 +92,16 @@ async function lookupLore(c, name, { manual = false } = {}) {
   } catch (e) { console.warn('Lookup failed', name, e); if (manual) throw e; return null; }
 }
 /* ---------- the AI looks things up by itself ---------- */
+/* most turns are ordinary actions: only ask the AI about looking something up when the turn names something
+   it doesn't already know (a capitalised name that isn't in the story yet) or asks a real-world question */
+function scoutWorth(c, text) {
+  const t = String(text || '').replace(/\[✦[^\]]*\]/g, ' ');
+  if (t.trim().length < 8) return false;
+  if (/\b(real|really|history|historical|actually|in real life|who (is|was)|what (is|was)|when did|where is|according to|canon|lore of)\b/i.test(t)) return true;
+  const known = [c.character?.name, ...arr(c.party).map(p => p.name), ...peopleOf(c).map(p => p.name), ...arr(c.codex).map(x => x.name), c.location, c.title, ...Object.values(loreOf(c)).map(x => x.name)].filter(Boolean).join(' ').toLowerCase();
+  const names = [...t.matchAll(/(?<![.!?]\s|^)\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})*)/g)].map(m => m[1]).filter(n => !/^(I|The|A|An|My|You|He|She|They|We|It|His|Her|Their|Our|GM)$/.test(n));
+  return names.some(n => !known.includes(n.toLowerCase()));
+}
 const scoutOn = () => S.settings.net?.on !== false && S.settings.net?.auto !== false;
 const withTimeout = (p, ms) => Promise.race([p, new Promise(r => setTimeout(() => r(null), ms))]);
 async function scoutWeb(c, playerText, signal) {

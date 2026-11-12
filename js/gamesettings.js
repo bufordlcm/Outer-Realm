@@ -48,6 +48,8 @@ function gameSettingsHTML() {
       ${bindCheck('ui.compTurns', 'Companions speak up and act on their own when it fits')}
       ${im.mode !== 'off' ? bindCheck('image.scenes', 'Paint scene pictures automatically at new places and big moments') : ''}
       ${S.settings.net?.on !== false ? bindCheck('net.auto', 'Let the GM look up real facts online by itself when the story needs them') : ''}
+      <div class="sect" style="font-size:18px">Speed</div>
+      ${speedHTML()}
       <div class="sect" style="font-size:18px">Writing your turn</div>
       ${typingSettingsHTML()}`;
   } else if (tab === 'story' && c) {
@@ -62,4 +64,21 @@ function gameSettingsHTML() {
       <p class="hint">One request per line. The GM follows these every turn. "Ask the GM" and the Story Doc add to this list too.</p>`;
   }
   return [tabs, body];
+}
+
+/* how long the last turn took, step by step, plus the one setting that matters most on an 8 GB card */
+function speedHTML() {
+  const c = cur(); const m = c && [...arr(c.messages)].reverse().find(x => x.role === 'gm' && x.timing && Object.keys(x.timing).length);
+  let line = '<p class="hint">Play a turn to see how long each step takes.</p>';
+  if (m) {
+    const T = m.timing; const steps = [['referee', 'Roll check'], ['lookup', 'Web look-up'], ['writer', 'Story'], ['checks', 'Records & checks']];
+    let prev = 0; const parts = [];
+    for (const [k, l] of steps) if (T[k] != null) { parts.push(`${l} <b>${Math.max(0, T[k] - prev).toFixed(1)}s</b>`); prev = T[k]; }
+    line = `<p class="hint" style="color:var(--ink)">Last turn: ${parts.join(' → ')} · total <b>${prev.toFixed(1)}s</b></p>`;
+  }
+  const a = activeConn(); const h = (S.settings.ai.helperModel || '').trim();
+  const swap = a && (a.preset === 'ollama' || a.preset === 'custom') && h && h !== a.model;
+  return line + (swap ? `<p class="hint">Your helper model (<b>${esc(h)}</b>) is different from your story model (<b>${esc(a.model)}</b>). On an 8 GB card they can't both stay loaded, so Ollama swaps them in and out about twice every turn, and each swap also throws away the cache that makes the next scene start fast.</p>
+      <button class="btn sm" data-act="helpersame">Use ${esc(a.model.split(':')[0])} for everything</button>` : '')
+    + `<p class="hint">Also faster: Short scenes, Fast or Balanced turn quality (Settings → Story AI), and fewer dice rolls.</p>`;
 }

@@ -105,38 +105,44 @@ async function gmTurn(opts = {}) {
     }
     const isOOC = trig?.role === 'player' && trig.ooc;
 
-    /* 1. dice referee: does the player's action need a roll? */
+    /* 1. the dice referee and the web scout don't depend on each other: ask both at once */
+    const T = msg.timing = {}; const t0 = Date.now(); const lap = k => { T[k] = Math.round((Date.now() - t0) / 100) / 10; };
     let refCheck = null;
-    if (aiOn('referee') && !isCompanion(c) && !opts.cont && !opts.noRoll && trig?.role === 'player' && !trig.hidden && !trig.ooc) {
-      msg.phase = 'Deciding whether this needs a roll…'; renderLog(true);
-      try { refCheck = await refereeCall(c, trig.gm || trig.text, signal); } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Referee failed', e); }
-      /* a roll is needed: ask for it right away. The GM writes one scene afterwards, with the result. */
-      if (refCheck) {
-        const ck = normCheck(refCheck, c);
-        msg.text = ''; msg.rollAsk = true; msg.check = ck; msg.notes = []; msg.choices = []; delete msg.streaming; delete msg.phase;
-        msg.before = snapshot(c);
-        c.pendingRoll = { ...ck, msgId: msg.id, invokes: [], dcAdj: 0, momentumPlus: false };
-        S.rollResult = null; S.invokeOpen = false; S.invokeSel = [];
-        const tagged = turnTraits(c, trig.text).filter(t => t.polarity === '+');
-        if (tagged.length) { msg.checking = 'Checking how your traits help…'; renderLog(); try { await traitRuling(c, c.pendingRoll, tagged, trig.gm || trig.text, signal); } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Trait ruling failed', e); } delete msg.checking; }
-        return;
-      }
+    const wantRef = aiOn('referee') && !isCompanion(c) && !opts.cont && !opts.noRoll && trig?.role === 'player' && !trig.hidden && !trig.ooc;
+    const wantScout = scoutOn() && !opts.cont && trig?.role === 'player' && !trig.hidden && !trig.ooc && scoutWorth(c, trig.text);
+    if (wantRef || wantScout) { msg.phase = wantRef ? 'Deciding whether this needs a roll…' : 'Thinking…'; renderLog(true); }
+    const [refRes, scoutRes] = await Promise.allSettled([
+      wantRef ? refereeCall(c, trig.gm || trig.text, signal) : null,
+      wantScout ? scoutWeb(c, trig.gm || trig.text, signal) : null
+    ]);
+    if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
+    if (refRes.status === 'fulfilled') refCheck = refRes.value; else console.warn('Referee failed', refRes.reason);
+    lap('referee');
+    /* a roll is needed: ask for it right away. The GM writes one scene afterwards, with the result. */
+    if (refCheck) {
+      const ck = normCheck(refCheck, c);
+      msg.text = ''; msg.rollAsk = true; msg.check = ck; msg.notes = []; msg.choices = []; delete msg.streaming; delete msg.phase;
+      msg.before = snapshot(c);
+      c.pendingRoll = { ...ck, msgId: msg.id, invokes: [], dcAdj: 0, momentumPlus: false };
+      S.rollResult = null; S.invokeOpen = false; S.invokeSel = [];
+      const tagged = turnTraits(c, trig.text).filter(t => t.polarity === '+');
+      if (tagged.length) { msg.checking = 'Checking how your traits help…'; renderLog(); try { await traitRuling(c, c.pendingRoll, tagged, trig.gm || trig.text, signal); } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Trait ruling failed', e); } delete msg.checking; }
+      return;
     }
-    /* 1b. the AI decides for itself whether it needs to look something up online */
-    if (scoutOn() && !opts.cont && trig?.role === 'player' && !trig.hidden && String(trig.text || '').trim().length >= 8) {
+    const want = scoutRes.status === 'fulfilled' ? scoutRes.value : null;
+    if (scoutRes.status === 'rejected') console.warn('Web scout failed', scoutRes.reason);
+    if (want) {
       try {
-        const want = await scoutWeb(c, trig.gm || trig.text, signal);
-        if (want) {
-          msg.phase = `🔎 Looking up ${want}…`; renderLog(true);
-          const r = await withTimeout(lookupLore(c, want), 25000);
-          if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
-          if (r && r.text) {
-            const L = msgs[msgs.length - 1];
-            L.content = L.content.replace(REPLY_NOTE, '') + `\n\n[FACTS THE APP JUST LOOKED UP ONLINE about ${r.name} (accurate; use what fits, in your own words, without mentioning searching): ${r.text}]` + REPLY_NOTE;
-            msg.looked = { name: r.name, url: r.url, src: r.src };
-          }
+        msg.phase = `🔎 Looking up ${want}…`; renderLog(true);
+        const r = await withTimeout(lookupLore(c, want), 25000);
+        if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
+        if (r && r.text) {
+          const L = msgs[msgs.length - 1];
+          L.content = L.content.replace(REPLY_NOTE, '') + `\n\n[FACTS THE APP JUST LOOKED UP ONLINE about ${r.name} (accurate; use what fits, in your own words, without mentioning searching): ${r.text}]` + REPLY_NOTE;
+          msg.looked = { name: r.name, url: r.url, src: r.src };
         }
-      } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Web scout failed', e); }
+      } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Web lookup failed', e); }
+      lap('lookup');
     }
     /* 2. optional private plan */
     if (aiOn('deliberate') && !isOOC) {
@@ -153,7 +159,7 @@ async function gmTurn(opts = {}) {
     if (!stripThink(raw).trim()) raw = await chat(msgs, { stream:false, signal, maxTokens: wt });
     const { narration, state: writerState } = parseGM(raw);
     if (!narration) throw new Error('The AI sent back an empty reply. Tap Retry, or try a different model.');
-    msg.text = tidyScene(narration); delete msg.streaming;
+    msg.text = tidyScene(narration); delete msg.streaming; lap('writer');
 
     /* 4. optional continuity rewrite, then the agency guard */
     let fixed = false, cut = null;
@@ -164,26 +170,31 @@ async function gmTurn(opts = {}) {
         if (f) { msg.text = f; fixed = true; }
       } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Continuity check failed', e); }
     }
-    if (aiOn('agency') && !isOOC) {
-      msg.checking = 'Checking the scene…'; renderLog();
-      try {
-        const g = await agencyGuard(c, msg.text, playerText, signal);
-        if (g) { msg.original = msg.text; msg.text = g.text; msg.cut = g.cut; cut = g.rewrote ? 0 : g.cut.length; }
-      } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Agency guard failed', e); }
-    }
-    /* 5. the bookkeeper turns the scene into game data */
+    /* the agency guard and the bookkeeper both read the finished scene: run them together.
+       Only if the guard changes the scene does the bookkeeper run again on the new text. */
+    const book = (scene) => bookkeep(c, scene, { playerText, roll: prevAct?.role === 'roll' ? prevAct.text : '', check: refCheck, photoAsk: isCompanion(c) && PHOTO_ASK.test(playerText) }, signal);
     let state;
+    msg.checking = isOOC ? 'Checking the scene…' : 'Updating the records…'; renderLog();
+    const [gRes, bRes] = await Promise.allSettled([
+      aiOn('agency') && !isOOC ? agencyGuard(c, msg.text, playerText, signal) : null,
+      isOOC ? null : book(msg.text)
+    ]);
+    if (signal.aborted) throw new DOMException('Stopped', 'AbortError');
+    let bookRes = bRes.status === 'fulfilled' ? bRes.value : null; if (bRes.status === 'rejected') console.warn('Bookkeeper failed', bRes.reason);
+    const g = gRes.status === 'fulfilled' ? gRes.value : null; if (gRes.status === 'rejected') console.warn('Agency guard failed', gRes.reason);
+    if (g) {
+      msg.original = msg.text; msg.text = g.text; msg.cut = g.cut; cut = g.rewrote ? 0 : g.cut.length;
+      const risky = bookRes && (arr(bookRes.items_gained).length || num(bookRes.gold_change) || arr(bookRes.quest_updates).length);   /* lines written for the player may have invented these */
+      if (!isOOC && risky) { try { bookRes = await book(msg.text) || bookRes; } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Bookkeeper failed', e); } }
+    }
+    lap('checks');
     if (isOOC) {
       const prevGM = c.messages.slice(0, pi).reverse().find(m => m.role === 'gm');
       state = { choices: arr(prevGM?.choices), check: c.pendingRoll && prevGM?.check ? prevGM.check : null };
       msg.ooc = true;
     } else {
-      msg.checking = 'Updating the records…'; renderLog();
-      let book = null;
-      try { book = await bookkeep(c, msg.text, { playerText, roll: prevAct?.role === 'roll' ? prevAct.text : '', check: refCheck, photoAsk: isCompanion(c) && PHOTO_ASK.test(playerText) }, signal); }
-      catch (e) { if (e.name === 'AbortError') throw e; console.warn('Bookkeeper failed', e); }
-      state = { ...(writerState || {}), ...(book || {}) };
-      if (!book && !Object.keys(writerState || {}).length) msg.bookFail = true;
+      state = { ...(writerState || {}), ...(bookRes || {}) };
+      if (!bookRes && !Object.keys(writerState || {}).length) msg.bookFail = true;
     }
     delete msg.checking;
     if (refCheck) { state.check = refCheck; state.choices = []; }

@@ -76,21 +76,23 @@ function builderConns() {
 const builderConn = () => builderConns()[0] || null;
 async function chat(messages, opts = {}) {
   if (opts.build) {
-    const list = builderConns(); let tried = 0;
-    for (const bc of list) {
-      tried++;
-      /* a busy free model can hang for minutes: give each online AI 75 seconds, then move on */
-      const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 75000);
-      const onUser = () => ctl.abort(); opts.signal?.addEventListener?.('abort', onUser);
+    /* ask every online builder AI at once and take the first good answer: free models are often queued,
+       so racing them is much faster than waiting for one to time out before trying the next */
+    const list = builderConns().slice(0, 3);
+    if (list.length) {
+      const ctls = list.map(() => new AbortController());
+      const onUser = () => ctls.forEach(x => x.abort()); opts.signal?.addEventListener?.('abort', onUser);
+      const tm = setTimeout(onUser, 90000);
       try {
-        const out = await chatOne(bc, messages, { ...opts, model: '', signal: ctl.signal });
-        const t = stripThink(out).trim();
-        if (t && !REFUSAL.test(t.slice(0, 160))) return out;
-        console.warn('Builder AI declined:', bc.label);
-      } catch (e) { if (opts.signal?.aborted) throw e; console.warn('Builder AI unavailable or too slow:', bc.label, e); }
+        const out = await Promise.any(list.map((bc, i) => chatOne(bc, messages, { ...opts, model: '', signal: ctls[i].signal }).then(o => {
+          const t = stripThink(o).trim(); if (!t || REFUSAL.test(t.slice(0, 160))) throw new Error(bc.label + ' declined');
+          ctls.forEach((x, j) => { if (j !== i) x.abort(); }); return o;
+        })));
+        return out;
+      } catch (e) { if (opts.signal?.aborted) throw new DOMException('Stopped', 'AbortError'); console.warn('Online builder AIs unavailable', e); }
       finally { clearTimeout(tm); opts.signal?.removeEventListener?.('abort', onUser); }
+      toast(`The online builder AI${list.length > 1 ? 's were' : ' was'} busy or declined, so your story AI is building it instead.`, 4500);
     }
-    if (tried) toast(`The online builder AI${tried > 1 ? 's were' : ' was'} busy or declined, so your story AI is building it instead.`, 4500);
   }
   const first = activeConn();
   if (!first) throw new Error('No AI connected yet. Open Setup and add a free key.');
@@ -531,30 +533,33 @@ function sheetBrief(c) {
 function buildWriterMessages(c) {
   worldOf(c);
   const comp = isCompanion(c);
-  const sys = [comp ? companionCore(c) : writerCore(c), '', ...(comp ? [] : writerModules(c)).flatMap(x => [x, '']), personaText(c), '',
-    'CAMPAIGN', `${c.title}. ${c.genre || ''}`.trim(), `Premise: ${c.premise}`, `Tone: ${c.tone || 'GM\'s choice'}. Content rating: ${c.rating || 'PG-13'} — ${RATING_RULES[c.rating] || RATING_RULES['PG-13']}`,
-    '', comp ? 'THE PLAYER' : isMP(c) ? 'THE PLAYER CHARACTER WHO IS ACTING NOW' : 'THE PLAYER CHARACTER', comp ? [c.character.name + (c.character.storyRole ? ', ' + c.character.storyRole : ''), c.character.appearance && 'Looks: ' + c.character.appearance, c.character.backstory && 'About: ' + c.character.backstory.slice(0, 600)].filter(Boolean).join('\n') : sheetBrief(c),
-    ...(isMP(c) && c.players.length > 1 ? ['', 'THE OTHER PLAYER CHARACTERS (controlled by other players: never act for them)', otherPlayersBrief(c)] : []),
-    '', 'NOW', `Place: ${c.location || 'unknown'} · ${timeLabel(c).replace(/ · /g, ', ')}${c.combat ? ' · IN COMBAT' : ''}`];
-  const quests = arr(c.quests).filter(q => q.status === 'active').map(q => q.title); if (quests.length) sys.push(`Active quests: ${quests.join('; ')}`);
-  if (arr(c.party).length) sys.push('', comp ? 'THE CAST (characters you voice)' : 'THE PARTY', comp ? castBrief(c) : partyText(c, true));
-  if (c.pinned?.length) sys.push('', 'PINNED FACTS (always true)', ...c.pinned.map(f => '- ' + f));
+  /* Ordered from never-changing to changing-every-turn: Ollama re-reads the prompt only from the first
+     line that changed, so keeping the stable parts first makes each turn start much faster. */
+  const sys = [comp ? companionCore(c) : writerCore(c), '', personaText(c), '',
+    'CAMPAIGN', `${c.title}. ${c.genre || ''}`.trim(), `Premise: ${c.premise}`, `Tone: ${c.tone || 'GM\'s choice'}. Content rating: ${c.rating || 'PG-13'} — ${RATING_RULES[c.rating] || RATING_RULES['PG-13']}`];
   if (c.world) sys.push('', 'WORLD', c.world.slice(0, 2500));
-  const people = peopleOf(c).slice(-15); if (people.length) {
-    const here = String(c.location || '').toLowerCase().trim(); const at = e => here && e.where && (String(e.where).toLowerCase().includes(here) || here.includes(String(e.where).toLowerCase()));
-    sys.push('', `PEOPLE THE PLAYER KNOWS. They are NOT in this scene unless they are at the current place (${c.location || 'unknown'}) or the story gives a clear reason for them to arrive. Never drop someone in without explaining how they got there.`, ...people.map(e => `- ${e.name}: ${e.text}${e.where ? ` (last seen: ${e.where}${at(e) ? ', HERE' : ''})` : ''}`));
-  }
-  const lore = loreForPrompt(c); if (lore) sys.push('', 'RESEARCHED FACTS (from real sources; stay consistent with them)', lore);
+  if (c.pinned?.length) sys.push('', 'PINNED FACTS (always true)', ...c.pinned.map(f => '- ' + f));
   if (c.secrets) sys.push('', 'GM SECRETS (never state them; let the player uncover them)', c.secrets.slice(0, 1500));
   if (c.plan) sys.push('', 'HIDDEN CAMPAIGN PLAN (steer toward it, adapt to the player)', c.plan.slice(0, 1200));
   if (c.roadmap) sys.push('', roadmapPrompt(c));
   if (c.planNotes.length) sys.push(...c.planNotes.slice(-4).map(n => '- ' + n));
+  const lore = loreForPrompt(c); if (lore) sys.push('', 'RESEARCHED FACTS (from real sources; stay consistent with them)', lore);
+  if (c.summary) sys.push('', 'STORY SO FAR', c.summary);
+  if (c.memory?.length) sys.push('', 'LONG-TERM MEMORY', ...c.memory.slice(-30).map(m => '- ' + m));
+  const people = peopleOf(c).slice(-15); if (people.length) {
+    const here = String(c.location || '').toLowerCase().trim(); const at = e => here && e.where && (String(e.where).toLowerCase().includes(here) || here.includes(String(e.where).toLowerCase()));
+    sys.push('', `PEOPLE THE PLAYER KNOWS. They are NOT in this scene unless they are at the current place (${c.location || 'unknown'}) or the story gives a clear reason for them to arrive. Never drop someone in without explaining how they got there.`, ...people.map(e => `- ${e.name}: ${e.text}${e.where ? ` (last seen: ${e.where}${at(e) ? ', HERE' : ''})` : ''}`));
+  }
   const live = c.threats.filter(t => !t.triggered); if (live.length) sys.push('', 'HIDDEN THREATS', ...live.map(t => `- ${t.name} (${t.progress}/${t.max}): ${t.effect}`));
   if (c.factions.length) sys.push('', 'FACTIONS (player standing)', c.factions.map(f => `${f.name} ${fmt(f.rep)}`).join(', '));
+  if (arr(c.party).length) sys.push('', comp ? 'THE CAST (characters you voice)' : 'THE PARTY', comp ? castBrief(c) : partyText(c, true));
+  sys.push('', comp ? 'THE PLAYER' : isMP(c) ? 'THE PLAYER CHARACTER WHO IS ACTING NOW' : 'THE PLAYER CHARACTER', comp ? [c.character.name + (c.character.storyRole ? ', ' + c.character.storyRole : ''), c.character.appearance && 'Looks: ' + c.character.appearance, c.character.backstory && 'About: ' + c.character.backstory.slice(0, 600)].filter(Boolean).join('\n') : sheetBrief(c));
+  sys.push(...(isMP(c) && c.players.length > 1 ? ['', 'THE OTHER PLAYER CHARACTERS (controlled by other players: never act for them)', otherPlayersBrief(c)] : []));
   sys.push('', 'PACING', `Recent scene intensity (0-10): ${c.tensionLog.slice(-4).join(', ') || 'none yet'}. Alternate tense scenes with quieter ones.`);
-  if (c.memory?.length) sys.push('', 'LONG-TERM MEMORY', ...c.memory.slice(-30).map(m => '- ' + m));
-  if (c.summary) sys.push('', 'STORY SO FAR', c.summary);
   if (c.gmNotes) sys.push('', 'THE PLAYER\'S STANDING REQUESTS', c.gmNotes);
+  sys.push('', 'NOW', `Place: ${c.location || 'unknown'} · ${timeLabel(c).replace(/ · /g, ', ')}${c.combat ? ' · IN COMBAT' : ''}`);
+  const quests = arr(c.quests).filter(q => q.status === 'active').map(q => q.title); if (quests.length) sys.push(`Active quests: ${quests.join('; ')}`);
+  if (!comp) for (const x of writerModules(c)) sys.push('', x);   /* dice / combat / party rules switch on and off, so they go last */
   const out = [{ role:'system', content: sys.join('\n') }];
   const start = Math.max(c.summarizedUpTo || 0, c.messages.length - (keepRecent() + SUMMARIZE_AFTER));
   for (const m of c.messages.slice(start)) {

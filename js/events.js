@@ -76,6 +76,7 @@ document.addEventListener('click', e => {
     case 'gamesettings': openModal('game', S.modal === 'game' ? S.modalTab : null); break;
     case 'gset': setPath(S.settings, el.dataset.path, JSON.parse(el.dataset.v)); saveSettings(); musicScene(cur()); musicLevel(); renderModal(); break;
     case 'musicskip': musicSkip(); break;
+    case 'helpersame': S.settings.ai.helperModel = ''; saveSettings(); renderModal(); toast('Your story model now does every step. Turns should start faster.'); break;
     case 'tab': S.modalTab = el.dataset.id; S.models = null; renderModal(); $('#modalBody').scrollTop = 0; break;
     case 'home': S.abort?.abort(); renderLibrary(); break;
     case 'new': renderModePick(); break;
