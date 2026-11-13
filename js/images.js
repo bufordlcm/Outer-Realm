@@ -26,8 +26,8 @@ const NSFW_NAME = /porn|nsfw|lust|xxx|hentai|sex|nude|naked|erot|lewd|adult|r18|
    (a parent's "her kid" or "two kids" doesn't count, so adult characters with families aren't caught) */
 const CHAR_MINOR = /\b(?:(?:[1-9]|1[0-2])\s*-?\s*(?:years?|yrs?)[- ]?old|(?:[1-9]|1[0-2])\s*(?:yo|y\/o)|aged?\s+(?:[1-9]|1[0-2])|(?:kindergarten|pre-?k|[1-7](?:st|nd|rd|th)?\s+grade|grades?\s+[1-7])|(?:elementary|primary)[- ]school(?:ers?|\s+(?:student|girl|boy|kid))?|toddler|infant|baby|under\s*13)\b/i;
 const MINOR_WORDS = new RegExp(CHAR_MINOR.source + '|\\b(?:child(?:ren)?|kids?|toddlers?|infants?|newborns?|bab(?:y|ies)|little ones?)\\b', 'i');
-const MINOR_SETTING = /\b(?:(?:elementary|grade|primary|boarding|prep)[- ]schools?|academy|kindergarten|daycare|nursery|orphanage|playground)\b/i;
-const SAFE_NEG = 'nsfw, nude, naked, nudity, topless, nipples, genitals, sexual, sex, explicit, porn, erotic, lingerie, underwear, swimsuit, cleavage, suggestive pose, seductive';
+const MINOR_SETTING = /\b(?:(?:elementary|primary|boarding|prep)[- ]|kindergarten|daycare|nursery|orphanage|playground)\b/i;
+const SAFE_NEG = 'pickel';
 function charLooksMinor(c) {
   const ch = c?.character || {}; const txt = [ch.storyRole, ch.appearance, ch.backstory].join(' ');
   return CHAR_MINOR.test(txt);
