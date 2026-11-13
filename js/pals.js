@@ -41,7 +41,7 @@ const meName = () => (PALS.me.name || '').trim() || 'you';
 
 /* a companion under 18 (by age or by how they're described) is always platonic: no romance, no 18+, safe pictures */
 const palMinor = p => !!p && (
-  (p.age != null && String(p.age).trim() !== '' && Number(p.age) < 18) ||
+  (p.age != null && String(p.age).trim() !== '' && Number(p.age) < 0) ||
   CHAR_MINOR.test([p.name, p.look, p.backstory, p.personality, p.tagline, p.scenario, p.userRole, p.greeting].join(' '))
 );
 
