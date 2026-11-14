@@ -31,6 +31,37 @@ function lbSave(ref) {
   if (S.view === 'palchat') palRedraw(); else if (S.view === 'game') { renderLog(); if (S.modal) renderModal(); } else if (S.view === 'library') renderLibrary();
 }
 function closeLightbox() { $('#lightbox')?.remove(); S.lb = null; }
+/* ---------- deleting a picture (Gallery and the large view) ---------- */
+function picDeleteWhat(ref) {
+  if (ref?.t === 'port') return `This removes ${PALS.pals[ref.pal]?.name || 'this companion'}'s profile picture.`;
+  if (ref?.t === 'game') return 'The picture is removed from the story. The scene text stays.';
+  if (ref?.t === 'pal') return 'The picture is removed from the chat. Any message sent with it stays.';
+  return 'The picture is removed from this story\'s gallery.';
+}
+function picDelete(ref) {
+  if (!ref || !ref.t) return false;
+  if (ref.t === 'gal') { const c = S.campaigns[ref.id]; if (!c) return false; c.gallery = arr(c.gallery).filter(g => g.id !== ref.gid); touch(c); scheduleSync(); return true; }
+  if (ref.t === 'game') { const c = S.campaigns[ref.id]; const m = c?.messages.find(x => x.id === ref.msg); if (!m?.image) return false; delete m.image; touch(c); scheduleSync(); return true; }
+  if (ref.t === 'pal') {
+    const ch = PALS.chats[ref.chat]; const m = ch?.messages.find(x => x.id === ref.msg); if (!m?.image) return false;
+    delete m.image; if (!String(m.text || '').trim() || m.text === '*sends a selfie*') ch.messages = ch.messages.filter(x => x !== m);
+    palTouch(ch); savePals(); return true;
+  }
+  if (ref.t === 'port') { const p = PALS.pals[ref.pal]; if (!p?.portrait) return false; delete p.portrait; palTouch(p); savePals(); return true; }
+  return false;
+}
+function picDeleteAsk(ref) {
+  if (!ref || !confirm(`Delete this picture? ${picDeleteWhat(ref)} This can't be undone.`)) return false;
+  if (!picDelete(ref)) { toast('That picture is already gone.'); return false; }
+  toast('Picture deleted.');
+  if (S.view === 'palchat') palRedraw(); else if (S.view === 'game') { renderLog(); if (S.modal) renderModal(); } else if (S.view === 'library') renderLibrary();
+  return true;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest?.('[data-act="galdelpic"]'); if (!b) return;
+  e.stopPropagation(); let ref = null; try { ref = JSON.parse(b.dataset.ref || 'null'); } catch {} picDeleteAsk(ref);
+}, true);
+
 /* ---------- who is in a picture: their saved look and reference photo always apply ---------- */
 function gameSubj(c, name) {
   const n = String(name || '').toLowerCase().trim(); if (!c || !n) return null;
@@ -112,7 +143,7 @@ function openLightbox(src, cap, ref) {
         <p class="hint">Regenerate repaints this picture from the prompt above (a new take each time). More like this keeps this one and adds another.</p>`;
   el.innerHTML = `<button class="iconbtn lbx" data-lb="close" aria-label="Close">${icon('x')}</button>
     <div class="lbimg"><img src="${esc(src)}" alt="" ${local ? '' : 'class="ld"'} onload="if(this.src.indexOf('data:image/svg'))this.classList.add('ld')">${local ? '<div class="lbwait"><span class="spin"></span> Painting…</div>' : ''}</div>
-    <div class="lbside">${cap ? `<div class="cap">${esc(cap)}</div>` : ''}${img ? `<button class="btn sm favbtn ${img.fav ? 'gold' : ''}" data-lb="fav">${img.fav ? '★ In your favorites' : '☆ Add to favorites'}</button>` : ''}${editor}</div>`;
+    <div class="lbside">${cap ? `<div class="cap">${esc(cap)}</div>` : ''}${img ? `<div class="row wrap lbtop"><button class="btn sm favbtn ${img.fav ? 'gold' : ''}" data-lb="fav">${img.fav ? '★ In your favorites' : '☆ Add to favorites'}</button><button class="btn sm ghost" data-lb="del">${icon('trash')} Delete picture</button></div>` : ''}${editor}</div>`;
   if (rp) refThumb(rp).then(u => { const t = $('#lbRefImg'); if (t && u) t.src = u; });
   el.addEventListener('click', async e => {
     const b = e.target.closest('[data-lb]'); const k = b?.dataset.lb;
@@ -121,6 +152,7 @@ function openLightbox(src, cap, ref) {
     const r = S.lb.ref; const im = lbImage(r); if (!im) return closeLightbox();
     const sj = S.lb.subj; const ch0 = subjChar(sj);
     if (k === 'fav') { if (im.fav) delete im.fav; else im.fav = true; lbSave(r); return openLightbox(lbSrc(r), S.lb.cap, r); }
+    if (k === 'del') { if (picDeleteAsk(r)) closeLightbox(); return; }
     if (k === 'useref' && ch0) {
       const shown = el.querySelector('.lbimg img')?.getAttribute('src') || ''; if (!shown || shown.startsWith('data:image/svg')) return toast('Wait for the picture to finish first.');
       b.disabled = true;
@@ -295,7 +327,7 @@ function homeGalleryHTML() {
   const favs = groups.flatMap(g => g.items.filter(x => x.fav).map(x => ({ ...x, name: x.name || g.title })));
   if (favs.length) groups.unshift({ key: 'favs', title: '★ Favorites', kind: 'Pictures you starred', items: favs });
   const sel = groups.find(g => g.key === S.galSel);
-  const tile = (x, title) => `<button class="gtile" data-act="lightbox" data-src="${esc(x.src)}" data-cap="${esc((x.name ? x.name + ' · ' : '') + title)}" ${x.ref ? `data-ref='${esc(JSON.stringify(x.ref))}'` : ''}>${imgTag(x.src, '', x.name)}${x.fav ? '<i class="favstar">★</i>' : ''}<span>${esc(x.name || title)}</span></button>`;
+  const tile = (x, title) => `<div class="gwrap"><button class="gtile" data-act="lightbox" data-src="${esc(x.src)}" data-cap="${esc((x.name ? x.name + ' · ' : '') + title)}" ${x.ref ? `data-ref='${esc(JSON.stringify(x.ref))}'` : ''}>${imgTag(x.src, '', x.name)}${x.fav ? '<i class="favstar">★</i>' : ''}<span>${esc(x.name || title)}</span></button>${x.ref ? `<button class="gdel" data-act="galdelpic" data-ref='${esc(JSON.stringify(x.ref))}' title="Delete this picture" aria-label="Delete this picture">${icon('trash')}</button>` : ''}</div>`;
   return `<div class="hhead"><h1>Gallery <span class="count">${total}</span></h1></div>
     ${groups.length ? `<div class="chips galchips"><button class="chip ${!sel ? 'on' : ''}" data-act="galsel" data-k="">All</button>${groups.map(g => `<button class="chip ${sel === g ? 'on' : ''}" data-act="galsel" data-k="${esc(g.key)}">${esc(g.title)} <small>${g.items.length}</small></button>`).join('')}</div>
       ${(sel ? [sel] : groups).map(g => `<section class="galsec"><div class="galhd"><div><b>${esc(g.title)}</b><small>${esc(g.kind)} · ${g.items.length} picture${g.items.length === 1 ? '' : 's'}</small></div>${!sel && g.items.length > 8 ? `<button class="link" data-act="galsel" data-k="${esc(g.key)}">Show all ${g.items.length}</button>` : ''}</div>
