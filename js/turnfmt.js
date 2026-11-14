@@ -70,11 +70,13 @@ function fmtBarHTML(c) {
     <button class="fmtbtn" data-act="fmt" data-k="ooc" title="Out of character, to the GM">(( )) Talk to GM</button>
     ${!isCompanion(c) && arr(c.character?.traits).length ? `<button class="fmtbtn ${S.drawer === 'traits' ? 'on' : ''}" data-act="drawer" data-k="traits" title="Use one of your traits in this turn">✦ Trait</button>` : ''}
     ${!isCompanion(c) ? `<button class="fmtbtn ${S.drawer === 'gear' ? 'on' : ''}" data-act="drawer" data-k="gear" title="Check your gear without leaving the text box">🎒 Gear</button>` : ''}
+    ${!isCompanion(c) ? `<button class="fmtbtn ${S.drawer === 'rolls' ? 'on' : ''}" data-act="drawer" data-k="rolls" title="Your recent dice rolls and what they were for">🎲 Rolls</button><button class="fmtbtn" data-act="encmanual" title="Play out a fight or a contest turn by turn in its own window">⚔ Encounter</button>` : ''}
     <span class="fmthint">${say ? 'Plain text is what you say.' : 'Plain text is what you do.'}</span></div><div id="fmtDrawer">${drawerHTML(c)}</div>`;
 }
 /* the drawer above the text box: gear or traits, tap one to drop it into your turn */
 function drawerHTML(c) {
   const ch = c?.character; if (!ch || !S.drawer) return '';
+  if (S.drawer === 'rolls') return `<div class="drawer"><div class="dhd"><b>🎲 Recent rolls</b><span>Newest first</span><button class="link" data-act="drawer" data-k="">Close</button></div><div class="rllist">${rollLogHTML(c, 15)}</div></div>`;
   if (S.drawer === 'gear') {
     const g = arr(ch.gear);
     return `<div class="drawer"><div class="dhd"><b>🎒 Gear</b><span>${ch.gold} gold · ${ch.hp}/${ch.maxHp} HP</span><button class="link" data-act="drawer" data-k="">Close</button></div>

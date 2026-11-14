@@ -8,6 +8,7 @@ document.addEventListener('click', e => {
   const act = el.dataset.act; const c = cur(); const D = S.draft;
   if (act.startsWith('bible')) { bibleAction(act, el); return; }
   if (act.startsWith('pal') && palAction(act, el)) return;
+  if (act.startsWith('enc') && encAction(act, el, c)) return;
   if (homeAction(act, el) || panelAction(act, el, c) || memoryAction(act, el, c)) return;
   switch (act) {
     case 'party': S.compForm = null; openModal('party'); break;
@@ -94,10 +95,11 @@ document.addEventListener('click', e => {
     case 'open': if (!e.target.closest('[data-act="del"]')) openGame(el.dataset.id); break;
     case 'del': e.stopPropagation(); deleteCampaign(el.dataset.id); break;
     case 'scenario': { const sc = SCENARIOS.find(s => s.id === el.dataset.id); const n = newDraft(sc);
-      for (const k of ['concept','name','pronouns','storyRole','appearance','backstory','stats','traits','signatures','tpToEp','tpToStats','worldPrompt','gmPreset','gmName','gmStyle']) n[k] = D[k];
+      for (const k of ['concept','name','sex','storyRole','appearance','backstory','stats','traits','signatures','tpToEp','tpToStats','worldPrompt','gmPreset','gmName','gmStyle']) n[k] = D[k];
       if (!D.gear.length || D.gear.every(g => SCENARIOS.some(s => s.gear.includes(g.name)))) n.gear = sc.gear.map(normGear); else n.gear = D.gear;
       S.draft = n; renderNew(true); break; }
-    case 'aiconvert': draftWithAI(true); break;
+    case 'aiconvert': if (!charFillFromPaste(true)) draftWithAI(true); break;   /* a sheet in the template's shape fills in directly; anything else is sorted by the AI */
+    case 'charprompt': copyText(charPrompt(D), 'Prompt copied. Paste it into ChatGPT or Claude, add your idea, then paste what it writes into the box.'); break;
     case 'aidraft': draftWithAI(); break;
     case 'aiworld': worldWithAI(); break;
     case 'dstat': { const k = el.dataset.k; D.stats[k] = clamp(D.stats[k] + num(el.dataset.d), 8, 20); renderNew(true); break; }
@@ -210,7 +212,7 @@ document.addEventListener('input', e => {
   if (el.dataset.bind) {
     const v = el.type === 'checkbox' ? el.checked : el.type === 'number' || el.type === 'range' ? Number(el.value) : el.value;
     setPath(S.settings, el.dataset.bind, v); if (el.dataset.bind === 'ai.helperModel') S.settings.ai.helperAuto = v ? '' : 'off'; saveSettings();
-    if (/^ui\.(music|amb)/.test(el.dataset.bind)) { musicScene(cur()); musicLevel(); const sv = el.closest('label')?.querySelector('.sval'); if (sv) sv.textContent = pct(v); }
+    if (/^ui\.(music|amb|voiceVol|narr)/.test(el.dataset.bind)) { musicScene(cur()); musicLevel(); voiceLevel(); const sv = el.closest('label')?.querySelector('.sval'); if (sv) sv.textContent = el.dataset.bind === 'ui.narr' ? v + 'px' : pct(v); }
     if (el.tagName === 'SELECT' || el.dataset.bind === 'drive.folder') { if (el.tagName === 'SELECT') renderModal(); else { const h = el.closest('label')?.nextElementSibling; if (h && h.classList.contains('hint')) { const fid = folderIdFrom(el.value); h.innerHTML = fid ? `Folder ID: <code>${esc(fid)}</code>` : '<span style="color:var(--red)">Paste a Google Drive folder link.</span>'; } } }
   } else if (el.dataset.dpath && S.draft) {
     let v = el.value;

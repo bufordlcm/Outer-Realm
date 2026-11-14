@@ -66,10 +66,11 @@ function renderNew(keepScroll) {
       ${ta('concept', 'Describe your character', 'A brilliant but arrogant potion brewer with a stutter and a bad leg from a lab explosion…', 3)}
       <button class="btn gold wide" data-act="aidraft" style="margin-top:10px" ${S.drafting ? 'disabled' : ''}>${S.drafting ? '<span class="spin sm"></span> Drafting your build… <span class="buildsecs"></span>' : icon('spark') + ' Draft my build with AI'}</button>
       <button class="btn wide" data-act="aiconvert" style="margin-top:8px" ${S.drafting ? 'disabled' : ''}>${icon('upload')} I pasted a finished character: sort it into my sheet</button>
-      <p class="hint">Paste a character from ChatGPT, Claude or anywhere into the box above (any format) and the AI puts the name, looks, story, stats, traits and gear where they belong.</p>
+      <button class="btn wide" data-act="charprompt" style="margin-top:8px">${icon('scroll')} Copy a ready-made prompt for ChatGPT / Claude</button>
+      <p class="hint">Copy the prompt, paste it into ChatGPT or Claude with your idea, then paste what it writes into the box above: the sheet fills in straight away. A character in any other format still works with the button above it (the AI sorts it).</p>
       <p class="hint">The AI fills in everything below — stats, traits, gear and backstory. Then tweak it. Or skip this and build by hand.</p>
     </div>
-    <div class="kv">${f('name', 'Name', 'Rowan')}${f('pronouns', 'Pronouns', 'he/him')}</div>
+    <div class="kv">${f('name', 'Name', 'Rowan')}<label class="f"><span>Gender</span><select data-dpath="sex"><option value="">Choose…</option><option value="male" ${D.sex === 'male' ? 'selected' : ''}>Male</option><option value="female" ${D.sex === 'female' ? 'selected' : ''}>Female</option></select></label></div>
     ${f('storyRole', isComp ? 'Who you are here' : 'Story role', isComp ? 'New bartender at the Gilded Stag, a ranger passing through…' : 'Third-year of House Ember, guild apprentice…')}
     ${ta('appearance', 'Appearance (used for images)', 'Tall, weathered face, braided red hair, green wool cloak…', 2)}
     ${draftPortraitHTML(D)}
@@ -144,7 +145,7 @@ function renderGame() {
     <div class="hudwrap" id="hud"></div>
     <div class="log" id="log"></div>
     <div class="dock" id="dock"></div></div>`;
-  renderHUD(); renderLog(true); renderDock(); renderPanel();
+  renderHUD(); renderLog(true); renderDock(); renderPanel(); renderEnc();
 }
 function renderHUD() {
   const c = cur(); const el = $('#hud'); if (!c || !el) return;
@@ -175,9 +176,9 @@ function msgHTML(m, c, isLastGM) {
     if (S.editing === m.id) return `<div class="msg gm" data-id="${m.id}">${sceneHTML(m, c)}<div class="editbox"><textarea id="editText">${esc(m.text)}</textarea><div class="row" style="margin-top:8px"><button class="btn sm gold" data-act="editsave" data-mid="${m.id}">Save</button><button class="btn sm ghost" data-act="editcancel">Cancel</button></div></div></div>`;
     const checking = m.checking ? `<div class="notes"><span class="note"><span class="spin sm" style="display:inline-block;vertical-align:-3px;margin-right:6px"></span>${typeof m.checking === 'string' ? esc(m.checking) : 'Checking the scene…'}</span></div>` : '';
     const card = isLastGM && c.pendingRoll && c.pendingRoll.msgId === m.id && !S.busy ? rollCardHTML(c) : '';
-    return `<div class="msg gm ${m.streaming ? 'streaming' : ''}" data-id="${m.id}">${sceneHTML(m, c)}<div class="narr">${m.streaming ? (md(liveNarration(m.text)) || `<p style="color:var(--muted)"><em>${esc(m.phase || 'The Game Master considers…')}</em></p>`) : md(m.text)}</div>${checking}${compRollsHTML(m)}${isCompanion(c) ? notesHTML(m.notes) : shiftHTML(m.notes)}${m.handoutId ? (h => h ? handoutHTML(h) : '')(arr(c.handouts).find(x => x.id === m.handoutId)) : ''}${card}${acts}</div>`;
+    return `<div class="msg gm ${m.streaming ? 'streaming' : ''}" data-id="${m.id}">${sceneHTML(m, c)}<div class="narr">${m.streaming ? (md(liveNarration(m.text)) || `<p style="color:var(--muted)"><em>${esc(m.phase || 'The Game Master considers…')}</em></p>`) : md(m.text)}</div>${checking}${compRollsHTML(m)}${isCompanion(c) ? notesHTML(m.notes) : shiftHTML(m.notes)}${m.handoutId ? (h => h ? handoutHTML(h) : '')(arr(c.handouts).find(x => x.id === m.handoutId)) : ''}${encLogHTML(m)}${isLastGM ? encOfferHTML(m, c) : ''}${card}${acts}</div>`;
   }
-  if (m.role === 'player') return `<div class="msg player">${m.who ? `<div class="who">${esc(m.who)}</div>` : ''}<div class="b ${m.ooc ? 'ooc' : ''}">${m.ooc ? esc(m.text.replace(/^\(\(\s*|\s*\)\)$/g, '')) : m.mode ? turnHTML(m.text, m.mode) : esc(m.text)}</div></div>`;
+  if (m.role === 'player') return `<div class="msg player" data-id="${m.id}">${m.who ? `<div class="who">${esc(m.who)}</div>` : ''}<div class="b ${m.ooc ? 'ooc' : ''}">${m.ooc ? esc(m.text.replace(/^\(\(\s*|\s*\)\)$/g, '')) : m.mode ? turnHTML(m.text, m.mode) : esc(m.text)}</div></div>`;
   if (m.role === 'roll') {
     const r = m.rollData || {};
     return `<div class="msg roll"><div class="rollres"><div class="d20 ${r.d === 20 ? 'crit' : r.d === 1 ? 'fumble' : ''}">${r.d ?? '?'}</div>
@@ -200,7 +201,9 @@ function rollCardHTML(c) {
   const r = c.pendingRoll; const ch = c.character;
   const res = S.rollResult && S.rollResult.msgId === r.msgId ? S.rollResult : null;
   const momAvail = (ch.momentum || 0) - (r.momentumPlus ? 1 : 0);
-  const title = r.kind === 'attack' ? `Attack · Defense ${effDC(r)}` : r.kind === 'defense' ? `Defend · DC ${effDC(r)}` : `${SN(r.stat)} check · DC ${effDC(r)}`;
+  const cap1 = s => s ? s[0].toUpperCase() + s.slice(1) : s;
+  const title = r.kind === 'attack' ? `Attack roll: ${r.reason}` : r.kind === 'defense' ? `Incoming: ${r.reason}` : `Roll to ${r.reason}`;
+  const sub = r.kind === 'attack' ? `${SN(r.stat)} · you need ${effDC(r)} or more to hit (their Defense)` : r.kind === 'defense' ? `Defense roll · DC ${effDC(r)}${r.enemy_damage ? ` · a hit does ${r.enemy_damage}` : ''}` : `${SN(r.stat)} ${r.passive ? 'roll' : 'check'} · DC ${effDC(r)}`;
   const statKey = r.kind === 'defense' ? null : r.stat;
   const mods = res ? res.mods : rollMods(c, r, statKey);
   const modList = S.settings.ui.diceMath === false && !res ? '' : `<div class="mods">${mods.map(x => `<div class="${x.v > 0 ? 'pos' : x.v < 0 ? 'neg' : ''}"><span>${esc(x.l)}${x.why ? `<small>${esc(x.why)}</small>` : ''}</span><span>${fmt(x.v)}</span></div>`).join('')}
@@ -227,13 +230,18 @@ function rollCardHTML(c) {
     actions = `<div class="defbtns"><button class="btn gold" data-act="roll" data-mode="dodge">Dodge<small>Dexterity ${tot('dodge')}</small></button>
       <button class="btn gold" data-act="roll" data-mode="block">Block<small>Strength ${tot('block')}</small></button>
       <button class="btn gold" data-act="roll" data-mode="counter">Counter<small>${SN(defenseStat(ch, 'counter'))} ${tot('counter')} · DC+3</small></button></div>`;
-  } else actions = `<button class="btn gold wide" data-act="roll">Roll the d20</button>`;
-  return `<div class="rollcard"><div class="h">${esc(title)}</div><div class="r">${esc(r.reason)}${r.kind === 'defense' && r.enemy_damage ? ` · hits for ${esc(r.enemy_damage)}` : ''}</div>
-    ${!res ? `<label class="rollhow"><span>${r.kind === 'defense' ? 'What do you do?' : 'How do you do it?'} <i>(optional)</i></span><textarea id="rollHow" rows="2" placeholder="${r.kind === 'defense' ? 'e.g. I duck under the swing and thrust at his ribs' : r.kind === 'attack' ? 'e.g. I feint high, then slash at his leg' : 'e.g. I wait for the thunder to cover the noise'}">${esc(r.how || '')}</textarea></label>` : r.how ? `<p class="rollsaid">“${esc(r.how)}”</p>` : ''}
+  } else actions = `<button class="btn gold wide" data-act="roll">🎲 Roll ${r.passive ? 'for it' : 'the d20'}</button>`;
+  /* action rolls show what you wrote; an incoming attack asks what you do; a straight check just rolls */
+  const prompt = res ? (r.how ? `<p class="rollsaid">“${esc(r.how)}”</p>` : '')
+    : r.kind === 'defense' ? `<label class="rollhow"><span>What do you do?</span><textarea id="rollHow" rows="2" placeholder="e.g. I duck under the swing and shove him back">${esc(r.how || '')}</textarea></label>`
+    : r.passive ? '<p class="rollwhy">A straight check: nothing to decide, just roll and the story continues.</p>'
+    : r.said ? `<p class="rollsaid">Your action: “${esc(r.said)}”</p>` : '';
+  return `<div class="rollcard"><div class="h">${esc(cap1(title))}</div><div class="r">${esc(sub)}</div>
+    ${prompt}
     ${modList}${invoke}${momBtn}
     <div class="d20 bigdie ${res?.d === 20 ? 'crit' : res?.d === 1 ? 'fumble' : ''}" id="bigdie">${res ? res.d : 'd20'}</div>
     ${actions}
-    ${!res ? '<button class="link" data-act="skiproll" style="display:block;margin:6px auto 0">Skip — I\'ll do something else</button>' : ''}</div>`;
+    ${!res && !r.passive ? '<button class="link" data-act="skiproll" style="display:block;margin:6px auto 0">Skip — I\'ll do something else</button>' : ''}</div>`;
 }
 function renderLog(scroll) {
   const c = cur(); const log = $('#log'); if (!c || !log) return;
@@ -263,6 +271,7 @@ function renderDock() {
   const lg = lastIndex(c, 'gm'); const last = c.messages[lg];
   if (c.deathPending && !S.busy) { dock.innerHTML = deathDockHTML(c); return; }
   if (c.ended && !S.busy) { dock.innerHTML = endedDockHTML(c); return; }
+  if (c.enc && !S.busy) { dock.innerHTML = encDockHTML(c); return; }
   const settled = !S.busy && last && !c.pendingRoll && lg >= 0 && c.messages.slice(lg + 1).every(m => m.role === 'sys' || m.role === 'comp');
   const showChips = false;
   dock.innerHTML = `${showChips ? `<div class="chips">${last.choices.map((ch, i) => `<button class="chip" data-act="choice" data-i="${i}">${esc(ch)}</button>`).join('')}</div>` : ''}${settled && S.settings.ui.quick !== false ? (isCompanion(c) ? companionQuickHTML(c) : quickHTML(c)) : ''}${actorBarHTML(c)}${talkBarHTML(c)}
@@ -283,14 +292,15 @@ function sendInput() {
 
 /* ---------- modals ---------- */
 function openModal(kind, tab) { S.modal = kind; S.modalTab = tab || null; S.models = null; renderModal(); }
-function closeModal() { if (S.modal === 'levelup') S.lu = null; S.modal = null; $('#modalRoot').innerHTML = ''; if (S.view === 'game') { renderHUD(); renderLog(); renderDock(); } else if (S.view === 'library') renderLibrary(); }
+function closeModal() { if (S.modal === 'levelup') S.lu = null; S.modal = null; $('#modalRoot').innerHTML = ''; if (S.view === 'game') { renderHUD(); renderLog(); renderDock(); } else if (S.view === 'library') renderLibrary(); else if (S.view === 'palchat') palRedraw(); else if (S.view === 'paledit') { const y = scrollY; renderPalEditor(); scrollTo(0, y); } }
 function renderModal() {
   const root = $('#modalRoot'); if (!S.modal) { root.innerHTML = ''; return; }
   const scroll = $('#modalBody')?.scrollTop || 0;
   let title = '', tabs = '', body = '';
   if (S.modal === 'settings') { title = 'Settings'; [tabs, body] = settingsHTML(); }
   else if (S.modal === 'bible') { title = 'Story Bible'; body = bibleHTML(); }
-  else if (S.modal === 'palme' || S.modal === 'palgroup') { [title, body] = palModalHTML(S.modal); }
+  else if (S.modal === 'search') { [title, body] = searchModalHTML(); }
+  else if (String(S.modal).startsWith('pal')) { [title, body] = palModalHTML(S.modal); }
   else if (S.modal === 'game') { title = 'Game Settings'; [tabs, body] = gameSettingsHTML(); }
   else if (S.modal === 'sheet') { title = 'Character'; [tabs, body] = sheetHTML(); }
   else if (S.modal === 'journal') { title = 'Journal'; [tabs, body] = journalBookHTML(); }
@@ -370,7 +380,7 @@ function settingsHTML() {
       <div class="row" style="margin-top:16px"><button class="btn gold" data-act="sync">${icon('cloud')} ${Drive.valid() ? 'Sync now' : 'Connect & sync'}</button>${Drive.valid() || LS.get('iq.driveok', false) ? `<button class="btn ghost" data-act="drivedisc">Disconnect</button>` : ''}</div>
       <p class="hint" id="driveStatus">${esc(S.syncStatus || (Drive.valid() ? 'Connected.' : 'Not connected.'))}</p>`;
   } else {
-    body = `<label class="f"><span>Story text size</span><input type="range" min="14" max="24" step="1" data-bind="ui.narr" value="${S.settings.ui.narr}" style="width:100%;accent-color:var(--gold)"></label>
+    body = `<label class="f"><span>Text size (stories and companion chats)</span><input type="range" min="14" max="24" step="1" data-bind="ui.narr" value="${S.settings.ui.narr}" style="width:100%;accent-color:var(--gold)"></label>
       <label class="f"><span>Empty bar at the bottom of the screen (keeps the Netlify banner off the Send button)</span><select data-bind="ui.bottomGap"><option value="phone" ${(S.settings.ui.bottomGap || 'phone') === 'phone' ? 'selected' : ''}>On phones only</option><option value="always" ${S.settings.ui.bottomGap === 'always' ? 'selected' : ''}>Always</option><option value="off" ${S.settings.ui.bottomGap === 'off' ? 'selected' : ''}>Off</option></select></label>
       ${bindInput('ui.bottomGapPx', 'Bar height (pixels)', { type:'number', hint:'Raise it if the banner still covers anything; lower it to get the space back.' })}
       <div class="sect" style="font-size:20px">Dice, voice, music &amp; game flow</div>
@@ -378,7 +388,7 @@ function settingsHTML() {
       <button class="btn" data-act="gamesettings">${icon('gear')} Open Game Settings</button>
       <div class="sect" style="font-size:20px">Backups</div>
       <p class="hint">A backup file holds every adventure and your settings (keys excluded).</p>
-      <div class="row" style="margin-top:10px"><button class="btn" data-act="export">${icon('download')} Download backup</button><button class="btn" data-act="import">${icon('upload')} Restore backup</button></div>
+      <div class="row" style="margin-top:10px"><button class="btn" data-act="export">${icon('download')} Back up everything</button><button class="btn" data-act="import">${icon('upload')} Restore backup</button></div>
       <div class="sect" style="font-size:20px">Danger zone</div>
       <button class="btn danger" data-act="wipe">Erase everything on this device</button>`;
   }
@@ -473,7 +483,7 @@ function connsHTML() {
 
 
 /* moved here so Game Settings can show them */
-const voiceSettingsHTML = () => `${TTS || VOICE.pc ? `<label class="f"><span>Narration</span><select data-bind="ui.voice"><option value="off" ${S.settings.ui.voice === 'off' ? 'selected' : ''}>Off</option><option value="tap" ${S.settings.ui.voice === 'tap' ? 'selected' : ''}>Tap "Read" to hear a scene</option><option value="auto" ${S.settings.ui.voice === 'auto' ? 'selected' : ''}>Read every scene aloud automatically</option></select></label>
+const voiceSettingsHTML = () => `${TTS || VOICE.pc ? `${slider('ui.voiceVol', 'Voice volume', 0, 1, 0.01, pct)}<label class="f"><span>Narration</span><select data-bind="ui.voice"><option value="off" ${S.settings.ui.voice === 'off' ? 'selected' : ''}>Off</option><option value="tap" ${S.settings.ui.voice === 'tap' ? 'selected' : ''}>Tap "Read" to hear a scene</option><option value="auto" ${S.settings.ui.voice === 'auto' ? 'selected' : ''}>Read every scene aloud automatically</option></select></label>
       <label class="f"><span>Voices from</span><select data-bind="ui.voiceEngine"><option value="auto" ${(S.settings.ui.voiceEngine || 'auto') === 'auto' ? 'selected' : ''}>Automatic: natural PC voices when the helper has them</option><option value="pc" ${S.settings.ui.voiceEngine === 'pc' ? 'selected' : ''}>My PC (natural voices)</option><option value="device" ${S.settings.ui.voiceEngine === 'device' ? 'selected' : ''}>This device's built-in voices</option></select></label>
       <p class="hint">${VOICE.pc ? '<b style="color:var(--green)">✓ Natural PC voices found.</b> 27 voices, male and female, US and UK.' : 'Natural PC voices: not found. On the PC run <b>Install voices.bat</b> once (in the same folder as the picture helper), then restart the helper.'} <button class="link" data-act="voicecheck">Check again</button></p>
       ${engine() === 'pc' ? `<label class="f"><span>Narrator voice</span><select data-bind="ui.voicePC">${[...PC_VOICES.m, ...PC_VOICES.f].map(([id, l]) => `<option value="${id}" ${(S.settings.ui.voicePC || PC_NARRATOR) === id ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></label>`

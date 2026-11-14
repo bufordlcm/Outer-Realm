@@ -48,7 +48,7 @@ function panelCharHTML(c) {
   const ch = c.character; const pic = portraitOf(ch, c); const pct = ch.maxHp ? Math.round(ch.hp / ch.maxHp * 100) : 0;
   const comp = isCompanion(c);
   return `<div class="pcardbig">${pic ? `<img src="${esc(pic)}" alt="" onerror="this.style.display='none'">` : `<div class="ph">${initial(ch.name)}</div>`}
-      <div class="pc"><b>${esc(ch.name)}</b><small>${esc(ch.storyRole || ch.pronouns || '')}</small>
+      <div class="pc"><b>${esc(ch.name)}</b><small>${esc(ch.storyRole || '')}</small>
       ${comp ? '' : `<div class="stats"><span>Lvl ${ch.level}</span><span>${icon('heart')} ${ch.hp}/${ch.maxHp}</span><span>${ch.gold} gold</span><span>EP ${ch.ep}</span></div>
       <div class="bar ${pct <= 50 ? 'low' : ''}"><i style="width:${pct}%"></i></div>`}</div></div>
     ${!comp && c.levelPending ? `<button class="btn white wide" data-act="levelup">${icon('spark')} Level up!</button>` : ''}
@@ -56,6 +56,7 @@ function panelCharHTML(c) {
     ${!comp && ch.traits?.length ? `<div class="lbl">Traits</div><div class="chips">${ch.traits.map(x => `<span class="chip sm ${x.polarity === '-' ? 'neg' : ''}">${esc(x.name)} <span class="tb ${x.tier}">${x.tier}</span></span>`).join('')}</div>` : ''}
     ${!comp && ch.gear?.length ? `<div class="lbl">Gear</div>${ch.gear.slice(0, 10).map(g => `<div class="pline">${esc(g.name)}${g.qty > 1 ? ' ×' + g.qty : ''}</div>`).join('')}` : ''}
     ${comp && ch.backstory ? `<div class="lbl">About you</div><p class="ptext">${esc(ch.backstory.slice(0, 500))}</p>` : ''}
+    ${!comp ? `<div class="lbl">🎲 Recent rolls</div><div class="rllist">${rollLogHTML(c, 8)}</div>` : ''}
     <button class="btn wide" data-act="sheet" style="margin-top:14px">${icon('book')} ${comp ? 'Edit you' : 'Full character sheet'}</button>`;
 }
 function panelCampHTML(c) {

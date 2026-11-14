@@ -394,15 +394,15 @@ async function testImage() {
   box.innerHTML = `<div style="padding:14px" class="hint">Loading… (5–20 seconds)</div><img src="${esc(url)}" onload="this.previousElementSibling.remove()" onerror="this.previousElementSibling.textContent='✗ Image failed — check the key/model or wait 15 seconds.'">`;
 }
 function exportFile() {
-  const blob = new Blob([JSON.stringify(exportData(false), null, 1)], { type:'application/json' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `ironquill-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const blob = new Blob([JSON.stringify({ ...exportData(false), companions: palExport() }, null, 1)], { type:'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `outer-realm-backup-${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 $('#importFile').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
-  try { const data = JSON.parse(await f.text()); if (!data.campaigns) throw new Error('Not an Outer Realm backup file.');
+  try { const data = JSON.parse(await f.text()); if (!data.campaigns && !data.companions) throw new Error('Not an Outer Realm backup file.'); data.campaigns = data.campaigns || {};
     for (const c of Object.values(data.campaigns)) c.updatedAt = Math.max(c.updatedAt || 0, (S.campaigns[c.id]?.updatedAt || 0) + 1);
-    data.deleted = {}; mergeIn(data); toast(`Restored — ${Object.keys(data.campaigns).length} adventure(s).`); rerender(); scheduleSync();
+    data.deleted = {}; mergeIn(data); const np = palRestore(data.companions); toast(`Restored — ${Object.keys(data.campaigns).length} adventure(s)${data.companions ? `, ${np} companion(s) with their chats, memories and personas` : ''}.`, 5000); rerender(); scheduleSync();
   } catch (err) { toast('Restore failed: ' + err.message, 5000); }
 });
 

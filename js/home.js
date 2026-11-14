@@ -127,21 +127,7 @@ function charsHTML() {
           <div class="in">in ${esc(c.title)}</div></div></button>`; }).join('')}</div>` : '<p class="empty">Characters you play show up here.</p>'}`;
 }
 
-/* ---------- Gallery (pictures from every game) ---------- */
-function homeGalleryHTML() {
-  if (S.settings.image.mode === 'off') return `<div class="hhead"><h1>Gallery</h1></div><p class="empty">Pictures are turned off. Turn them on in Settings → Images.</p>`;
-  const items = [];
-  for (const c of allGames()) {
-    for (const g of arr(c.gallery)) items.push({ src: imageUrl(g, c), name: g.name, c });
-    for (const m of arr(c.messages)) if (m.image && !arr(c.gallery).some(g => g.prompt === m.image.prompt)) items.push({ src: imageUrl(m.image, c), name: '', c });
-  }
-  return `<div class="hhead"><h1>Gallery <span class="count">${items.length}</span></h1></div>
-    ${items.length ? `<div class="gal">${items.slice(0, 240).map(x => `<button class="gtile" data-act="lightbox" data-src="${esc(x.src)}" data-cap="${esc((x.name ? x.name + ' · ' : '') + x.c.title)}">${imgTag(x.src, '', x.name)}<span>${esc(x.name || x.c.title)}</span></button>`).join('')}</div>` : '<p class="empty">Portraits and scene pictures from your games collect here.</p>'}`;
-}
-function openLightbox(src, cap) {
-  const d = document.createElement('div'); d.className = 'lightbox'; d.innerHTML = `<img src="${esc(src)}" alt=""><div class="cap">${esc(cap || '')}</div><button class="iconbtn" aria-label="Close">${icon('x')}</button>`;
-  d.addEventListener('click', () => d.remove()); document.body.appendChild(d);
-}
+/* the Gallery (grouped by story or chat) and the large picture view are in pics.js */
 
 /* ---------- home actions (called from the main click handler) ---------- */
 function homeAction(act, el) {
@@ -150,7 +136,8 @@ function homeAction(act, el) {
     case 'gfilter': S.gameFilter = el.dataset.k; renderLibrary(); return true;
     case 'gsel': S.gameSel = el.dataset.id; renderLibrary(); if (innerWidth < 760) $('.gprev')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); return true;
     case 'scenplay': { const sc = SCENARIOS.find(s => s.id === el.dataset.id) || SCENARIOS[0]; S.draft = newDraft(sc); S.draft.mode = 'solo'; S.addingPlayer = null; S.replacing = null; renderNew(); return true; }
-    case 'lightbox': openLightbox(el.dataset.src, el.dataset.cap); return true;
+    case 'lightbox': { let ref = null; try { ref = el.dataset.ref ? JSON.parse(el.dataset.ref) : null; } catch {} openLightbox(el.dataset.src, el.dataset.cap, ref); return true; }
+    case 'galsel': S.galSel = el.dataset.k || ''; renderLibrary(); return true;
   }
   return false;
 }

@@ -6,7 +6,7 @@
        reached the same way as pictures (localhost on the PC, Tailscale on the phone).
      • Device voices: the voices built into the phone or browser (always available).
    Each character gets a male or female voice automatically, picked from their
-   pronouns or description, and keeps it for the whole story.
+   gender or description, and keeps it for the whole story.
    ========================================================================= */
 const TTS = typeof window !== 'undefined' && 'speechSynthesis' in window;
 const ttsVoices = () => { if (!TTS) return []; const v = speechSynthesis.getVoices(); return v.slice().sort((a, b) => (b.lang.startsWith('en') - a.lang.startsWith('en')) || a.name.localeCompare(b.name)); };
@@ -24,6 +24,8 @@ const devGender = v => DEV_M.test(v.name) && !/female/i.test(v.name) ? 'm' : DEV
 
 const VOICE = { pc: null, checkedAt: 0, items: [], gen: 0, playing: false, audio: null, cache: new Map() };
 const voiceOn = () => S.settings.ui.voice !== 'off';
+const voiceVol = () => clamp(Number(S.settings.ui.voiceVol ?? 1), 0, 1);
+function voiceLevel() { try { if (VOICE.audio) VOICE.audio.volume = voiceVol(); } catch {} }
 const engine = () => { const e = S.settings.ui.voiceEngine || 'auto'; return e === 'device' ? 'device' : e === 'pc' ? 'pc' : VOICE.pc ? 'pc' : 'device'; };
 async function checkPCVoices(force) {
   if (!force && VOICE.checkedAt && Date.now() - VOICE.checkedAt < 60000) return VOICE.pc;
@@ -39,12 +41,12 @@ const GF = /\b(she|her|hers|herself|woman|women|girl|lady|ladies|queen|princess|
 const GM = /\b(he|him|his|himself|man|men|boy|lord|king|prince|father|dad|son|brother|husband|widower|priest|wizard|duke|count|emperor|sir|mister|grandfather|grandpa|uncle|nephew|god|hero|actor|waiter|host|baron|male|monk|knight|he's|groom|abbot|lad)\b/g;
 function genderOf(e) {
   if (!e) return '';
-  const pr = String(e.pronouns || '').toLowerCase();
-  if (/\bshe\b|\bher\b/.test(pr)) return 'f';
-  if (/\bhe\b|\bhim\b/.test(pr)) return 'm';
   const g = String(e.sex || e.gender || '').toLowerCase();
   if (/^(f|woman|girl|lady)/.test(g)) return 'f';
   if (/^(m|man|boy)\b/.test(g) || g === 'male') return 'm';
+  const pr = String(e.pronouns || '').toLowerCase();   /* older saves */
+  if (/\bshe\b|\bher\b/.test(pr)) return 'f';
+  if (/\bhe\b|\bhim\b/.test(pr)) return 'm';
   const t = ' ' + [e.role, e.storyRole, e.text, e.look, e.appearance, e.personality, e.backstory].filter(Boolean).join(' ').toLowerCase() + ' ';
   const f = (t.match(GF) || []).length, m = (t.match(GM) || []).length;
   return f > m ? 'f' : m > f ? 'm' : '';
@@ -87,6 +89,7 @@ function voiceOf(c, ent, name) {
   touch(c);
   return holder[fld];
 }
+const gWord = e => { const g = genderOf(e); return g === 'f' ? ' (female)' : g === 'm' ? ' (male)' : ''; };
 function hashNum(s) { let h = 2166136261; for (const ch of String(s || '')) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; }
 const narratorVoice = () => engine() === 'pc' ? (S.settings.ui.voicePC || PC_NARRATOR) : (S.settings.ui.voiceName || '');
 
@@ -190,7 +193,7 @@ function playUrl(url, gen) {
   return new Promise(res => {
     const a = VOICE.audio = VOICE.audio || new Audio();
     const done = () => { a.onended = a.onerror = null; res(); };
-    a.onended = done; a.onerror = done; a.src = url;
+    a.onended = done; a.onerror = done; a.src = url; a.volume = voiceVol();
     a.play().catch(done);
     const watch = setInterval(() => { if (gen !== VOICE.gen) { clearInterval(watch); try { a.pause(); } catch {} done(); } else if (a.ended || a.error) clearInterval(watch); }, 250);
   });
@@ -200,7 +203,7 @@ function sayDevice(item, gen) {
     if (!TTS || gen !== VOICE.gen) return res();
     const u = new SpeechSynthesisUtterance(item.text);
     const v = ttsVoices().find(x => x.name === item.voice); if (v) u.voice = v;
-    u.rate = Number(S.settings.ui.voiceRate) || 1; u.onend = u.onerror = () => res();
+    u.rate = Number(S.settings.ui.voiceRate) || 1; u.volume = voiceVol(); u.onend = u.onerror = () => res();
     speechSynthesis.speak(u);
   });
 }

@@ -72,7 +72,7 @@ function talkBarHTML(c) {
 }
 function castBrief(c) {
   const act = activeParty(c);
-  const lines = act.map(p => `- ${p.name}${p.pronouns ? ` (${p.pronouns})` : ''}${p.role ? `, ${p.role}` : ''}. Personality: ${p.personality || '—'}. Talks: ${p.voice || '—'}. Wants: ${p.goals || '—'}. Looks: ${p.appearance || '—'}. Closeness to ${c.character.name}: ${fmt(p.trust)} (-5 cold to +5 very close).${p.directive ? ' How they reply: ' + p.directive + '.' : ''}${p.secrets ? ' Private (reveal only through play): ' + p.secrets : ''}`);
+  const lines = act.map(p => `- ${p.name}${gWord(p)}${p.role ? `, ${p.role}` : ''}. Personality: ${p.personality || '—'}. Talks: ${p.voice || '—'}. Wants: ${p.goals || '—'}. Looks: ${p.appearance || '—'}. Closeness to ${c.character.name}: ${fmt(p.trust)} (-5 cold to +5 very close).${p.directive ? ' How they reply: ' + p.directive + '.' : ''}${p.secrets ? ' Private (reveal only through play): ' + p.secrets : ''}`);
   const gone = arr(c.party).filter(p => p.status !== 'active').map(p => `${p.name} (${p.status === 'dead' ? 'dead' : 'gone'})`);
   if (gone.length) lines.push(`No longer around: ${gone.join(', ')}.`);
   return lines.join('\n');

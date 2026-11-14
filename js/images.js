@@ -24,10 +24,10 @@ function draftPortraitHTML(D) {
 const NSFW_NAME = /porn|nsfw|lust|xxx|hentai|sex|nude|naked|erot|lewd|adult|r18|18\+/i;
 /* the character themself reads as under 18: an age under 18, teen / school-student words, "a child", etc.
    (a parent's "her kid" or "two kids" doesn't count, so adult characters with families aren't caught) */
-const CHAR_MINOR = /\b(?:(?:[1-9]|1[0-2])\s*-?\s*(?:years?|yrs?)[- ]?old|(?:[1-9]|1[0-2])\s*(?:yo|y\/o)|aged?\s+(?:[1-9]|1[0-2])|(?:kindergarten|pre-?k|[1-7](?:st|nd|rd|th)?\s+grade|grades?\s+[1-7])|(?:elementary|primary)[- ]school(?:ers?|\s+(?:student|girl|boy|kid))?|toddler|infant|baby|under\s*13)\b/i;
+const CHAR_MINOR = /\b(?:(?:[1-9])\s*-?\s*(?:years?|yrs?)[- ]?old|(?:[1-9])\s*(?:yo|y\/o)|aged?\s+(?:[1-9])|(?:kindergarten|pre-?k|(?:[1-5])(?:st|nd|rd|th)?\s+grade(?:rs?)?|grades?\s+(?:[1-5]))|(?:elementary|primary)[- ]school(?:ers?|\s+(?:kid))\b/i;
 const MINOR_WORDS = new RegExp(CHAR_MINOR.source + '|\\b(?:child(?:ren)?|kids?|toddlers?|infants?|newborns?|bab(?:y|ies)|little ones?)\\b', 'i');
 const MINOR_SETTING = /\b(?:(?:elementary|primary|boarding|prep)[- ]|kindergarten|daycare|nursery|orphanage|playground)\b/i;
-const SAFE_NEG = 'pickel';
+const SAFE_NEG = 'nsfw, nude, naked, nudity, nipples, topless, lingerie, sexual, explicit';
 function charLooksMinor(c) {
   const ch = c?.character || {}; const txt = [ch.storyRole, ch.appearance, ch.backstory].join(' ');
   return CHAR_MINOR.test(txt);
@@ -73,22 +73,22 @@ const IDB = {
   async get(k) { try { const db = await this.open(); return await new Promise(res => { const q = db.transaction('img').objectStore('img').get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); } catch { return null; } },
   async put(k, v) { try { const db = await this.open(); await new Promise(res => { const t = db.transaction('img', 'readwrite'); t.objectStore('img').put(v, k); t.oncomplete = res; t.onerror = res; }); } catch {} }
 };
-function forgeJob(prompt, seed, c) {
+function forgeJob(prompt, seed, c, neg = '') {
   const s = S.settings.image; const pick = pickForgeModel(c, prompt); const pk = forgePresetKey(pick.model); const P = FORGE_PRESETS[pk];
   const [FW, FH] = FORGE_SIZES[P.base][s.size] || FORGE_SIZES[P.base].square;
   /* "Fast" draws SDXL pictures at 3/4 size: about half the pixels, so roughly twice as quick on smaller cards */
   const small = [Math.round(FW * 0.75 / 64) * 64, Math.round(FH * 0.75 / 64) * 64];
   const fast = P.base === 'xl' && (s.forgeRes || 'fast') === 'fast';
   const [W, H] = fast ? small : [FW, FH];
-  const keyOf = (w, h) => 'k' + hashStr([prompt, seed, w, h, pk, pick.model, pick.safe, s.forgeNeg].join('|'));
+  const keyOf = (w, h) => 'k' + hashStr([prompt, seed, w, h, pk, pick.model, pick.safe, s.forgeNeg, ...(neg ? [neg] : [])].join('|'));
   /* a picture already painted at the other size is reused instead of painted again */
   const alt = P.base === 'xl' ? (fast ? keyOf(FW, FH) : keyOf(small[0], small[1])) : '';
-  return { prompt, seed, W, H, P, model: pick.model, safe: pick.safe, k: keyOf(W, H), alt };
+  return { prompt, seed, W, H, P, model: pick.model, safe: pick.safe, k: keyOf(W, H), alt, neg };
 }
 const localPH = k => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="3" height="2"><desc>${k}</desc></svg>`);
 const localFailURL = k => 'data:,fail-' + k;
-function localImageUrl(prompt, seed, c) {
-  const job = forgeJob(prompt, seed, c);
+function localImageUrl(prompt, seed, c, neg = '') {
+  const job = forgeJob(prompt, seed, c, neg);
   if (LOCAL.url[job.k]) return LOCAL.url[job.k];
   if (LOCAL.fail[job.k] && Date.now() - (LOCAL.failAt?.[job.k] || 0) < 30000) return localFailURL(job.k);
   if (LOCAL.fail[job.k]) delete LOCAL.fail[job.k];
@@ -109,7 +109,7 @@ async function pumpLocal() {
         if (!blob) { blob = await forgeGenerate(job); await IDB.put(job.k, blob); if (S.settings.image.driveSave !== false && Drive.configured()) DriveImg.queue(job.k); }
         LOCAL.url[job.k] = URL.createObjectURL(blob);
       } catch (e) { LOCAL.fail[job.k] = e.message || String(e); (LOCAL.failAt = LOCAL.failAt || {})[job.k] = Date.now(); }
-      delete LOCAL.jobs[job.k]; swapLocal(job.k);
+      LOCAL.cur = null; delete LOCAL.jobs[job.k]; swapLocal(job.k);
     }
   } finally { LOCAL.running = false; }
 }
@@ -129,15 +129,16 @@ async function freeOllamaVRAM() {
 async function forgeGenerate(job, retried = false) {
   const s = S.settings.image;
   if (s.forgeShare !== false) await freeOllamaVRAM();
-  const body = { prompt: job.prompt, negative_prompt: [(s.forgeNeg || '').trim() || FORGE_NEG, job.safe ? SAFE_NEG : ''].filter(Boolean).join(', '), seed: job.seed, width: job.W, height: job.H, steps: job.P.steps, cfg_scale: job.P.cfg,
+  const body = { prompt: job.prompt, negative_prompt: [(s.forgeNeg || '').trim() || FORGE_NEG, job.neg, job.safe ? SAFE_NEG : ''].filter(Boolean).join(', '), seed: job.seed, width: job.W, height: job.H, steps: job.P.steps, cfg_scale: job.P.cfg,
     sampler_name: job.P.sampler, scheduler: job.P.scheduler, batch_size: 1, n_iter: 1, send_images: true, save_images: false };
   if (job.model) { body.override_settings = { sd_model_checkpoint: job.model }; body.override_settings_restore_afterwards = false; }
   const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 360000);
+  LOCAL.cur = { k: job.k, ctl, t: Date.now() };
   let r;
   try { r = await fetch(forgeUrl() + '/sdapi/v1/txt2img', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body), signal: ctl.signal }); }
   catch (e) {
     clearTimeout(tm);
-    if (e.name === 'AbortError') throw new Error('Your PC took more than 6 minutes on one picture. Try the SDXL Lightning or SD 1.5 preset.');
+    if (e.name === 'AbortError') throw new Error(LOCAL.cancelled === job.k ? 'Cancelled.' : 'Your PC took more than 6 minutes on one picture. Try the SDXL Lightning or SD 1.5 preset.');
     if (!retried && await forgeFind(true)) return forgeGenerate(job, true);
     throw new Error(`Couldn't reach Stable Diffusion at ${forgeUrl()}. Make sure Forge is running on your PC (with the --api and --cors-allow-origins settings from the guide).`);
   }
@@ -194,11 +195,12 @@ function imageUrl(img, c) {
   const s = S.settings.image;
   const style = ((c && c.artStyle) || s.style || '').trim();
   const prompt = (img.prompt + (style ? ', ' + style : '')).replace(/\s+/g, ' ').slice(0, 900);
-  if (s.mode === 'local') return localImageUrl(prompt, img.seed || 1, c);
+  const neg = String(img.neg || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+  if (s.mode === 'local') return localImageUrl(prompt, img.seed || 1, c, neg);
   const [W, H] = SIZES[s.size] || SIZES.landscape; const seed = img.seed || 1; const p = encodeURIComponent(prompt);
   if (s.mode === 'template' && s.template.trim()) return s.template.trim().replaceAll('{prompt}', p).replaceAll('{seed}', seed).replaceAll('{width}', W).replaceAll('{height}', H);
   const model = encodeURIComponent(s.polliModel || 'flux');
-  const safe = pickForgeModel(c, img.prompt).safe ? '&safe=true' : '';
+  const safe = (pickForgeModel(c, img.prompt).safe ? '&safe=true' : '') + (neg ? '&negative_prompt=' + encodeURIComponent(neg) : '');
   if (s.polliKey.trim()) return `https://gen.pollinations.ai/image/${p}?model=${model}&width=${W}&height=${H}&seed=${seed}&nologo=true${safe}&key=${encodeURIComponent(s.polliKey.trim())}`;
   return `https://image.pollinations.ai/prompt/${p}?model=${model}&width=${W}&height=${H}&seed=${seed}&nologo=true${safe}`;
 }
@@ -484,7 +486,7 @@ function newDraft(sc = SCENARIOS[0]) {
   return { scenario: sc.id, title: sc.title, genre: sc.genre, premise: sc.premise, tone: sc.tone, art: sc.art, rating:'PG-13', magicCost: sc.magic || 'gm', gmNotes:'',
     worldPrompt:'', world: sc.world || '', secrets: sc.secrets || '', plan: sc.plan || '', roadmap: sc.roadmap || '', threats: (sc.threats || []).map(t => ({ ...t })), factions: (sc.factions || []).map(f => ({ ...f })),
     people: (sc.people || []).map(p => ({ ...p })), pinned: [...(sc.pinned || [])], cards: [], gmPreset:'storyteller', gmName:'', gmStyle:'',
-    concept:'', name:'', pronouns:'', storyRole:'', appearance:'', backstory:'',
+    concept:'', name:'', sex:'', pronouns:'', storyRole:'', appearance:'', backstory:'',
     stats: Object.fromEntries(STATS.map(k => [k, 8])), traits: [], gear: (sc.gear || []).map(normGear), signatures: [], tpToEp: 0, tpToStats: 0, gold: START_GOLD };
 }
 function draftBudget(D) {
@@ -508,7 +510,7 @@ RULES
 - backstory: two short paragraphs of character history ending with one unresolved hook. appearance: one vivid sentence.
 
 Reply with ONLY this JSON:
-{"name":"","pronouns":"","story_role":"","appearance":"","backstory":"","stats":{"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10},"traits":[{"name":"","polarity":"+","tier":"B","trigger":"","effects":[""]}],"gear":[{"name":"","desc":"","tier":""}]}`;
+{"name":"","gender":"male|female","story_role":"","appearance":"","backstory":"","stats":{"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10},"traits":[{"name":"","polarity":"+","tier":"B","trigger":"","effects":[""]}],"gear":[{"name":"","desc":"","tier":""}]}`;
 
 const WORLD_RULES = `You are a veteran tabletop RPG designer building the setting for a solo game run by an AI Game Master. Turn the player's short idea into a world that is rich, specific and ready to play tonight.
 - If the idea names an existing fictional world (a book, film, show or game), set the adventure inside that world: use its real places, factions, rules and well-known characters, and keep its tone and lore. Place the player's story in a gap where an original character fits.
@@ -568,12 +570,12 @@ async function draftWithAI(convert = false) {
   S.drafting = Date.now(); renderNew(true); buildTimer();
   try {
     const raw = await chat([{ role:'system', content: BUILDER_RULES },
-      { role:'user', content:`SETTING\nTitle: ${D.title}\nGenre: ${D.genre}\nPremise: ${D.premise}\nTone: ${D.tone}${D.world ? `\nWorld:\n${D.world}` : ''}\n\n${convert ? 'AN EXISTING CHARACTER TO CONVERT (keep everything it says: name, pronouns, role, looks, history, personality, abilities, items; turn abilities and flaws into traits and items into gear; only fill in what is missing and fit the numbers to the rules)' : 'PLAYER\'S CHARACTER CONCEPT'}\n${D.concept}${D.name ? `\nName: ${D.name}` : ''}\n\nReturn the JSON build.` }],
+      { role:'user', content:`SETTING\nTitle: ${D.title}\nGenre: ${D.genre}\nPremise: ${D.premise}\nTone: ${D.tone}${D.world ? `\nWorld:\n${D.world}` : ''}\n\n${convert ? 'AN EXISTING CHARACTER TO CONVERT (keep everything it says: name, gender, role, looks, history, personality, abilities, items; turn abilities and flaws into traits and items into gear; only fill in what is missing and fit the numbers to the rules)' : 'PLAYER\'S CHARACTER CONCEPT'}\n${D.concept}${D.name ? `\nName: ${D.name}` : ''}\n\nReturn the JSON build.` }],
       { build:true, stream:false, maxTokens:3200, temperature:0.75, json:true });
     const j = tryJSON(stripThink(raw));
     if (!j || !j.stats) throw new Error('The AI\'s reply wasn\'t a usable build. Try again, or pick a larger model.');
     if ((convert || !D.name.trim()) && j.name) D.name = String(j.name).slice(0, 60);
-    if ((convert || !D.pronouns.trim()) && j.pronouns) D.pronouns = String(j.pronouns).slice(0, 30);
+    { const g = String(j.gender || j.sex || '').toLowerCase(); if ((convert || !D.sex) && /^(f|m)/.test(g)) D.sex = g[0] === 'f' ? 'female' : 'male'; }
     D.storyRole = String(j.story_role || j.storyRole || D.storyRole || '').slice(0, 60);
     D.appearance = String(j.appearance || D.appearance || '').slice(0, 400);
     D.backstory = String(j.backstory || D.backstory || '').slice(0, 2000);
@@ -601,7 +603,7 @@ function createCampaign(s0 = false) {
     artStyle: D.art.trim(), gmNotes: D.gmNotes.trim(), magicCost: D.magicCost, world: (D.world || '').trim(), secrets: (D.secrets || '').trim(),
     gm: { preset: D.gmPreset || 'storyteller', name: (D.gmName || '').trim() || 'The Narrator', style: (D.gmStyle || '').trim() }, pinned: [], saves: [], tableTalk: [],
     plan: (D.plan || '').trim(), roadmap: (D.roadmap || '').trim(), rmAct: 0, rmDone: [], threats: [], factions: [], phase: s0 ? 'session0' : 'play', session0: [], createdAt: Date.now(), updatedAt: Date.now(),
-    character: { name: D.name.trim(), pronouns: D.pronouns.trim(), storyRole: D.storyRole.trim(), appearance: D.appearance.trim(), backstory: D.backstory.trim(),
+    character: { name: D.name.trim(), sex: D.sex || '', storyRole: D.storyRole.trim(), appearance: D.appearance.trim(), backstory: D.backstory.trim(),
       stats: { ...D.stats }, level: 1, hp: maxHp, maxHp, ep: Math.max(0, num(D.tpToEp)), tp: b.left, gold: num(D.gold),
       traits: D.traits.map(t => ({ ...t, source:'build' })), gear: D.gear.filter(g => g.name.trim()), signatures: D.signatures.filter(s => s.name.trim()), injuries: [], momentum: 0, strain: 0 },
     location:'', quests: [], memory: [], summary:'', summarizedUpTo: 0, pendingRoll: null, combat: false, levelPending: false,

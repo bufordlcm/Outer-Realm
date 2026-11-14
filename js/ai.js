@@ -333,7 +333,7 @@ THE PARTY (only if companions are listed under THE PARTY)
   "companion_checks": [{"name":"Mara","stat":"DEX","dc":15,"reason":"pick the lock"}]
   "companion_turns": ["Mara"]
   "companion_updates": [{"name":"Mara","trust":1,"hp_change":-4,"status":"active"}] (trust -2 to +2; status active, left or dead)
-  "new_companions": [{"name":"","pronouns":"","role":"","personality":"","voice":"","goals":"","appearance":"","secrets":"","stats":{"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10},"traits":[],"trust":1}]
+  "new_companions": [{"name":"","sex":"male|female","role":"","personality":"","voice":"","goals":"","appearance":"","secrets":"","stats":{"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10},"traits":[],"trust":1}]
   "player_dead": true — only if the player character is at 0 HP and truly dies (they ignored clear warnings or chose a fatal risk).
 
 KEEPSAKES — optional state fields
@@ -369,7 +369,7 @@ function sheetText(c) {
   const pos = ch.traits.filter(t => t.polarity === '+'), neg = ch.traits.filter(t => t.polarity === '-');
   const quests = (c.quests || []).filter(q => q.status === 'active').map(q => q.title);
   const lines = [
-    `Name: ${ch.name}${ch.pronouns ? ` (${ch.pronouns})` : ''}${ch.storyRole ? ` — ${ch.storyRole}` : ''}`,
+    `Name: ${ch.name}${gWord(ch)}${ch.storyRole ? ` — ${ch.storyRole}` : ''}`,
     `Level ${ch.level} · HP ${ch.hp}/${ch.maxHp}${ch.hp <= 0 ? ' (DOWN)' : ''} · Gold ${ch.gold}`,
     `Stats: ${STATS.map(k => `${k} ${ch.stats[k]} (${fmt(mod(ch.stats[k]))})`).join(', ')}`,
     ch.strain ? `Strain: ${ch.strain} (−${ch.strain} to all rolls)` : '',
@@ -529,7 +529,7 @@ function sheetBrief(c) {
   const ch = c.character;
   const t = ch.traits.map(x => `${x.polarity === '-' ? '−' : '+'}${x.name}${x.trigger ? ` (${x.trigger})` : ''}`).join('; ');
   return [
-    `${ch.name}${ch.pronouns ? ` (${ch.pronouns})` : ''}${ch.storyRole ? `, ${ch.storyRole}` : ''}. Level ${ch.level}. HP ${ch.hp}/${ch.maxHp}${ch.hp <= 0 ? ' (DOWN)' : ''}.`,
+    `${ch.name}${gWord(ch)}${ch.storyRole ? `, ${ch.storyRole}` : ''}. Level ${ch.level}. HP ${ch.hp}/${ch.maxHp}${ch.hp <= 0 ? ' (DOWN)' : ''}.`,
     ch.appearance ? `Looks: ${ch.appearance}` : '',
     t ? `Traits: ${t}` : '',
     ch.injuries.length ? `Injuries: ${ch.injuries.map(i => i.name).join(', ')}` : '',

@@ -63,13 +63,13 @@ function session0DockHTML(c) {
    Release 3 — the party: companions, orders, their own dice, independent
    turns, camp scenes, death options
    ========================================================================= */
-const COMP_SPEC = '{"name":"","pronouns":"","role":"","personality":"","voice":"how they talk","goals":"","appearance":"one vivid sentence","secrets":"1-2 hidden truths","stats":{"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10},"traits":[{"name":"","polarity":"+","tier":"C","trigger":"","effects":[""]}],"trust":1}';
+const COMP_SPEC = '{"name":"","sex":"male|female","role":"","personality":"","voice":"how they talk","goals":"","appearance":"one vivid sentence","secrets":"1-2 hidden truths","stats":{"STR":10,"DEX":10,"CON":10,"INT":10,"WIS":10,"CHA":10},"traits":[{"name":"","polarity":"+","tier":"C","trigger":"","effects":[""]}],"trust":1}';
 function normComp(x, madeBy = 'ai') {
   x = x && typeof x === 'object' ? x : { name: String(x || '') };
   const stats = {}; for (const k of STATS) stats[k] = clamp(num(x.stats?.[k]) || 10, 3, 20);
   const maxHp = Math.max(4, num(x.maxHp) || num(x.hp) || (10 + mod(stats.CON)));
   const txt = (v, n) => String(Array.isArray(v) ? v.join('; ') : (v || '')).trim().slice(0, n);
-  return { id: x.id || uid(), name: txt(x.name, 40) || 'Companion', pronouns: txt(x.pronouns, 20), role: txt(x.role || x.story_role, 60),
+  return { id: x.id || uid(), name: txt(x.name, 40) || 'Companion', sex: /^\s*f/i.test(x.sex || x.gender || '') ? 'female' : /^\s*m/i.test(x.sex || x.gender || '') ? 'male' : '', pronouns: txt(x.pronouns, 20), role: txt(x.role || x.story_role, 60),
     personality: txt(x.personality, 300), voice: txt(x.voice || x.speech, 160), goals: txt(x.goals || x.goal, 240), appearance: txt(x.appearance, 300), secrets: txt(x.secrets || x.secret, 400),
     stats, traits: arr(x.traits).map(t => normTrait(t)).filter(t => t.name !== 'Unnamed trait').slice(0, 6), hp: Math.min(maxHp, num(x.hp) || maxHp), maxHp, level: Math.max(1, num(x.level) || 1),
     trust: clamp(num(x.trust), -5, 5), status: ['active','left','dead'].includes(x.status) ? x.status : 'active', madeBy: x.madeBy || madeBy,
@@ -79,7 +79,7 @@ const activeParty = c => arr(c.party).filter(p => p.status === 'active');
 function partyText(c, withSecrets) {
   const act = activeParty(c);
   const gone = arr(c.party).filter(p => p.status !== 'active').map(p => `${p.name} (${p.status === 'dead' ? 'dead' : 'left the party'})`);
-  const lines = act.map(p => `- ${p.name}${p.pronouns ? ` (${p.pronouns})` : ''}, ${p.role || 'companion'}, level ${p.level}, HP ${p.hp}/${p.maxHp}, trust in the player ${fmt(p.trust)} (-5 hostile to +5 devoted). Personality: ${p.personality || '—'}. Voice: ${p.voice || '—'}. Goals: ${p.goals || '—'}. Stats: ${STATS.map(k => k + ' ' + p.stats[k]).join(' ')}. Traits: ${p.traits.map(t => `${t.polarity}${t.name} [${t.tier}]`).join(', ') || 'none'}.${withSecrets && p.secrets ? ' THEIR SECRET (GM only): ' + p.secrets : ''}`);
+  const lines = act.map(p => `- ${p.name}${gWord(p)}, ${p.role || 'companion'}, level ${p.level}, HP ${p.hp}/${p.maxHp}, trust in the player ${fmt(p.trust)} (-5 hostile to +5 devoted). Personality: ${p.personality || '—'}. Voice: ${p.voice || '—'}. Goals: ${p.goals || '—'}. Stats: ${STATS.map(k => k + ' ' + p.stats[k]).join(' ')}. Traits: ${p.traits.map(t => `${t.polarity}${t.name} [${t.tier}]`).join(', ') || 'none'}.${withSecrets && p.secrets ? ' THEIR SECRET (GM only): ' + p.secrets : ''}`);
   if (gone.length) lines.push(`Former companions: ${gone.join(', ')}.`);
   return lines.join('\n');
 }
@@ -114,7 +114,7 @@ function applyParty(c, st, msg, notes) {
 async function companionTurn(c, p, signal) {
   const recent = storyLines(c, 5);
   const raw = await chat([
-    { role:'system', content:`You are ${p.name}${p.pronouns ? ` (${p.pronouns})` : ''}, a companion travelling with ${c.character.name} in a tabletop roleplaying game. You are NOT the Game Master. Role: ${p.role}. Personality: ${p.personality}. How you talk: ${p.voice}. Your goals: ${p.goals}. Your own secret, which you guard: ${p.secrets || 'none'}. Your trust in ${c.character.name}: ${fmt(p.trust)} (-5 hostile to +5 devoted). Your HP: ${p.hp}/${p.maxHp}.\nDecide what YOU do or say right now, true to your personality, goals and trust. You may disagree with or refuse ${c.character.name}. Write 1-3 sentences: short action in third person plus your words in quotes, e.g. ${p.name} steps forward: "Not today." Never control ${c.character.name} or other companions and never narrate outcomes. Output only that.` },
+    { role:'system', content:`You are ${p.name}${gWord(p)}, a companion travelling with ${c.character.name} in a tabletop roleplaying game. You are NOT the Game Master. Role: ${p.role}. Personality: ${p.personality}. How you talk: ${p.voice}. Your goals: ${p.goals}. Your own secret, which you guard: ${p.secrets || 'none'}. Your trust in ${c.character.name}: ${fmt(p.trust)} (-5 hostile to +5 devoted). Your HP: ${p.hp}/${p.maxHp}.\nDecide what YOU do or say right now, true to your personality, goals and trust. You may disagree with or refuse ${c.character.name}. Write 1-3 sentences: short action in third person plus your words in quotes, e.g. ${p.name} steps forward: "Not today." Never control ${c.character.name} or other companions and never narrate outcomes. Output only that.` },
     { role:'user', content:`WHAT JUST HAPPENED:\n${recent}` }
   ], { stream:false, signal, maxTokens:220, temperature:0.85 });
   const t = stripThink(raw).trim().replace(/<state>[\s\S]*$/i, '').trim();
@@ -173,7 +173,7 @@ function continueAsCompanion(id) {
   const c = cur(); const p = arr(c.party).find(x => x.id === id); if (!c || !p) return;
   const old = c.character; worldOf(c);
   c.fallen = arr(c.fallen).concat([{ name: old.name, day: c.time.day }]);
-  c.character = { name: p.name, pronouns: p.pronouns, storyRole: p.role, appearance: p.appearance, backstory: [p.personality, p.goals && 'Goals: ' + p.goals, p.secrets && 'Secret: ' + p.secrets].filter(Boolean).join(' '),
+  c.character = { name: p.name, sex: p.sex, pronouns: p.pronouns, storyRole: p.role, appearance: p.appearance, backstory: [p.personality, p.goals && 'Goals: ' + p.goals, p.secrets && 'Secret: ' + p.secrets].filter(Boolean).join(' '),
     stats: { ...p.stats }, level: p.level, hp: Math.max(1, p.hp), maxHp: p.maxHp, ep: 0, tp: 0, gold: 0, traits: p.traits, gear: [], signatures: [], injuries: [], momentum: 0, strain: 0, portrait: p.portrait };
   c.party = c.party.filter(x => x !== p); c.deathPending = false;
   c.messages.push({ id: uid(), role:'sys', text:`You now play ${p.name}. ${old.name} is remembered.` });
@@ -299,7 +299,7 @@ function journalBookHTML() {
   else if (tab === 'diary') body = `<button class="btn sm gold" data-act="diarywrite" ${S.diaryBusy ? 'disabled' : ''} style="margin-top:10px">${S.diaryBusy ? '<span class="spin sm"></span> Writing…' : icon('book') + ` Write ${esc(c.character.name)}'s diary entry`}</button><p class="hint">Written in your character's voice from what they did and said recently.</p>
       ${arr(c.diary).map(e => `<div class="handout page"><div class="ht">Day ${e.day}</div><div class="hb">${esc(e.text).replace(/\n/g, '<br>')}</div></div>`).join('')}`;
   else body = `<div class="row" style="margin-top:10px"><button class="btn sm" data-act="compportrait" data-id="main">${icon('image')} Paint ${esc(c.character.name)}'s portrait</button></div>
-      ${arr(c.gallery).length ? `<div class="row" style="margin-top:8px"><button class="btn sm ghost" data-act="galretry">${icon('redo')} Retry missing pictures</button></div><div class="gallery">${c.gallery.map(g => `<div class="gitem"><a href="${esc(imageUrl(g, c))}" target="_blank" rel="noopener"><img loading="lazy" src="${esc(imageUrl(g, c))}" alt="" onerror="this.closest('.gitem').classList.add('bad')"></a><div class="gcap">${esc(g.name)}<span>${esc(g.kind)} · day ${g.day}</span></div><div class="row"><button class="iconbtn sm" data-act="galregen" data-id="${g.id}" aria-label="New version">${icon('redo')}</button><button class="iconbtn sm" data-act="galdel" data-id="${g.id}" aria-label="Delete">${icon('trash')}</button></div></div>`).join('')}</div>` : '<p class="empty" style="font-size:18px">Pictures of characters and important places are saved here.</p>'}`;
+      ${arr(c.gallery).length ? `<div class="row" style="margin-top:8px"><button class="btn sm ghost" data-act="galretry">${icon('redo')} Retry missing pictures</button></div><div class="gallery">${c.gallery.map(g => `<div class="gitem"><button class="plain" data-galzoom="${g.id}" title="See it large"><img loading="lazy" src="${esc(imageUrl(g, c))}" alt="" onerror="this.closest('.gitem').classList.add('bad')"></button><div class="gcap">${esc(g.name)}<span>${esc(g.kind)} · day ${g.day}</span></div><div class="row"><button class="iconbtn sm" data-act="galregen" data-id="${g.id}" aria-label="New version">${icon('redo')}</button><button class="iconbtn sm" data-act="galdel" data-id="${g.id}" aria-label="Delete">${icon('trash')}</button></div></div>`).join('')}</div>` : '<p class="empty" style="font-size:18px">Pictures of characters and important places are saved here.</p>'}`;
   return [tabs, body];
 }
 
@@ -352,6 +352,7 @@ function menuHTML() {
     ${item('tools', 'scroll', isCompanion(c) ? 'Story tools' : 'Campaign tools', 'World &amp; secrets, facts, memory, saves, setup')}
     ${item('fixopen', 'spark', 'Fix the story', 'Tell the GM what went wrong')}
     ${item('recap', 'book', 'Previously on…', 'Get a recap of the story so far')}
+    ${item('search', 'search', 'Search this story', 'Find a word, a name or a place and jump to it')}
     ${S.settings.net?.on !== false ? item('lookup', 'search', 'Look something up', 'Search the web; the GM remembers what it finds') : ''}
     ${S.settings.image.mode !== 'off' ? `<button class="mitem" data-act="picstoggle">${icon('image')}<span><b>Scene pictures: ${S.settings.image.scenes !== false ? 'On' : 'Off'}</b><small>${S.settings.image.scenes !== false ? 'Tap to stop painting scenes. Portraits, photos and Illustrate still work.' : 'Tap to paint a picture when you reach new places'}</small></span><span class="tog ${S.settings.image.scenes !== false ? 'on' : ''}"></span></button>` : ''}
     ${item('storybook', 'download', 'Storybook', 'Your adventure as an illustrated book (print or PDF)')}
@@ -372,7 +373,7 @@ function compMsgHTML(m, c) {
   const port = p?.portrait ? `<img class="port sm" src="${esc(imageUrl(p.portrait, c))}" alt="">` : `<div class="port sm ph2">${esc((m.name || '?')[0])}</div>`;
   const spk = TTS && S.settings.ui.voice !== 'off' ? `<button class="link" data-act="speak" data-mid="${m.id}" aria-label="Read aloud">${icon('speaker')}</button>` : '';
   const ts = isCompanion(c) && compStyle(c) === 'chat' && m.t ? `<span class="ts">${new Date(m.t).toLocaleTimeString([], { hour:'numeric', minute:'2-digit' })}</span>` : '';
-  return `<div class="msg comp ${isCompanion(c) ? 'cs-' + compStyle(c) : ''}">${port}<div class="cb"><div class="cn">${esc(m.name)}${spk}${ts}</div>${md(m.text)}${m.image ? sceneHTML(m, c) : ''}</div></div>`;
+  return `<div class="msg comp ${isCompanion(c) ? 'cs-' + compStyle(c) : ''}" data-id="${m.id}">${port}<div class="cb"><div class="cn">${esc(m.name)}${spk}${ts}</div>${md(m.text)}${m.image ? sceneHTML(m, c) : ''}</div></div>`;
 }
 function quickHTML(c) {
   const q = [];

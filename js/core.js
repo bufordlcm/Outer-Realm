@@ -39,7 +39,7 @@ const RATING_RULES = {
   'Family-friendly': 'no gore, no sexual content, no strong language.',
   'PG-13': 'action violence without lingering gore, mild language, romance fades to black.',
   'Mature (R)': 'graphic violence, strong language and dark themes are fine; sexual scenes fade to black.',
-  'Adult (18+)': 'graphic violence, strong language, dark themes and explicit sexual content are allowed when the story and the player lead there. Respect the player\'s lead and the standing requests.'
+  'Adult (18+)': 'graphic violence, strong language, dark themes and explicit sexual content are allowed when the story and the player lead there. Respect the player\'s lead and the standing requests. Sexual content only ever involves adults (18+), never anyone under 18.'
 };
 const MAGIC_LABEL = { gm:"GM's call", strain:'Strain', free:'Free casting', none:'No magic' };
 
@@ -148,7 +148,7 @@ const DEFAULT_SETTINGS = {
   image:{ mode:'pollinations', polliKey:'', polliModel:'flux', size:'square', style:'', template:'', forgePreset:'auto', forgeModel:'', forgeModelSfw:'', forgeModelNsfw:'', forgeShare:true, forgeNeg:'', autoPortraits:true, driveSave:true, scenes:true, forgeRes:'fast' },
   drive:{ clientId: DEFAULT_CLIENT_ID, folder: DEFAULT_DRIVE_FOLDER, autoSync:true },
   net:  { on:true, auto:true },
-  ui:   { narr:17, showChoices:true, physicalDice:false, voice:'tap', voiceName:'', voiceRate:1, voiceEngine:'auto', voicePC:'', charVoices:true, typeMode:'say', quick:true, music:true, musicVol:0.35, musicMood:'auto', ambience:true, ambVol:0.25, diceMath:true, compTurns:true, shifts:'big', bottomGap:'phone', bottomGapPx:64 },
+  ui:   { narr:17, showChoices:true, physicalDice:false, voice:'tap', voiceName:'', voiceRate:1, voiceVol:1, voiceEngine:'auto', voicePC:'', charVoices:true, typeMode:'say', quick:true, music:true, musicVol:0.35, musicMood:'auto', ambience:true, ambVol:0.25, diceMath:true, compTurns:true, shifts:'big', bottomGap:'phone', bottomGapPx:64 },
   updatedAt: 0
 };
 

@@ -25,7 +25,9 @@ const trackTitle = id => id.replace(/^(th|gt)-/, '').replace(/-s-/g, '\'s ').rep
 const trackBy = id => (MUSIC_CREDITS.find(c => id.startsWith(c.prefix)) || MUSIC_CREDITS[0]).who;
 
 const MUSIC = { a: null, b: null, front: null, mood: '', track: '', unlocked: false, duck: false, fadeT: null, last: {}, amb: null };
-const musicVol = () => clamp(Number(S.settings.ui.musicVol ?? 0.35), 0, 1) * (MUSIC.duck ? 0.35 : 1);
+/* sliders are squared before use: ears hear loudness on a curve, so 10% on the slider is truly quiet and 0 is silent */
+const volCurve = v => Math.pow(clamp(Number(v) || 0, 0, 1), 2);
+const musicVol = () => volCurve(S.settings.ui.musicVol ?? 0.35) * (MUSIC.duck ? 0.35 : 1);
 const musicOn = () => S.settings.ui.music !== false;
 
 /* pick the mood for the current scene */
@@ -103,7 +105,7 @@ function musicNowHTML() {
 /* ---------- ambience, made from noise ---------- */
 const AMB = { ctx: null, nodes: {}, kind: '' };
 const ambOn = () => S.settings.ui.ambience !== false;
-const ambVol = () => clamp(Number(S.settings.ui.ambVol ?? 0.25), 0, 1) * (MUSIC.duck ? 0.5 : 1);
+const ambVol = () => volCurve(S.settings.ui.ambVol ?? 0.25) * (MUSIC.duck ? 0.5 : 1);
 function ambKind(c) {
   if (!c) return '';
   const w = String(c.time?.weather || '').toLowerCase(), loc = String(c.location || '').toLowerCase(), part = String(c.time?.part || '');

@@ -25,13 +25,13 @@ function gameSettingsHTML() {
   } else if (tab === 'sound') {
     body = `<div class="sect" style="font-size:18px;margin-top:0">Background music</div>
       ${seg('ui.music', [[true, 'On', 'Changes with the scene'], [false, 'Off', '']])}
-      ${ui.music !== false ? `${slider('ui.musicVol', 'Music volume', 0, 1, 0.05, pct)}
+      ${ui.music !== false ? `${slider('ui.musicVol', 'Music volume', 0, 1, 0.01, pct)}
       <label class="f"><span>What plays</span><select data-bind="ui.musicMood"><option value="auto" ${(ui.musicMood || 'auto') === 'auto' ? 'selected' : ''}>Automatic: follows the scene (calm, town, battle, dread…)</option>${MOOD_KEYS.map(k => `<option value="${k}" ${ui.musicMood === k ? 'selected' : ''}>Always: ${esc(MOODS[k].label)}</option>`).join('')}</select></label>
       <p class="hint" id="musicNow">${musicNowHTML()}</p>
       <p class="hint">Music gets quieter while voices read, and switches when a fight starts or the mood changes.</p>` : ''}
       <div class="sect" style="font-size:18px">Ambient sounds</div>
       ${seg('ui.ambience', [[true, 'On', 'Rain, wind, waves, fire, night'], [false, 'Off', '']])}
-      ${ui.ambience !== false ? `${slider('ui.ambVol', 'Ambience volume', 0, 1, 0.05, pct)}
+      ${ui.ambience !== false ? `${slider('ui.ambVol', 'Ambience volume', 0, 1, 0.01, pct)}
       <p class="hint">Made from the weather and the place in the story${AMB.kind ? `: now <b>${AMB_LABEL[AMB.kind]}</b>` : ''}.</p>` : ''}
       <div class="sect" style="font-size:18px">Voices</div>
       ${voiceSettingsHTML()}
@@ -39,7 +39,8 @@ function gameSettingsHTML() {
       <p class="hint">Free music under the <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a> license. ${MUSIC_CREDITS.map(m => `Music by <b>${esc(m.who)}</b> (<a href="${m.url}" target="_blank" rel="noopener">${esc(m.url.replace('https://', ''))}</a>)`).join('; ')}. Tracks were re-encoded to load faster; nothing else was changed.</p>`;
   } else if (tab === 'flow') {
     const im = S.settings.image;
-    body = `<label class="f"><span>Scene length</span><select data-bind="text.length">${Object.entries(SCENE_LEN).map(([k, v]) => `<option value="${k}" ${(S.settings.text.length || 'short') === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
+    body = `${slider('ui.narr', 'Text size (stories and companion chats)', 14, 24, 1, v => v + 'px')}
+      <label class="f"><span>Scene length</span><select data-bind="text.length">${Object.entries(SCENE_LEN).map(([k, v]) => `<option value="${k}" ${(S.settings.text.length || 'short') === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
       <p class="hint">Short scenes keep things moving: the GM shows one moment, then hands it back to you.</p>
       <div class="sect" style="font-size:18px;margin-top:0">"The world shifts" box under scenes</div>
       ${seg('ui.shifts', [['big', 'Only big changes', 'Items, gold, quests, wounds, level ups'], ['all', 'Everything', 'Also EP, rumors, time, trust, fixes'], ['off', 'Never', 'Check the Panel instead']])}
@@ -59,7 +60,9 @@ function gameSettingsHTML() {
       <p class="hint">${esc(RATING_RULES[c.rating || 'PG-13'] || '')}</p>
       <label class="f"><span>${comp ? 'Narrator' : 'Game Master'} personality</span><select data-cbind="gm.preset">${Object.entries(GM_PRESETS).map(([k, v]) => `<option value="${k}" ${(g.preset || 'storyteller') === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
       ${g.preset === 'custom' ? `<label class="f"><span>Describe your GM</span><textarea rows="2" data-cbind="gm.style" placeholder="A gravel-voiced old mercenary who narrates like he was there…">${esc(g.style || '')}</textarea></label>` : `<p class="hint">${esc(GM_PRESETS[g.preset || 'storyteller']?.style || '')}</p>`}
-      ${!comp ? `<label class="f"><span>Magic</span><select data-cbind="magicCost">${Object.entries(MAGIC_LABEL).map(([k, v]) => `<option value="${k}" ${(c.magicCost || 'gm') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : ''}
+      ${!comp ? `<label class="f"><span>Magic</span><select data-cbind="magicCost">${Object.entries(MAGIC_LABEL).map(([k, v]) => `<option value="${k}" ${(c.magicCost || 'gm') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label class="f"><span>Encounter difficulty (fights and contests in this story)</span><select data-cbind="encDiff">${Object.entries(ENC_DIFF).map(([k, v]) => `<option value="${k}" ${(c.encDiff || 'normal') === k ? 'selected' : ''}>${v.l}</option>`).join('')}</select></label>
+      <p class="hint">Applies to the next encounter you start. It scales enemy health and Defense, and the DCs of your moves.</p>` : ''}
       <label class="f"><span>Standing requests for the ${comp ? 'narrator' : 'GM'}</span><textarea rows="4" data-cbind="gmNotes" placeholder="More puzzles, less combat, keep scenes short…">${esc(c.gmNotes || '')}</textarea></label>
       <p class="hint">One request per line. The GM follows these every turn. "Ask the GM" and the Story Doc add to this list too.</p>`;
   }

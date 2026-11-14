@@ -33,7 +33,8 @@ function bookkeeperSpec(c, hasCheck) {
     '"rest": true only if a full night\'s rest or long downtime happened.',
     '"time_of_day": dawn|morning|midday|afternoon|evening|night|late night when time moved on. "days_passed": number when whole days passed. "weather": short phrase when it changed.',
     `"combat": true if a fight started, false if it ended (now: ${c.combat ? 'in combat' : 'not in combat'}).`,
-    hasCheck ? '' : '"check": ONLY if the scene ends with an enemy attack coming at the player: {"kind":"defense","stat":"DEX","dc":13,"reason":"<what attacks: who and with what>","enemy_damage":"<dice, e.g. d8+1>","damage":"<the player\'s weapon die>"} (dc = enemy Defense + 2: minion 12, soldier 15, elite 18; damage = the player\'s weapon die). Otherwise leave it out.',
+    hasCheck ? '' : `"check": ONLY when the scene ENDS on one of these two things; otherwise leave it out. (a) A person or creature attacks ${c.character.name} and the blow has not landed yet: {"kind":"defense","stat":"DEX","dc":13,"reason":"<who attacks and with what, under 12 words, e.g. the bandit's axe swing>","enemy_damage":"<dice, e.g. d8+1>","damage":"<the player's weapon die>"} (dc = enemy Defense + 2: minion 12, soldier 15, elite 18). Weather, terrain and events are never an attacker. (b) RARELY: something ${c.character.name} might or might not notice, hear, recall or resist without choosing to act (a hidden watcher, a faint sound, a poison, a wave of fear): {"kind":"passive","stat":"WIS","dc":14,"reason":"<what the roll is for, under 12 words, e.g. notice the figure watching from the stands>"}. Never use "check" for something the player chose to do, and never copy scene text into "reason".`,
+    hasCheck || c.enc ? '' : '"encounter": {"kind":"fight|contest","title":"<3-5 words, e.g. Troll ambush>","foes":["<each enemy or the opposing side>"]} ONLY when a fight breaks out in this scene, or a long back-and-forth contest starts or is about to start (a sports game, a duel, a race, a chase, a tournament match). Leave it out otherwise, and leave "check" out when you include it.',
     '"ep_gain": 1 minor challenge, 2 real challenge, 3-5 major victory overcome in THIS scene.',
     '"level_up": true only at a major story milestone (end of a chapter). Very rare.',
     '"people": [{"name":"","text":"one sentence: who they are and what the player knows","where":"place","feel":"how they feel about the player: devoted, friendly, neutral, wary or hostile","sex":"male, female or unknown","look":"short physical description if the scene shows one (age, build, hair, clothes)"}] for every NAMED character who appears or is mentioned (not the player, not party companions). Include known people again only if something new was learned.',
@@ -123,7 +124,7 @@ async function gmTurn(opts = {}) {
       const ck = normCheck(refCheck, c);
       msg.text = ''; msg.rollAsk = true; msg.check = ck; msg.notes = []; msg.choices = []; delete msg.streaming; delete msg.phase;
       msg.before = snapshot(c);
-      c.pendingRoll = { ...ck, msgId: msg.id, invokes: [], dcAdj: 0, momentumPlus: false };
+      c.pendingRoll = { ...ck, said: String(trig.text || '').replace(TRAIT_TAG, '').trim().slice(0, 300), msgId: msg.id, invokes: [], dcAdj: 0, momentumPlus: false };
       S.rollResult = null; S.invokeOpen = false; S.invokeSel = [];
       const tagged = turnTraits(c, trig.text).filter(t => t.polarity === '+');
       if (tagged.length) { msg.checking = 'Checking how your traits help…'; renderLog(); try { await traitRuling(c, c.pendingRoll, tagged, trig.gm || trig.text, signal); } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Trait ruling failed', e); } delete msg.checking; }
@@ -314,8 +315,11 @@ function applyState(c, msg, st) {
   if (c.memory.length > 60) c.memory = c.memory.slice(-60);
   if (st.level_up === true && !c.levelPending) { c.levelPending = true; notes.push({ t:'Level up ready!', k:'gold' }); if (isMP(c)) c.players.forEach(p => { if (p !== c.character) p.lvlQueue = true; }); }
 
-  const ck = st.check && typeof st.check === 'object' ? normCheck(st.check, c) : null;
-  if (ck) { msg.check = ck; c.pendingRoll = { ...ck, msgId: msg.id, invokes: [], dcAdj: 0, momentumPlus: false }; }
+  /* a fight or a long contest starts: offer it as an encounter (its own window) instead of a single roll */
+  const enOffer = !c.enc && typeof encNorm === 'function' && !msg.ooc ? (st.encounter && typeof st.encounter === 'object' ? encNorm(st.encounter) : null) : null;
+  if (enOffer) { msg.encOffer = enOffer; st.check = null; }
+  let ck = st.check && typeof st.check === 'object' && goodGMCheck(st.check) ? normCheck(st.check, c) : null;
+  if (ck) { msg.check = ck; c.pendingRoll = { ...ck, gmCalled: true, msgId: msg.id, invokes: [], dcAdj: 0, momentumPlus: false }; }
   else c.pendingRoll = null;
   S.rollResult = null; S.invokeOpen = false; S.invokeSel = [];
 
@@ -331,8 +335,23 @@ function applyState(c, msg, st) {
   msg.notes = notes;
 }
 
+/* what a roll is for, as one short plain phrase (never a pasted piece of the scene) */
+function cleanReason(s) {
+  let t = String(s || '').replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s/)[0].replace(/[.!?]+$/, '');
+  t = t.replace(/^(?:roll\s+)?(?:to|for|against)\s+/i, '');
+  if (t.length > 90) t = t.slice(0, 88).replace(/\s+\S*$/, '') + '…';
+  return t ? t[0].toLowerCase() + t.slice(1) : 'the attempt';
+}
+/* a check the bookkeeper attached to the end of a scene must be a real attack or a real straight check */
+function goodGMCheck(x) {
+  const kind = String(x.kind || '').toLowerCase(); const raw = String(x.reason || '').trim();
+  if (!raw || raw.length > 130 || /\.\s+\S/.test(raw)) return false;   /* scene text pasted in */
+  if (kind === 'defense') return !/\b(could|might|may|potentially|possibly)\b/i.test(raw) && !/^(the\s+)?(rain|storm|weather|wind|thunder|lightning|cold|heat|fog|mud|field|ground|crowd)\b/i.test(raw);
+  return kind === 'passive' || kind === 'check';
+}
 function normCheck(x, c) {
-  const kind = ['attack','defense','check'].includes(String(x.kind || '').toLowerCase()) ? String(x.kind).toLowerCase() : 'check';
+  const k0 = String(x.kind || '').toLowerCase(); const passive = k0 === 'passive' || k0 === 'initiative' || x.passive === true;
+  const kind = ['attack','defense','check'].includes(k0) ? k0 : 'check';
   const stat = normStat(x.stat || x.ability, kind === 'defense' ? 'DEX' : 'DEX');
   const dc = clamp(num(x.dc) || 12, 2, 40);
   const ch = c.character;
@@ -344,7 +363,7 @@ function normCheck(x, c) {
     const inj = ch.injuries.find(i => i.name.toLowerCase() === n || i.name.toLowerCase().includes(n) || n.includes(i.name.toLowerCase()));
     if (inj && !applies.some(a => a.name === inj.name)) applies.push({ id: inj.name, name: inj.name, val: -2, kind:'injury' });
   }
-  return { kind, stat, dc, reason: String(x.reason || 'the attempt').slice(0, 140), applies, damage: String(x.damage || '').slice(0, 20), enemy_damage: String(x.enemy_damage || '').slice(0, 20) };
+  return { kind, ...(passive ? { passive: true } : {}), stat, dc, reason: cleanReason(x.reason), applies, damage: String(x.damage || '').slice(0, 20), enemy_damage: String(x.enemy_damage || '').slice(0, 20) };
 }
 
 /* ---------- the roll ---------- */
@@ -368,6 +387,7 @@ const sumMods = m => m.reduce((a, x) => a + x.v, 0);
 function doRoll(mode) {
   const c = cur(); const r = c?.pendingRoll; if (!r || S.busy || S.rolling) return;
   const ch = c.character;
+  if (r.kind === 'defense' && !(S.rollResult && S.rollResult.msgId === r.msgId) && !String(r.how || '').trim()) { toast('Say what you do first, then pick how you defend.'); $('#rollHow')?.focus(); return; }
   const statKey = r.kind === 'defense' ? defenseStat(ch, mode || 'dodge') : r.stat;
   const reroll = S.rollResult && S.rollResult.msgId === r.msgId;
   if (reroll && (!c.combat || ch.momentum - (r.momentumPlus ? 1 : 0) < 1 || S.rollResult.rerolled)) return;
@@ -416,17 +436,18 @@ async function finalizeRoll() {
     if (c.combat) { if (res.success) { if (ch.momentum < 3) notes.push({ t:'+1 Momentum', k:'gold' }); ch.momentum = Math.min(3, ch.momentum + 1); } else { if (ch.momentum) notes.push({ t:'Momentum lost', k:'bad' }); ch.momentum = 0; } }
     let label;
     if (r.kind === 'attack') {
-      label = `Attack (${SN(res.statKey)}) on ${r.reason} vs Defense ${res.dc}`;
+      label = `Attack roll (${SN(res.statKey)}): ${r.reason}, vs Defense ${res.dc}`;
       if (res.success) { const dmg = await rollDiceAsync(r.damage || 'd6', ch, res.statKey, res.big, 'Your damage'); extras.push(`Damage dealt: ${dmg.total} (${dmg.text}${res.big ? ', doubled dice' : ''}).`); notes.push({ t:`Hit for ${dmg.total}`, k:'good' }); }
     } else if (r.kind === 'defense') {
       const m = res.mode || 'dodge';
-      label = `Defense — ${m} (${SN(res.statKey)}) against ${r.reason}, DC ${res.dc}`;
+      label = `Defense roll (${m}, ${SN(res.statKey)}) against ${r.reason}, DC ${res.dc}`;
       if (!res.success) { const dmg = await rollDiceAsync(r.enemy_damage || 'd6', null, null, res.d === 1, 'Damage you take'); applyDamage(c, dmg.total, notes, res.d === 1); extras.push(`You take ${dmg.total} damage (${dmg.text}). HP now ${ch.hp}/${ch.maxHp}.`); }
       else if (m === 'counter') { const dmg = await rollDiceAsync(r.damage || 'd6', ch, res.statKey, res.big, 'Counter damage'); extras.push(`Avoided the attack and counter-hit for ${dmg.total} damage (${dmg.text}).`); notes.push({ t:`Counter for ${dmg.total}`, k:'good' }); }
       else extras.push('Avoided the attack.');
-    } else label = `${SN(res.statKey)} check to ${r.reason} (DC ${res.dc})`;
+    } else label = `${SN(res.statKey)} ${r.passive ? 'roll' : 'check'} to ${r.reason} (DC ${res.dc})`;
     const modStr = res.mods.map(x => `${x.l} ${fmt(x.v)}`).join(', ');
     const how = String(r.how || '').trim();
+    logRoll(c, { label, d: res.d, total: res.total, dc: res.dc, ok: res.success, outcome: res.outcome });
     const text = `${label}${how ? ` — ${c.character.name}'s move, in the player's words: "${how}"` : ''}: rolled ${res.d}${modStr ? ` [${modStr}]` : ''} = ${res.total} → ${res.outcome}${res.success ? '' : ` (missed by ${res.dc - res.total})`}.${extras.length ? ' ' + extras.join(' ') : ''}${res.rerolled ? ' (Rerolled with Momentum.)' : ''}`;
     const rollData = { d: res.d, total: res.total, dc: res.dc, outcome: res.outcome, success: res.success, label, mods: res.mods, extras, how };
     const prev = deep(r);
@@ -436,6 +457,12 @@ async function finalizeRoll() {
   } finally { S.finalizing = false; }
 }
 
+/* a short history of what was rolled and why (Panel → Character, and the 🎲 Rolls drawer) */
+function logRoll(c, x) { c.rollLog = arr(c.rollLog); c.rollLog.unshift({ t: Date.now(), day: c.time?.day || 1, ...x }); if (c.rollLog.length > 40) c.rollLog.length = 40; }
+function rollLogHTML(c, n = 12) {
+  const l = arr(c.rollLog).slice(0, n);
+  return l.length ? l.map(x => `<div class="rlrow ${x.ok ? 'ok' : 'no'}"><span class="d20 sm ${x.d === 20 ? 'crit' : x.d === 1 ? 'fumble' : ''}">${x.d}</span><span><b>${esc(x.label)}</b><small>${x.total} vs ${x.dc} · ${esc(x.outcome)}${x.where ? ' · ' + esc(x.where) : ''}</small></span></div>`).join('') : '<p class="hint">No rolls yet.</p>';
+}
 async function traitRuling(c, r, traits, arg, signal) {
   const lastGM = [...c.messages].reverse().find(m => m.role === 'gm' && !m.rollAsk)?.text || '';
   const raw = await chat([
