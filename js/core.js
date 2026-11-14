@@ -145,7 +145,7 @@ const SCENARIOS = [
 const DEFAULT_SETTINGS = {
   text: { temperature:0.85, maxTokens:1000, stream:true, length:'long', lenV2:true },
   ai:   { conns: [], active:'', fallback:true, deliberate:true, verify:true, referee:true, dice:'normal', people:true, agency:true, profile:'balanced', helperModel:'', helperAuto:'', builder:'auto' },
-  image:{ mode:'pollinations', polliKey:'', polliModel:'flux', size:'square', style:'', template:'', forgePreset:'auto', forgeModel:'', forgeModelSfw:'', forgeModelNsfw:'', forgeShare:true, forgeNeg:'', autoPortraits:true, driveSave:true, scenes:true, forgeRes:'fast' },
+  image:{ mode:'pollinations', polliKey:'', polliModel:'flux', size:'square', style:'', template:'', forgePreset:'auto', forgeModel:'', forgeModelSfw:'', forgeModelNsfw:'', forgeShare:true, forgeNeg:'', autoPortraits:true, driveSave:true, scenes:true, forgeRes:'fast', refPhotos:true, refWeight:0.7 },
   drive:{ clientId: DEFAULT_CLIENT_ID, folder: DEFAULT_DRIVE_FOLDER, autoSync:true },
   net:  { on:true, auto:true },
   ui:   { narr:17, showChoices:true, physicalDice:false, voice:'tap', voiceName:'', voiceRate:1, voiceVol:1, voiceEngine:'auto', voicePC:'', charVoices:true, typeMode:'say', quick:true, music:true, musicVol:0.35, musicMood:'auto', ambience:true, ambVol:0.25, diceMath:true, compTurns:true, shifts:'big', bottomGap:'phone', bottomGapPx:64 },

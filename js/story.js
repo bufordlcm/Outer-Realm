@@ -222,7 +222,8 @@ function portraitFor(c, who, quiet) {
   const isMain = who === 'main'; const p = isMain ? c.character : arr(c.party).find(x => x.id === who); if (!p) return;
   const g = { id: uid(), kind:'character', name: p.name, prompt: portraitPrompt(p.appearance || p.name, p.role || p.storyRole), seed: d(999999), day: worldOf(c).time.day, t: Date.now() };
   c.gallery = arr(c.gallery); c.gallery.unshift(g);
-  p.portrait = { prompt: g.prompt, seed: g.seed }; touch(c); scheduleSync(); warmImage(g, c);
+  g.subj = isMain ? { t: 'pc', g: c.id } : { t: 'party', g: c.id, id: p.id };
+  p.portrait = { prompt: g.prompt, seed: g.seed, subj: g.subj }; touch(c); scheduleSync(); warmImage(g, c);
   if (!quiet) toast(`Painting ${p.name}'s portrait… it appears on their card and in Journal → Gallery.`, 4000);
 }
 function applyKeepsakes(c, st, msg, notes) {
@@ -441,7 +442,7 @@ async function scanPeople(c) {
 function npcPortrait(c, name, quiet) {
   if (S.settings.image.mode === 'off') { if (!quiet) toast('Pictures are off in Settings → Images.'); return; }
   const e = peopleOf(c).find(x => x.name === name); if (!e) return;
-  const g = { id: uid(), kind:'character', name: e.name, prompt: portraitPrompt(e.look || `${e.name}, ${e.text}`), seed: d(999999), day: worldOf(c).time.day, t: Date.now() };
+  const g = { id: uid(), kind:'character', name: e.name, prompt: portraitPrompt(e.look || `${e.name}, ${e.text}`), seed: d(999999), day: worldOf(c).time.day, t: Date.now(), subj: { t: 'npc', g: c.id, name: e.name } };
   c.gallery = arr(c.gallery).filter(x => !(x.kind === 'character' && x.name.toLowerCase() === e.name.toLowerCase())); c.gallery.unshift(g);
   touch(c); scheduleSync(); warmImage(g, c); if (!quiet) toast(`Painting ${e.name}…`, 3000);
 }

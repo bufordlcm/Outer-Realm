@@ -24,7 +24,7 @@ function draftPortraitHTML(D) {
 const NSFW_NAME = /porn|nsfw|lust|xxx|hentai|sex|nude|naked|erot|lewd|adult|r18|18\+/i;
 /* the character themself reads as under 18: an age under 18, teen / school-student words, "a child", etc.
    (a parent's "her kid" or "two kids" doesn't count, so adult characters with families aren't caught) */
-const CHAR_MINOR = /\b(?:(?:[1-9])\s*-?\s*(?:years?|yrs?)[- ]?old)|(?:[1-9])\s*(?:yo|y\/o)|aged?\s+(?:[1-9])|(?:kindergarten|pre-?k|(?:[1-5])(?:st|nd|rd|th)?\s+grade(?:rs?)?|grades?\s+(?:[1-5]))|(?:elementary|primary)[- ]school(?:ers?|\s+(?:kid))\b/i;
+const CHAR_MINOR = /\b(?:(?:[1-9])\s*-?\s*(?:years?|yrs?)[- ]?old|(?:[1-9])\s*(?:yo|y\/o)|aged?\s+(?:[1-9])|(?:kindergarten|pre-?k|(?:[1-5]|1[0-2])(?:st|nd|rd|th)?\s+grade(?:rs?)?|grades?\s+(?:[1-9]|1[0-2]))|(?:elementary|primary)[- ]school(?:ers?|\s+(?:girl|boy|kid))?|(?:middle|junior[- ]high|high)[- ]school(?:ers?|\s+(?:student|girl|boy|kid)))?|schoolboy|toddler|infant|baby|under\s*1[38])\b/i;
 const MINOR_WORDS = new RegExp(CHAR_MINOR.source + '|\\b(?:child(?:ren)?|kids?|toddlers?|infants?|newborns?|bab(?:y|ies)|little ones?)\\b', 'i');
 const MINOR_SETTING = /\b(?:(?:elementary|primary|boarding|prep)[- ]|kindergarten|daycare|nursery|orphanage|playground)\b/i;
 const SAFE_NEG = 'nsfw, nude, naked, nudity, nipples, topless, lingerie, sexual, explicit';
@@ -73,22 +73,22 @@ const IDB = {
   async get(k) { try { const db = await this.open(); return await new Promise(res => { const q = db.transaction('img').objectStore('img').get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); } catch { return null; } },
   async put(k, v) { try { const db = await this.open(); await new Promise(res => { const t = db.transaction('img', 'readwrite'); t.objectStore('img').put(v, k); t.oncomplete = res; t.onerror = res; }); } catch {} }
 };
-function forgeJob(prompt, seed, c, neg = '') {
+function forgeJob(prompt, seed, c, neg = '', ref = null) {
   const s = S.settings.image; const pick = pickForgeModel(c, prompt); const pk = forgePresetKey(pick.model); const P = FORGE_PRESETS[pk];
   const [FW, FH] = FORGE_SIZES[P.base][s.size] || FORGE_SIZES[P.base].square;
   /* "Fast" draws SDXL pictures at 3/4 size: about half the pixels, so roughly twice as quick on smaller cards */
   const small = [Math.round(FW * 0.75 / 64) * 64, Math.round(FH * 0.75 / 64) * 64];
   const fast = P.base === 'xl' && (s.forgeRes || 'fast') === 'fast';
   const [W, H] = fast ? small : [FW, FH];
-  const keyOf = (w, h) => 'k' + hashStr([prompt, seed, w, h, pk, pick.model, pick.safe, s.forgeNeg, ...(neg ? [neg] : [])].join('|'));
+  const keyOf = (w, h) => 'k' + hashStr([prompt, seed, w, h, pk, pick.model, pick.safe, s.forgeNeg, ...(neg ? [neg] : []), ...(ref ? ['ref:' + ref.key + ':' + (Number(s.refWeight) || 0.7)] : [])].join('|'));
   /* a picture already painted at the other size is reused instead of painted again */
   const alt = P.base === 'xl' ? (fast ? keyOf(FW, FH) : keyOf(small[0], small[1])) : '';
-  return { prompt, seed, W, H, P, model: pick.model, safe: pick.safe, k: keyOf(W, H), alt, neg };
+  return { prompt, seed, W, H, P, model: pick.model, safe: pick.safe, k: keyOf(W, H), alt, neg, ref };
 }
 const localPH = k => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="3" height="2"><desc>${k}</desc></svg>`);
 const localFailURL = k => 'data:,fail-' + k;
-function localImageUrl(prompt, seed, c, neg = '') {
-  const job = forgeJob(prompt, seed, c, neg);
+function localImageUrl(prompt, seed, c, neg = '', ref = null) {
+  const job = forgeJob(prompt, seed, c, neg, ref);
   if (LOCAL.url[job.k]) return LOCAL.url[job.k];
   if (LOCAL.fail[job.k] && Date.now() - (LOCAL.failAt?.[job.k] || 0) < 30000) return localFailURL(job.k);
   if (LOCAL.fail[job.k]) delete LOCAL.fail[job.k];
@@ -126,12 +126,39 @@ async function freeOllamaVRAM() {
     try { await fetch(cn.baseUrl.replace(/\/v1\/?$/, '') + '/api/generate', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ model: cn.model, keep_alive: 0 }) }); } catch {}
   }
 }
-async function forgeGenerate(job, retried = false) {
+/* is there an IP-Adapter face model in Forge? (asked once, then every few minutes) */
+async function cnFind(force) {
+  if (!force && LOCAL.cn !== undefined && Date.now() - (LOCAL.cnAt || 0) < 300000) return LOCAL.cn;
+  LOCAL.cnAt = Date.now();
+  try {
+    const get = async p => { const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 5000); try { const r = await fetch(forgeUrl() + p, { signal: ctl.signal }); return r.ok ? await r.json() : null; } finally { clearTimeout(tm); } };
+    const [m, p] = await Promise.all([get('/controlnet/model_list'), get('/controlnet/module_list')]);
+    if (!m || !p) { LOCAL.cn = null; S.cnStatus = '✗ Forge\'s ControlNet isn\'t answering, so reference photos are off. Pictures still use the saved look.'; return null; }
+    const xl = FORGE_PRESETS[forgePresetKey()].base === 'xl';
+    const all = arr(m.model_list).filter(x => /ip.?adapter/i.test(x) && !/instant/i.test(x)); const fit = all.filter(x => xl ? /xl/i.test(x) : !/xl/i.test(x)); const pool = fit.length ? fit : all;
+    const model = pool.find(x => /plus.?face/i.test(x)) || pool.find(x => /face/i.test(x) && !/faceid/i.test(x)) || pool.find(x => /face/i.test(x)) || pool[0];
+    const mods = arr(p.module_list);
+    const want = !model ? [] : /faceid/i.test(model) ? [/insightface.*clip/i, /face_?id_?plus/i, /face_?id/i] : /vit-?g|bigg/i.test(model) ? [/bigg|clip_g\b|clip-vit-g/i] : [/clip-?vit-?h|clip_h\b|vit-?h|clip_sdxl_plus_vith/i];
+    const module = model && (want.map(r => mods.find(x => r.test(x))).find(Boolean) || mods.find(x => /ip-adapter-auto/i.test(x)) || mods.find(x => /ip.?adapter/i.test(x)));
+    if (!model || !module) { LOCAL.cn = null; S.cnStatus = '✗ No IP-Adapter face model found in Forge, so reference photos are off. Pictures still use the saved look.'; return null; }
+    LOCAL.cn = { model, module }; S.cnStatus = `✓ Reference photos ready (${model.replace(/\s*\[[^\]]*\]$/, '')})`;
+  } catch (e) { LOCAL.cn = null; S.cnStatus = '✗ Couldn\'t ask Forge about reference photos: ' + (e.message || e); }
+  return LOCAL.cn;
+}
+async function forgeGenerate(job, retried = false, noRef = false) {
   const s = S.settings.image;
   if (s.forgeShare !== false) await freeOllamaVRAM();
+  /* the character's reference photo keeps the face: sent to Forge's IP-Adapter, and skipped (never fails the picture) when that isn't set up */
+  let unit = null;
+  if (job.ref && !noRef && s.refPhotos !== false) {
+    try { const cn = await cnFind(); const b64 = cn ? await job.ref.get() : null;
+      if (cn && b64) unit = { enabled: true, image: String(b64).replace(/^data:[^,]+,/, ''), module: cn.module, model: cn.model, weight: clamp(Number(s.refWeight) || 0.7, 0.2, 1.2), resize_mode: 'Crop and Resize', processor_res: 512, guidance_start: 0, guidance_end: 1, control_mode: 'Balanced', pixel_perfect: false };
+    } catch (e) { console.warn('Reference photo skipped', e); }
+  }
   const body = { prompt: job.prompt, negative_prompt: [(s.forgeNeg || '').trim() || FORGE_NEG, job.neg, job.safe ? SAFE_NEG : ''].filter(Boolean).join(', '), seed: job.seed, width: job.W, height: job.H, steps: job.P.steps, cfg_scale: job.P.cfg,
     sampler_name: job.P.sampler, scheduler: job.P.scheduler, batch_size: 1, n_iter: 1, send_images: true, save_images: false };
   if (job.model) { body.override_settings = { sd_model_checkpoint: job.model }; body.override_settings_restore_afterwards = false; }
+  if (unit) body.alwayson_scripts = { ControlNet: { args: [unit] } };
   const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 360000);
   LOCAL.cur = { k: job.k, ctl, t: Date.now() };
   let r;
@@ -139,10 +166,11 @@ async function forgeGenerate(job, retried = false) {
   catch (e) {
     clearTimeout(tm);
     if (e.name === 'AbortError') throw new Error(LOCAL.cancelled === job.k ? 'Cancelled.' : 'Your PC took more than 6 minutes on one picture. Try the SDXL Lightning or SD 1.5 preset.');
-    if (!retried && await forgeFind(true)) return forgeGenerate(job, true);
+    if (!retried && await forgeFind(true)) return forgeGenerate(job, true, noRef);
     throw new Error(`Couldn't reach Stable Diffusion at ${forgeUrl()}. Make sure Forge is running on your PC (with the --api and --cors-allow-origins settings from the guide).`);
   }
   clearTimeout(tm);
+  if (!r.ok && unit) { const t = await r.text().catch(() => ''); console.warn('Forge refused the reference photo, painting without it', r.status, t.slice(0, 200)); LOCAL.cn = null; LOCAL.cnAt = Date.now(); S.cnStatus = `✗ Forge refused the reference photo (error ${r.status}), so it is off for a few minutes. Pictures still use the saved look.`; return forgeGenerate(job, retried, true); }
   if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error(`Stable Diffusion error ${r.status}${r.status === 404 ? ' (the API is off: add --api to Forge\'s settings)' : ''}: ${t.slice(0, 160)}`); }
   const j = await r.json(); const b64 = j.images?.[0]; if (!b64) throw new Error('Stable Diffusion sent back no picture.');
   const img = new Image(); img.src = 'data:image/png;base64,' + String(b64).replace(/^data:[^,]+,/, ''); await img.decode();
@@ -160,7 +188,7 @@ async function forgeFind(silent) {
       const r = await fetch(u + '/sdapi/v1/sd-models', { signal: ctl.signal }); clearTimeout(tm);
       if (!r.ok) continue;
       S.forgeModels = (await r.json()).map(x => x.title || x.model_name).filter(Boolean);
-      LS.set('iq.forgeUrl', u); LOCAL.found = true; autoAssignModels();
+      LS.set('iq.forgeUrl', u); LOCAL.found = true; autoAssignModels(); cnFind(true).then(() => { if (S.modal === 'settings') renderModal(); });
       S.forgeStatus = `✓ Found Stable Diffusion at ${u} · ${S.forgeModels.length} model${S.forgeModels.length === 1 ? '' : 's'} (${S.forgeModels.map(modelLabel).join(', ')})`;
       if (!silent || S.modal === 'settings') renderModal();
       return true;
@@ -184,6 +212,11 @@ function forgeSettingsHTML() {
       ${all.length ? `<details style="margin-top:6px"><summary class="hint" style="cursor:pointer">Show file names</summary><p class="hint">${all.map(m => `${modelLabel(m)}: ${esc(m)}`).join('<br>')}</p></details>` : ''}`; })()}
     <label class="f"><span>Quality preset</span><select data-bind="image.forgePreset"><option value="auto" ${(im.forgePreset || 'auto') === 'auto' ? 'selected' : ''}>Auto: match each model</option>${Object.entries(FORGE_PRESETS).map(([k, v]) => `<option value="${k}" ${im.forgePreset === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
     <p class="hint">Auto picks the right speed settings for each model: fast for the SFW model, standard SDXL for the NSFW one.</p>
+    <div class="sect" style="font-size:18px">Reference photos (keep the same face)</div>
+    ${bindCheck('image.refPhotos', 'Use each character\'s reference photo when painting them, so their face stays the same')}
+    ${slider('image.refWeight', 'How closely to follow the reference photo', 0.3, 1, 0.05, v => Math.round(v * 100) + '%')}
+    <p class="hint">${esc(S.cnStatus || 'Not checked yet.')} <button class="link" data-act="cnfind">Check again</button></p>
+    <p class="hint">Needs an IP-Adapter face model in Forge's ControlNet models folder (for SDXL, for example <code>ip-adapter-plus-face_sdxl_vit-h</code>), then restart Forge. Pick a reference by opening any picture of a character large and tapping "Use this picture as … reference". Without the model, pictures use the saved look only. Higher follows the face more closely but leaves less room for the pose you ask for.</p>
     ${bindCheck('image.driveSave', 'Save pictures to Google Drive (your phone and PC share them, and the phone can show them even when Forge isn\'t reachable)')}
     ${bindCheck('image.forgeShare', 'Pictures and the story AI share one graphics card (pictures wait for the GM\'s turn and free the story AI\'s memory first). Turn this OFF if Forge runs on its own second graphics card.')}
     ${bindInput('image.forgeNeg', 'Things to avoid (negative prompt)', { ph: FORGE_NEG.slice(0, 60) + '…', hint:'Leave empty for the built-in list, which steers away from cartoons and bad hands.' })}
@@ -196,7 +229,7 @@ function imageUrl(img, c) {
   const style = ((c && c.artStyle) || s.style || '').trim();
   const prompt = (img.prompt + (style ? ', ' + style : '')).replace(/\s+/g, ' ').slice(0, 900);
   const neg = String(img.neg || '').replace(/\s+/g, ' ').trim().slice(0, 400);
-  if (s.mode === 'local') return localImageUrl(prompt, img.seed || 1, c, neg);
+  if (s.mode === 'local') return localImageUrl(prompt, img.seed || 1, c, neg, s.refPhotos !== false && img.subj && typeof subjRef === 'function' ? subjRef(img.subj) : null);
   const [W, H] = SIZES[s.size] || SIZES.landscape; const seed = img.seed || 1; const p = encodeURIComponent(prompt);
   if (s.mode === 'template' && s.template.trim()) return s.template.trim().replaceAll('{prompt}', p).replaceAll('{seed}', seed).replaceAll('{width}', W).replaceAll('{height}', H);
   const model = encodeURIComponent(s.polliModel || 'flux');

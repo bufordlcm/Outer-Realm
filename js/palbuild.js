@@ -66,7 +66,7 @@ function renderPalEditor() {
   else if (st.k === 'look') body = `<div class="palcols"><div class="palportrait">${D.portrait ? `<button class="plain" data-act="palbzoom">${palAvatar(D, 'palhuge')}</button>` : `<span class="palhuge pavi" style="background:${palColor(D)}">${initial(D.name)}</span>`}
         <button class="btn sm" data-act="palbport" ${!picsOn || !palLook(D) ? 'disabled' : ''}>${icon('image')} ${D.portrait ? 'New version' : 'Make her picture'}</button>
         <button class="btn sm ghost" data-act="palbupload">${icon('upload')} Upload a photo</button>${D.portrait ? '<button class="link" data-act="palbportdel">Remove</button>' : ''}
-        <p class="hint">${!picsOn ? 'Turn on pictures in Settings → Images to make one here.' : !palLook(D) ? 'Describe the face or body first.' : 'This is the reference photo: it is the avatar, and new pictures are built from the same description and tags.'}</p></div>
+        <p class="hint">${!picsOn ? 'Turn on pictures in Settings → Images to make one here.' : !palLook(D) ? 'Describe the face or body first.' : 'This is the avatar. An uploaded photo is also used as the reference photo. To keep a face the same in new pictures, open any picture of them you like and tap "Use this picture as the reference".'}</p></div>
       <div class="grow">${t('face', 'Face', 'Face shape, eyes, hair, skin, expression, freckles or scars', 2)}${t('body', 'Body', 'Height, build, posture, tattoos, how they carry themselves', 2)}${t('clothing', 'Usual clothing', 'What they normally wear', 2)}</div></div>
       ${t('tags', 'Locked picture tags (added to every picture so the look stays the same)', '1woman, 27 years old, long auburn hair, green eyes, freckles, athletic build', 2)}
       <div class="row wrap"><button class="btn sm ghost" data-act="palbtags" ${busy ? 'disabled' : ''}>${icon('spark')} Suggest tags from the description</button></div>
@@ -201,7 +201,7 @@ function palBuildAction(act, el) {
     case 'palback': S.palDraft = null; S.homeTab = 'pals'; renderLibrary(); return true;
     case 'palbstep': { const i = num(el.dataset.i); if (i >= 0 && i < PAL_STEPS.length) { S.palStep = i; S.palStepAsk = ''; renderPalEditor(); $('.steps')?.scrollIntoView({ block: 'start' }); } return true; }
     case 'palvibe': { const v = el.dataset.v; if (!D || !v) return true; D.vibes = arr(D.vibes).includes(v) ? D.vibes.filter(x => x !== v) : [...arr(D.vibes), v].slice(0, 5); const y = scrollY; renderPalEditor(); scrollTo(0, y); return true; }
-    case 'palbport': if (D && palLook(D)) { D.portrait = { prompt: palPortraitPrompt(D), seed: d(999999) }; const y = scrollY; renderPalEditor(); scrollTo(0, y); } return true;
+    case 'palbport': if (D && palLook(D)) { D.portrait = { prompt: palPortraitPrompt(D), seed: d(999999), subj: { t: 'pal', id: D.id, port: true } }; const y = scrollY; renderPalEditor(); scrollTo(0, y); } return true;
     case 'palbportdel': if (D) { delete D.portrait; const y = scrollY; renderPalEditor(); scrollTo(0, y); } return true;
     case 'palbupload': palUploadPortrait(); return true;
     case 'palbzoom': if (D?.portrait) openLightbox(palImg(D.portrait, D), D.name, D.portrait.prompt ? { prompt: D.portrait.prompt } : null); return true;

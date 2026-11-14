@@ -212,6 +212,7 @@ document.addEventListener('input', e => {
   if (el.dataset.bind) {
     const v = el.type === 'checkbox' ? el.checked : el.type === 'number' || el.type === 'range' ? Number(el.value) : el.value;
     setPath(S.settings, el.dataset.bind, v); if (el.dataset.bind === 'ai.helperModel') S.settings.ai.helperAuto = v ? '' : 'off'; saveSettings();
+    if (el.dataset.bind === 'image.refWeight') { const sv = el.closest('label')?.querySelector('.sval'); if (sv) sv.textContent = Math.round(v * 100) + '%'; }
     if (/^ui\.(music|amb|voiceVol|narr)/.test(el.dataset.bind)) { musicScene(cur()); musicLevel(); voiceLevel(); const sv = el.closest('label')?.querySelector('.sval'); if (sv) sv.textContent = el.dataset.bind === 'ui.narr' ? v + 'px' : pct(v); }
     if (el.tagName === 'SELECT' || el.dataset.bind === 'drive.folder') { if (el.tagName === 'SELECT') renderModal(); else { const h = el.closest('label')?.nextElementSibling; if (h && h.classList.contains('hint')) { const fid = folderIdFrom(el.value); h.innerHTML = fid ? `Folder ID: <code>${esc(fid)}</code>` : '<span style="color:var(--red)">Paste a Google Drive folder link.</span>'; } } }
   } else if (el.dataset.dpath && S.draft) {
@@ -288,3 +289,4 @@ document.addEventListener('visibilitychange', () => {
   if (Drive.configured() && Drive.valid()) syncNow(false);
   else if (Drive.configured() && LS.get('iq.driveok', false)) setSync('Tap Sync to load your latest saves from Google Drive');
 })();
+document.addEventListener('click', e => { if (e.target.closest?.('[data-act="cnfind"]')) { S.cnStatus = 'Checking…'; renderModal(); cnFind(true).then(() => renderModal()); } });
