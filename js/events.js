@@ -15,8 +15,12 @@ document.addEventListener('click', e => {
     case 'people': openModal('people'); break;
     case 'npcscan': scanPeople(c); break;
     case 'draftport': { if (!D) break; const look = (D.appearance || '').trim(); if (!look && !D.name.trim()) { toast('Describe their appearance first.'); break; }
-      D.portrait = { prompt: portraitPrompt(look || D.name, D.storyRole), seed: d(999999) }; renderNew(); break; }
+      askPicNsfw(nsfw => { D.portrait = { prompt: portraitPrompt(look || D.name, D.storyRole), seed: d(999999), ...(nsfw ? { nsfw: true } : {}) }; renderNew(); }, 'your portrait'); break; }
     case 'draftportdel': if (D) { delete D.portrait; renderNew(); } break;
+    case 'draftpersonaport': { const per = myPersona(); if (!D || !per?.portrait) { toast('Make your persona a photo first, in Manage your personas.'); break; }
+      D.portrait = deep(per.portrait); renderNew(); toast(`Using ${per.name}'s photo for your character.`); break; }
+    case 'pcpersonaport': { const per = myPersona(); if (!c?.character || !per?.portrait) { toast('Make your persona a photo first, in Manage your personas.'); break; }
+      c.character.portrait = deep(per.portrait); touch(c); scheduleSync(); renderModal(); toast(`Using ${per.name}'s photo for ${c.character.name}.`); break; }
     case 'research': if (D) researchWorld(D); break;
     case 'lookup': S.lookupMsg = ''; openModal('lookup'); setTimeout(() => $('#lookupQ')?.focus(), 40); break;
     case 'lookupgo': { const q = ($('#lookupQ')?.value || '').trim(); if (!q) { toast('Type what to look up.'); break; } S.lookupQ = q; S.lookupBusy = true; S.lookupMsg = 'Searching and reading sources…'; renderModal();
@@ -91,7 +95,9 @@ document.addEventListener('click', e => {
       c.party = arr(c.party); c.party.push(p); if (autoPortraitsOn()) portraitFor(c, p.id, true); c.gmNotes = [c.gmNotes, `${p.name} travels with the player as a companion; bring them into the scene.`].filter(Boolean).join('\n');
       S.compForm = null; touch(c); scheduleSync(); renderModal(); renderGame(); renderModal(); break; }
     case 'compreveal': { const p = arr(c.party).find(x => x.id === el.dataset.id); if (p && confirm(`Reveal ${p.name}'s full card, including their secrets? This may spoil surprises the GM has planned.`)) { p.revealed = true; touch(c); renderModal(); } break; }
-    case 'compportrait': portraitFor(c, el.dataset.id); renderModal(); break;
+    case 'compportrait': { const who = el.dataset.id; const p = who === 'main' ? c.character : arr(c.party).find(x => x.id === who);
+      if (!p) { toast('That character is gone.'); break; }
+      askPicPrompt({ title: `Paint ${p.name}'s portrait?`, prompt: p.portrait?.prompt || portraitPrompt(p.appearance || p.name, p.role || p.storyRole), model: p.portrait?.model || '', nsfw: !!p.portrait?.nsfw, rows: 4, guard: { campaign: c, subject: p } }, ({ prompt, model, nsfw }) => { portraitFor(c, who, false, nsfw, prompt, model); renderModal(); }); break; }
     case 'comptalk': { const p = arr(c.party).find(x => x.id === el.dataset.id); closeModal(); const inp = $('#input'); if (p && inp) { inp.value = `I turn to ${p.name}: "`; autoGrow(inp); inp.focus(); } break; }
     case 'compdel': { const p = arr(c.party).find(x => x.id === el.dataset.id); if (p && confirm(`Remove ${p.name} from this adventure entirely? (To have them leave in the story, just play it out.)`)) { c.party = c.party.filter(x => x !== p); touch(c); scheduleSync(); renderModal(); } break; }
     case 'deathcomp': continueAsCompanion(el.dataset.id); break;
@@ -213,7 +219,8 @@ document.addEventListener('click', e => {
     case 'retry': c.messages = c.messages.filter(m => m.role !== 'err'); gmTurn(); break;
     case 'undo': undoTurn(); break;
     case 'illustrate': illustrate(el.dataset.mid); break;
-    case 'newimg': { const m = c?.messages.find(x => x.id === el.dataset.mid); if (m?.image) { m.image.seed = d(999999); touch(c); renderLog(); scheduleSync(); } break; }
+    case 'newimg': { const m = c?.messages.find(x => x.id === el.dataset.mid); if (!m?.image) break;
+      askPicNsfw(nsfw => { m.image.seed = d(999999); if (nsfw) m.image.nsfw = true; else delete m.image.nsfw; touch(c); renderLog(); scheduleSync(); }, 'this picture again', !!m.image.nsfw); break; }
     case 'retryimg': if (S.settings.image.mode === 'local') { const im = el.closest('.scene')?.querySelector('img'); const k = (im?.getAttribute('src') || '').split('fail-')[1]; if (k) delete LOCAL.fail[k]; renderLog(); break; }
     { const sc = el.closest('.scene'); const img = sc?.querySelector('img'); if (img) { sc.querySelector('.ph').innerHTML = '<div class="spin"></div><div>Painting the scene…</div>'; const u = img.src.replace(/&r=\d+$/, ''); img.src = u + '&r=' + d(9999); } break; }
     case 'qstatus': { const q = c.quests[num(el.dataset.i)]; q.status = q.status === 'active' ? 'completed' : q.status === 'completed' ? 'failed' : 'active'; touch(c); renderModal(); scheduleSync(); break; }
@@ -245,6 +252,7 @@ document.addEventListener('input', e => {
   if (el.dataset.bind) {
     const v = el.type === 'checkbox' ? el.checked : el.type === 'number' || el.type === 'range' ? Number(el.value) : el.value;
     setPath(S.settings, el.dataset.bind, v); if (el.dataset.bind === 'ai.helperModel') S.settings.ai.helperAuto = v ? '' : 'off'; saveSettings();
+    if (['drive.idleSync', 'drive.autoSync'].includes(el.dataset.bind)) armIdleSync();   /* take effect straight away */
     if (el.dataset.bind === 'image.refWeight') { const sv = el.closest('label')?.querySelector('.sval'); if (sv) sv.textContent = Math.round(v * 100) + '%'; }
     if (/^ui\.(music|amb|voiceVol|narr)/.test(el.dataset.bind)) { musicScene(cur()); musicLevel(); voiceLevel(); const sv = el.closest('label')?.querySelector('.sval'); if (sv) sv.textContent = el.dataset.bind === 'ui.narr' ? v + 'px' : pct(v); }
     if (el.tagName === 'SELECT' || el.dataset.bind === 'drive.folder') { if (el.tagName === 'SELECT') renderModal(); else { const h = el.closest('label')?.nextElementSibling; if (h && h.classList.contains('hint')) { const fid = folderIdFrom(el.value); h.innerHTML = fid ? `Folder ID: <code>${esc(fid)}</code>` : '<span style="color:var(--red)">Paste a Google Drive folder link.</span>'; } } }
@@ -305,7 +313,7 @@ document.addEventListener('keydown', e => {
    (background tabs slow timers down, which could delay a scheduled sync by a minute). */
 document.addEventListener('visibilitychange', () => {
   if (!Drive.valid() || S.busy || !S.settings.drive.autoSync) return;
-  if (document.visibilityState === 'visible') syncNow(false);
+  if (document.visibilityState === 'visible') { armIdleSync(); syncNow(false); }
   else if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; syncNow(false); }
 });
 
@@ -321,5 +329,8 @@ document.addEventListener('visibilitychange', () => {
   }
   if (Drive.configured() && Drive.valid()) syncNow(false);
   else if (Drive.configured() && LS.get('iq.driveok', false)) setSync('Tap Sync to load your latest saves from Google Drive');
+  /* idle sync: 20 quiet minutes, then pull/push again */
+  armIdleSync();
+  ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(t => document.addEventListener(t, noteActivity, { passive: true }));
 })();
 document.addEventListener('click', e => { if (e.target.closest?.('[data-act="cnfind"]')) { S.cnStatus = 'Checking…'; renderModal(); cnFind(true).then(() => renderModal()); } });

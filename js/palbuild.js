@@ -202,7 +202,7 @@ function palBuildAction(act, el) {
     case 'palback': S.palDraft = null; S.homeTab = 'pals'; renderLibrary(); return true;
     case 'palbstep': { const i = num(el.dataset.i); if (i >= 0 && i < PAL_STEPS.length) { S.palStep = i; S.palStepAsk = ''; renderPalEditor(); $('.steps')?.scrollIntoView({ block: 'start' }); } return true; }
     case 'palvibe': { const v = el.dataset.v; if (!D || !v) return true; D.vibes = arr(D.vibes).includes(v) ? D.vibes.filter(x => x !== v) : [...arr(D.vibes), v].slice(0, 5); const y = scrollY; renderPalEditor(); scrollTo(0, y); return true; }
-    case 'palbport': if (D && palLook(D)) { D.portrait = { prompt: palPortraitPrompt(D), seed: d(999999), subj: { t: 'pal', id: D.id, port: true } }; const y = scrollY; renderPalEditor(); scrollTo(0, y); } return true;
+    case 'palbport': if (D && palLook(D)) { askPicNsfw(nsfw => { D.portrait = { prompt: palPortraitPrompt(D), seed: d(999999), subj: { t: 'pal', id: D.id, port: true }, ...(nsfw ? { nsfw: true } : {}) }; const y = scrollY; renderPalEditor(); scrollTo(0, y); }, 'their portrait'); } return true;
     case 'palbportdel': if (D) { delete D.portrait; const y = scrollY; renderPalEditor(); scrollTo(0, y); } return true;
     case 'palbupload': palUploadPortrait(); return true;
     case 'palbzoom': if (D?.portrait) openLightbox(palImg(D.portrait, D), D.name, D.portrait.prompt ? { prompt: D.portrait.prompt } : null); return true;
@@ -230,6 +230,13 @@ function palBuildAction(act, el) {
       if (isNew && !PALS.personas[PALS.defaultPersona]) PALS.defaultPersona = P.id;
       savePals(); S.perEdit = null; renderModal(); toast('Persona saved.'); return true;
     }
+    case 'palperport': { const P = S.perEdit; if (!P) return true; if (!String(P.look || '').trim()) { toast('Say how you look first, so the photo can be painted.'); return true; }
+      askPicPrompt({ title: 'Your photo', prompt: P.portrait?.prompt || personaPhotoPrompt(P), model: P.portrait?.model || '', nsfw: !!P.portrait?.nsfw, guard: { campaign: null, subject: P } }, ({ prompt, model, nsfw }) => {
+        P.portrait = { prompt, seed: d(999999), ...(model ? { model } : {}), ...(nsfw ? { nsfw: true } : {}) }; renderModal();
+      }); return true; }
+    case 'palperupload': personaUploadPhoto(); return true;
+    case 'palperportdel': if (S.perEdit) { delete S.perEdit.portrait; renderModal(); } return true;
+    case 'palperzoom': { const P = S.perEdit, src = personaImg(P); if (src) openLightbox(src, P.name, P.portrait?.prompt ? { prompt: P.portrait.prompt } : null); return true; }
     case 'palperai': personaAI(); return true;
     case 'palperfill': personaFill(true); return true;
     case 'palpercopy': copyText(PERSONA_PROMPT, 'Prompt copied. Paste it into ChatGPT or Claude, add your idea, then paste what it writes back here.'); return true;
@@ -435,10 +442,38 @@ async function personaAI() {
   } catch (e) { toast('That didn\'t work: ' + e.message, 5000); }
   S.perBusy = false; if (S.modal === 'palme') renderModal();
 }
+/* your persona's photo: the same face in pictures, and usable as your character's photo in a game */
+function personaImg(P) {
+  if (!P?.portrait || S.settings.image.mode === 'off') return '';
+  return P.portrait.data ? P.portrait.data : imageUrl(P.portrait, null);
+}
+const personaPhotoPrompt = P => [`portrait photo of ${P.look || P.name || 'me'}`, P.sex === 'male' ? 'man' : P.sex === 'female' ? 'woman' : '', 'head and shoulders, looking at the camera, natural light, detailed'].filter(Boolean).join(', ').replace(/\s+/g, ' ').slice(0, 700);
+function personaPhotoHTML(P) {
+  const src = personaImg(P), on = S.settings.image.mode !== 'off';
+  return `<div class="card" style="text-align:center"><div class="palportrait" style="margin:0 auto">${src ? `<button class="plain" data-act="palperzoom"><img class="port xl" src="${esc(src)}" alt=""></button>` : `<div class="port xl ph2">${esc((P.name || '?')[0])}</div>`}</div>
+    <div class="row" style="justify-content:center;margin-top:8px">${on ? `<button class="btn sm" data-act="palperport" ${!String(P.look || '').trim() ? 'disabled' : ''}>${icon('image')} ${P.portrait ? 'New photo' : 'Make my photo'}</button><button class="btn sm ghost" data-act="palperupload">${icon('upload')} Upload</button>${P.portrait ? '<button class="link" data-act="palperportdel">Remove</button>' : ''}` : '<span class="hint">Pictures are off in Settings → Images.</span>'}</div>
+    <p class="hint" style="margin:8px 0 0">This is you in pictures. In an adventure you can also set it as your character's photo, so you look the same in every game.</p></div>`;
+}
+function personaUploadPhoto() {
+  const P = S.perEdit; if (!P) return;
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+  inp.onchange = async () => {
+    const file = inp.files[0]; if (!file) return;
+    try {
+      const img = new Image(); img.src = URL.createObjectURL(file); await img.decode();
+      const k = Math.min(1, 512 / Math.max(img.naturalWidth, img.naturalHeight)); const cv = document.createElement('canvas');
+      cv.width = Math.round(img.naturalWidth * k); cv.height = Math.round(img.naturalHeight * k); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      P.portrait = { data: cv.toDataURL('image/jpeg', 0.82), uploaded: true }; URL.revokeObjectURL(img.src);
+      renderModal();
+    } catch (e) { toast('Couldn\'t read that picture: ' + e.message, 5000); }
+  };
+  inp.click();
+}
 function personaModalHTML() {
   const P = S.perEdit;
   if (P) return [P.isNew ? 'New persona' : 'Edit persona', `<div class="card" style="border-color:#5b4519"><textarea id="perIdea" rows="2" placeholder="Describe yourself in a line, or paste a profile written with the prompt…">${esc(S.perIdea || '')}</textarea>
       <div class="row wrap" style="margin-top:8px"><button class="btn sm gold" data-act="palperai" ${S.perBusy ? 'disabled' : ''}>${S.perBusy ? '<span class="spin sm"></span> Writing…' : icon('spark') + ' Write it for me'}</button><button class="btn sm ghost" data-act="palperfill">Fill in from pasted text</button><button class="btn sm ghost" data-act="palpercopy">Copy a prompt for ChatGPT / Claude</button></div></div>
+    ${personaPhotoHTML(P)}
     <div class="kv"><label class="f"><span>Name (what they call you)</span><input id="per_name" value="${esc(P.name || '')}"></label><label class="f"><span>Gender</span><select id="per_sex"><option value="">Choose…</option><option value="male" ${P.sex === 'male' ? 'selected' : ''}>Male</option><option value="female" ${P.sex === 'female' ? 'selected' : ''}>Female</option></select></label></div>
     <label class="f"><span>About you</span><textarea id="per_about" rows="5" placeholder="Your job, your life, what you're into, anything you want them to know">${esc(P.about || '')}</textarea></label>
     <label class="f"><span>Appearance (used when you are in a picture)</span><textarea id="per_look" rows="2" placeholder="Tall, short brown hair, beard, usually in a flannel shirt and jeans">${esc(P.look || '')}</textarea></label>

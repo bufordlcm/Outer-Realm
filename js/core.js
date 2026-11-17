@@ -145,29 +145,32 @@ const PRESETS = {
 const NO_BROWSER = { groq:'Groq', cerebras:'Cerebras' };
 
 const SCENARIOS = [
-  { id:'fantasy', name:'Classic Fantasy', title:'The Lantern Road', genre:'High fantasy', magic:'strain',
+  { id:'fantasy', name:'Classic Fantasy', title:'The Lantern Road', genre:'High fantasy', magic:'strain', rating:'PG-13',
     premise:'Caravans on the Lantern Road have been vanishing between the frontier town of Greywater and the mountain passes. You arrive in Greywater with empty pockets and a reason of your own to find out why.',
     tone:'Adventurous and warm, with real danger', art:'painterly fantasy illustration, rich color, cinematic lighting', gear:['Traveling clothes','Backpack','Dagger','Waterskin'] },
-  { id:'academy', name:'Magic Academy Survival', title:'Veyrmont Academy', genre:'Magic academy with a game-like System', magic:'free',
+  { id:'academy', name:'Magic Academy Survival', title:'Veyrmont Academy', genre:'Magic academy with a game-like System', magic:'free', rating:'PG-13',
     premise:'You wake in a dormitory of Veyrmont Academy, a sprawling school of magic where failing students simply disappear. On your first morning a translucent blue window flickers into view that only you can see: [SURVIVAL SYSTEM ONLINE]. It issues quests, tracks your progress, and rewards or punishes you. Survive the term, find out what happens to the students who vanish, and learn who installed the System. Show System messages in [square brackets].',
     tone:'Tense and mysterious, with wry humor', art:'anime-inspired fantasy illustration, magical academy, soft glow, detailed background', gear:['Academy uniform','Student wand','Blank grimoire','Dorm key'] },
-  { id:'grim', name:'Grimdark', title:'The Ashen City', genre:'Grim low fantasy', magic:'strain',
+  { id:'grim', name:'Grimdark', title:'The Ashen City', genre:'Grim low fantasy', magic:'strain', rating:'R',
     premise:'Plague has sealed the walls of Varrow. Bread is scarce, the watch is corrupt, and the cult of the Pale Mother promises salvation. You have three days to get someone you love out of the city before the gates are burned shut.',
     tone:'Gritty, desperate, morally gray', art:'dark oil painting, muted palette, chiaroscuro, grim atmosphere', gear:['Patched cloak','Knife','Stale bread','Bent lockpicks'] },
-  { id:'scifi', name:'Sci-Fi Salvage', title:'Derelict: Morning Star', genre:'Grounded science fiction', magic:'none',
+  { id:'scifi', name:'Sci-Fi Salvage', title:'Derelict: Morning Star', genre:'Grounded science fiction', magic:'none', rating:'PG-13',
     premise:'Your two-person salvage tug has latched onto the Morning Star, a colony ship that went silent forty years ago. Your partner went aboard six hours ago and stopped answering. You suit up.',
     tone:'Tense and isolated, wonder mixed with dread', art:'cinematic sci-fi concept art, volumetric light, highly detailed', gear:['Vac suit (4 hrs air)','Plasma cutter','Hand scanner','Med patch'] },
-  { id:'horror', name:'Cosmic Horror', title:'The Saltmarsh Letters', genre:'1920s cosmic horror investigation', magic:'gm',
+  { id:'horror', name:'Cosmic Horror', title:'The Saltmarsh Letters', genre:'1920s cosmic horror investigation', magic:'gm', rating:'R',
     premise:'A letter from your estranged uncle arrives a week after his funeral, begging you to burn the house on Saltmarsh Lane before the tide turns. You arrive in the fishing town of Innsmere at dusk.',
     tone:'Slow-burn dread, investigative', art:'moody 1920s illustration, ink and wash, fog, eerie', gear:['Revolver (6 rounds)','Electric torch','Notebook','Uncle\'s letter'] },
-  { id:'custom', name:'Write my own', title:'', genre:'', premise:'', tone:'', art:'', magic:'gm', gear:[] }
+  { id:'custom', name:'Write my own', title:'', genre:'', premise:'', tone:'', art:'', magic:'gm', gear:[], rating:'' }
 ];
 
 const DEFAULT_SETTINGS = {
   text: { temperature:0.85, maxTokens:1000, stream:true, length:'long', lenV2:true },
   ai:   { conns: [], active:'', fallback:true, deliberate:true, verify:true, referee:true, dice:'normal', people:true, agency:true, profile:'balanced', helperModel:'', helperAuto:'', builder:'auto' },
-  image:{ mode:'pollinations', polliKey:'', polliModel:'flux', size:'square', style:'', template:'', forgePreset:'auto', forgeModel:'', forgeModelSfw:'', forgeModelNsfw:'', forgeShare:true, forgeNeg:'', autoPortraits:true, driveSave:true, scenes:true, forgeRes:'fast', refPhotos:true, refWeight:0.7 },
-  drive:{ clientId: DEFAULT_CLIENT_ID, folder: DEFAULT_DRIVE_FOLDER, autoSync:true },
+  image:{ mode:'pollinations', polliKey:'', polliModel:'flux', size:'square', style:'', template:'', forgePreset:'auto', forgeModel:'', forgeModelSfw:'', forgeModelNsfw:'', forgeShare:true, forgeNeg:'', autoPortraits:true, driveSave:true, scenes:true, forgeRes:'fast', refPhotos:true, refWeight:0.7,
+    /* added to every picture; edit or clear these in Settings → Images */
+    look:'soft diffused lighting, clean natural skin texture, detailed photograph',
+    avoid:'film grain, noise, gritty texture, oversharpened, rough skin texture, low quality, compression artifacts' },
+  drive:{ clientId: DEFAULT_CLIENT_ID, folder: DEFAULT_DRIVE_FOLDER, autoSync:true, idleSync:20 },   /* minutes of quiet before an automatic sync; 0 = off */
   net:  { on:true, auto:true },
   ui:   { narr:17, showChoices:true, physicalDice:false, voice:'tap', voiceName:'', voiceRate:1, voiceVol:1, voiceEngine:'auto', voicePC:'', charVoices:true, typeMode:'say', quick:true, music:true, musicVol:0.35, musicMood:'auto', ambience:true, ambVol:0.25, diceMath:true, compTurns:true, shifts:'big', bottomGap:'phone', bottomGapPx:64 },
   updatedAt: 0

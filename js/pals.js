@@ -1,7 +1,8 @@
 'use strict';
 /* =========================================================================
    COMPANIONS: AI characters you talk to, separate from the RPG.
-   - Your own characters only, saved on this device and in Google Drive (Companions/companions.json)
+   - Your own characters only, saved on this device and in Google Drive (one folder per companion
+     under Companions/, plus a combined companions.json there as a backup)
    - Each chat is either TEXTING (phone, online, email: message bubbles)
      or IN PERSON (together: a narrated scene with *actions* and dialogue)
    - Personas: several versions of YOU; each chat uses one
@@ -58,6 +59,8 @@ const palTouch = x => { x.updatedAt = Date.now(); };
 const allPals = () => Object.values(PALS.pals).sort((a, b) => (b.lastChat || b.updatedAt || 0) - (a.lastChat || a.updatedAt || 0));
 const palChats = () => Object.values(PALS.chats).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
 const allPersonas = () => Object.values(PALS.personas).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+/* the persona the app treats as "you" when a screen needs one */
+function myPersona() { return PALS.personas[PALS.defaultPersona] || allPersonas()[0] || null; }
 
 /* ---------- who you are in a chat ---------- */
 const palsOf = chat => arr(chat?.palIds).map(id => PALS.pals[id]).filter(Boolean);
@@ -98,9 +101,37 @@ const palAvatar = (p, cls = 'pav') => { const src = p?.portrait ? palImg(p.portr
 const palColor = p => `hsl(${hashNum(p?.name || '') % 360} 45% 38%)`;
 
 /* ---------- Drive sync (called from syncNow) ---------- */
+/* Each companion gets their own folder under Companions/, holding their card, their chats and their
+   pictures. companions.json stays at the root as the combined backup and for older copies of the app. */
+const palStamp = p => Object.values(PALS.chats).filter(ch => arr(ch.palIds).includes(p.id)).reduce((m, ch) => Math.max(m, ch.updatedAt || 0), p.updatedAt || 0);
+const palFolderName = p => String(safeName(p.name || 'Companion')).slice(0, 60) || 'Companion';
+/* a companion's painted portrait, as bytes. The lookup must use the same inputs the painter did,
+   including the face reference and the subject, or the key never matches. */
+async function palPicBlob(p) {
+  try {
+    const img = p.portrait, s = S.settings.image;
+    const subject = img?.subj && typeof subjChar === 'function' ? subjChar(img.subj) : null;
+    const ref = s.refPhotos !== false && img?.subj && typeof subjRef === 'function' ? subjRef(img.subj) : null;
+    const k = localKeyFor(img, palCtx(p, null), subject, ref);
+    return (await IDB.get(k)) || (await DriveImg.get(k)) || null;
+  } catch (e) { console.warn('Companion portrait', e); return null; }
+}
+/* one attempt per picture per session: a picture painted on another device is not looked for on every sync */
+const picTried = new Set();
+/* the painted picture for a persona's photo, as bytes ready for the same upload path uploaded photos use */
+async function personaPicBlob(img) {
+  try { const k = localKeyFor(img, null); const b = await IDB.get(k) || await DriveImg.get(k); return b || null; }
+  catch (e) { console.warn('Persona picture', e); return null; }
+}
+const personaMD = x => [`# ${x.name || 'Persona'}`, x.sex ? `*${x.sex}*` : '', '', '## About', x.about || '—', '', '## Appearance', x.look || '—'].join('\n');
+function dataUrlBlob(u) {
+  const m = /^data:([^;,]+);base64,(.*)$/i.exec(String(u || '')); if (!m) return null;
+  try { const bin = atob(m[2]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return new Blob([bytes], { type: m[1] }); }
+  catch { return null; }
+}
 async function syncPals(root) {
   let folder = (await Drive.list(`'${root}' in parents and name='Companions' and mimeType='${FOLDER_MIME}' and trashed=false`))[0]?.id;
-  if (!folder) { if (!Object.keys(PALS.pals).length && !Object.keys(PALS.chats).length) return 0; folder = await Drive.createFolder('Companions', root, {}); }
+  if (!folder) { if (!Object.keys(PALS.pals).length && !Object.keys(PALS.chats).length && !Object.keys(PALS.personas).length && !Object.keys(PALS.worlds).length) return 0; folder = await Drive.createFolder('Companions', root, {}); }
   const fid = await Drive.fileId(folder, 'companions.json');
   const remote = fid ? await Drive.getJSON(fid) : null;
   let changed = 0, push = !remote;
@@ -120,18 +151,159 @@ async function syncPals(root) {
   }
   if (changed) savePals(false);
   if (push) await Drive.put(folder, 'companions.json', JSON.stringify({ app: APP, savedAt: Date.now(), ...PALS }), 'application/json');
+
+  /* one folder per companion */
+  let folders = [];
+  try { folders = await Drive.list(`'${folder}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`); } catch (e) { console.warn('Companion folders', e); }
+  const byPal = {};
+  for (const f of folders) { const pid = f.appProperties?.iqPal; if (pid) byPal[pid] = f; }
+  /* pull anything a companion folder has that is newer */
+  for (const [pid, f] of Object.entries(byPal)) {
+    if (PALS.deleted[pid] && PALS.deleted[pid] >= num(f.appProperties?.iqUpdated)) continue;
+    const local = PALS.pals[pid];
+    if (local && palStamp(local) >= num(f.appProperties?.iqUpdated)) continue;
+    try {
+      const cf = await Drive.fileId(f.id, 'companion.json'); if (!cf) continue;
+      const data = await Drive.getJSON(cf); if (!data || !data.pal) continue;
+      if (PALS.deleted[pid] && PALS.deleted[pid] >= (data.pal.updatedAt || 0)) continue;   /* deleted on another device: do not resurrect */
+      if (data.pal.updatedAt && (!local || (data.pal.updatedAt || 0) > (local.updatedAt || 0))) { PALS.pals[pid] = palUpgrade(data.pal); changed++; }
+      for (const r of arr(data.chats)) {
+        if (PALS.deleted[r.id] && PALS.deleted[r.id] >= (r.updatedAt || 0)) continue;
+        if (S.palBusy && r.id === S.palBusy.chat) continue;
+        const l = PALS.chats[r.id];
+        if (!l || (r.updatedAt || 0) > (l.updatedAt || 0)) { PALS.chats[r.id] = r; changed++; }
+      }
+    } catch (e) { console.warn('Companion folder read failed', e); }
+  }
+  if (changed) savePals(false);
+  /* push each companion's card, chats and pictures into their own folder */
+  for (const p of Object.values(PALS.pals)) {
+    const stamp = palStamp(p); let f = byPal[p.id];
+    const chats = Object.values(PALS.chats).filter(ch => arr(ch.palIds).includes(p.id));
+    const needsData = !f || num(f.appProperties?.iqUpdated) < stamp;
+    /* a painted portrait may not be on this device: try once, not on every sync */
+    const picMark = 'pal:' + p.id + ':' + stamp;
+    const needsPortrait = !!p.portrait && !f?.appProperties?.iqPortrait && !picTried.has(picMark);
+    if (f && !needsData && !needsPortrait) continue;
+    try {
+      if (!f) f = { id: await Drive.createFolder(palFolderName(p), folder, { iqPal: p.id, iqUpdated: '0' }), appProperties: {} };
+      let port = null;
+      if (needsData || needsPortrait) {
+        port = dataUrlBlob(p.portrait?.data);
+        if (!port && p.portrait?.prompt) port = await palPicBlob(p);
+      }
+      if (!port && p.portrait && !f?.appProperties?.iqPortrait) picTried.add(picMark);
+      if (needsData) await Drive.put(f.id, 'companion.json', JSON.stringify({ app: APP, savedAt: Date.now(), pal: p, chats }), 'application/json');
+      if (port) await Drive.putFile(f.id, 'portrait.jpg', port, 'image/jpeg');
+      if (needsData) {
+        const photos = chats.some(ch => arr(ch.messages).some(m => m && m.image && m.image.data)) ? await Drive.folder(f.id, 'Photos') : null;
+        for (const ch of chats) for (const m of arr(ch.messages)) {
+          const photo = photos && m && m.image && dataUrlBlob(m.image.data);
+          if (photo) await Drive.putFile(photos, 'photo-' + String(m.id) + '.jpg', photo, 'image/jpeg');
+        }
+      }
+      if (needsData || port) await Drive.patch(f.id, { name: palFolderName(p), appProperties: { iqPal: p.id, iqUpdated: String(stamp), ...(port ? { iqPortrait: '1' } : {}) } });
+    } catch (e) { console.warn('Companion folder sync failed', e); }
+  }
+
+  /* one folder per persona, holding their profile */
+  const personas = Object.values(PALS.personas);
+  if (personas.length) {
+    let pRoot = (await Drive.list(`name='Personas' and '${root}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`))[0]?.id;
+    if (!pRoot) pRoot = await Drive.createFolder('Personas', root, { iqPersonas: '1' });
+    let pf = [];
+    try { pf = await Drive.list(`'${pRoot}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`); } catch (e) { console.warn('Persona folders', e); }
+    const byPer = {}; for (const f of pf) { const pid = f.appProperties?.iqPersona; if (pid) byPer[pid] = f; }
+    for (const [pid, f] of Object.entries(byPer)) {
+      if (PALS.deleted[pid] && PALS.deleted[pid] >= num(f.appProperties?.iqUpdated)) continue;
+      const local = PALS.personas[pid];
+      if (local && (local.updatedAt || 0) >= num(f.appProperties?.iqUpdated)) continue;
+      try {
+        const id = await Drive.fileId(f.id, 'persona.json'); if (!id) continue;
+        const data = await Drive.getJSON(id); if (!data || !data.persona) continue;
+        if (PALS.deleted[pid] && PALS.deleted[pid] >= (data.persona.updatedAt || 0)) continue;
+        if (!local || (data.persona.updatedAt || 0) > (local.updatedAt || 0)) { PALS.personas[pid] = data.persona; changed++; }
+      } catch (e) { console.warn('Persona folder read failed', e); }
+    }
+    if (changed) savePals(false);
+    for (const x of personas) {
+      const stamp = x.updatedAt || 0; let f = byPer[x.id];
+      const needsData = !f || num(f.appProperties?.iqUpdated) < stamp;
+      /* a painted photo may not be on this device: try once, not on every sync */
+      const picMark = 'per:' + x.id + ':' + stamp;
+      const needsPortrait = !!(x.portrait?.data || x.portrait?.prompt) && !f?.appProperties?.iqPortrait && !picTried.has(picMark);
+      if (f && !needsData && !needsPortrait) continue;
+      try {
+        if (!f) f = { id: await Drive.createFolder(palFolderName(x), pRoot, { iqPersona: x.id, iqUpdated: '0' }), appProperties: {} };
+        let port = null;
+        if (needsData || needsPortrait) {
+          /* an uploaded photo is already bytes; a painted one is fetched from this device's store (or Drive) */
+          port = dataUrlBlob(x.portrait?.data);
+          if (!port && x.portrait?.prompt) port = await personaPicBlob(x.portrait);
+        }
+        if (needsData) {
+          await Drive.put(f.id, 'persona.json', JSON.stringify({ app: APP, savedAt: Date.now(), persona: x }), 'application/json');
+          await Drive.put(f.id, 'Persona.md', personaMD(x), 'text/markdown');
+        }
+        if (!port && (x.portrait?.data || x.portrait?.prompt) && !f?.appProperties?.iqPortrait) picTried.add(picMark);
+        if (port) await Drive.putFile(f.id, 'portrait.jpg', port, 'image/jpeg');
+        if (needsData || port) await Drive.patch(f.id, { name: palFolderName(x), appProperties: { iqPersona: x.id, iqUpdated: String(stamp), ...(port ? { iqPortrait: '1' } : {}) } });
+      } catch (e) { console.warn('Persona folder sync failed', e); }
+    }
+  }
+  changed = await syncWorlds(root, changed);
   return changed;
 }
 
+/* one folder per shared setting, holding its notes and who lives there */
+async function syncWorlds(root, changed) {
+  const worlds = Object.values(PALS.worlds);
+  if (!worlds.length) return changed;
+  let rootId = (await Drive.list(`name='Worlds' and '${root}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`))[0]?.id;
+  if (!rootId) rootId = await Drive.createFolder('Worlds', root, { iqWorlds: '1' });
+  let subs = [];
+  try { subs = await Drive.list(`'${rootId}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`); } catch (e) { console.warn('World folders', e); }
+  const byWorld = {}; for (const f of subs) { const id = f.appProperties?.iqWorld; if (id) byWorld[id] = f; }
+  for (const [id, f] of Object.entries(byWorld)) {
+    if (PALS.deleted[id] && PALS.deleted[id] >= num(f.appProperties?.iqUpdated)) continue;
+    const local = PALS.worlds[id];
+    if (local && (local.updatedAt || 0) >= num(f.appProperties?.iqUpdated)) continue;
+    try {
+      const fid = await Drive.fileId(f.id, 'world.json'); if (!fid) continue;
+      const data = await Drive.getJSON(fid); if (!data || !data.world) continue;
+      if (PALS.deleted[id] && PALS.deleted[id] >= (data.world.updatedAt || 0)) continue;
+      if (!local || (data.world.updatedAt || 0) > (local.updatedAt || 0)) { PALS.worlds[id] = data.world; changed++; }
+    } catch (e) { console.warn('World folder read failed', e); }
+  }
+  if (changed) savePals(false);
+  for (const w of worlds) {
+    const stamp = w.updatedAt || 0; let f = byWorld[w.id];
+    if (f && num(f.appProperties?.iqUpdated) >= stamp) continue;
+    try {
+      if (!f) f = { id: await Drive.createFolder(palFolderName(w), rootId, { iqWorld: w.id, iqUpdated: '0' }) };
+      await Drive.put(f.id, 'world.json', JSON.stringify({ app: APP, savedAt: Date.now(), world: w }), 'application/json');
+      await Drive.put(f.id, 'Setting.md', worldMD(w), 'text/markdown');
+      await Drive.patch(f.id, { name: palFolderName(w), appProperties: { iqWorld: w.id, iqUpdated: String(stamp) } });
+    } catch (e) { console.warn('World folder sync failed', e); }
+  }
+  return changed;
+}
+const worldMD = w => {
+  const cast = arr(w.palIds).map(id => PALS.pals[id]?.name).filter(Boolean).map(n => '- ' + n);
+  return [`# ${w.name || 'Shared setting'}`, '', w.text || '—', '', '## Who lives here', ...(cast.length ? cast : ['—'])].join('\n');
+};
+
 /* ---------- the Companions home tab ---------- */
 function palsHomeHTML() {
-  const pals = allPals(), chats = palChats();
+  const chats = palChats();
+  const sort = S.palSort || 'recent';
+  const pals = sortedBy(allPals(), sort, p => p.name, p => p.lastChat || p.updatedAt);
   if (!pals.length) return `<section class="hsec"><div class="card palhero">
       <h2>Companions</h2><p class="hint" style="color:var(--ink);font-size:15px">Characters who actually get you. Build your own companion: their look, voice, personality and the way they talk to you. They remember you, your history and your inside jokes, and your relationship grows the more you talk.</p>
       <p class="hint">Text them like a friend, or meet up in person and play out a scene together. Everything stays on your devices and your Google Drive.</p>
       <div class="row wrap"><button class="btn gold" data-act="palnew">${icon('plus')} Create your first companion</button><button class="btn" data-act="palme">${icon('person')} Your personas</button></div></div></section>`;
   return `<section class="hsec">
-    <div class="hsechd"><h2>Companions</h2><div class="row"><button class="btn sm" data-act="palgroup" ${pals.length < 2 ? 'disabled title="Make at least two companions first"' : ''}>${icon('users')} Group chat</button><button class="btn sm" data-act="palme">${icon('person')} Your personas</button><button class="btn sm" data-act="palworlds">${icon('book')} Shared settings</button><button class="btn gold sm" data-act="palnew">${icon('plus')} New companion</button></div></div>
+    <div class="hsechd"><h2>Companions</h2><div class="row">${pals.length > 1 ? sortSelect('palSort', sort) : ''}<button class="btn sm" data-act="palgroup" ${pals.length < 2 ? 'disabled title="Make at least two companions first"' : ''}>${icon('users')} Group chat</button><button class="btn sm" data-act="palme">${icon('person')} Your personas</button><button class="btn sm" data-act="palworlds">${icon('book')} Shared settings</button><button class="btn gold sm" data-act="palnew">${icon('plus')} New companion</button></div></div>
     ${chats.length ? `<div class="lbl">Recent chats</div><div class="palchats">${chats.slice(0, 8).map(ch => { const ps = palsOf(ch); const last = [...arr(ch.messages)].reverse().find(m => m.role !== 'sys');
       return `<button class="palchatrow" data-act="palopen" data-id="${ch.id}"><span class="pavs">${ps.slice(0, 3).map(p => palAvatar(p)).join('')}</span><span class="pcr"><b>${esc(ch.title || ps.map(p => p.name).join(', '))}</b><small>${ch.channel === 'person' ? '🧍 ' : '📱 '}${esc(String(last?.text || 'New chat').replace(/\[[^\]]*\]|[*{}]/g, '').slice(0, 90))}</small></span><span class="pct">${ch.updatedAt ? new Date(ch.updatedAt).toLocaleDateString([], { month:'short', day:'numeric' }) : ''}</span></button>`; }).join('')}</div>` : ''}
     <div class="lbl">Your companions</div>

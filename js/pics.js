@@ -31,6 +31,26 @@ function lbSave(ref) {
   if (S.view === 'palchat') palRedraw(); else if (S.view === 'game') { renderLog(); if (S.modal) renderModal(); } else if (S.view === 'library') renderLibrary();
 }
 function closeLightbox() { $('#lightbox')?.remove(); S.lb = null; }
+/* the adventure or companion chat a picture belongs to, for the age guard and model choice */
+function picCtx(ref) {
+  if (ref.t === 'pal') { const ch = PALS.chats[ref.chat]; const m = ch?.messages.find(x => x.id === ref.msg); return palCtx(PALS.pals[m?.who] || palsOf(ch)[0], ch); }
+  if (ref.t === 'port') return palCtx(PALS.pals[ref.pal], null);
+  return S.campaigns[ref.id];
+}
+/* why the age guard blocks this picture, or '' when it is allowed */
+function picGuard(prompt, ref, subject) {
+  try { const g = AGE.imageAllowed({ prompt, campaign: picCtx(ref), subject }); return g.allowed ? '' : (g.why || 'a minor or protected character'); }
+  catch { return ''; }
+}
+/* which model a picture is made with: the safe one, or the adult one (M-rated, unprotected adults) */
+function picModel(ref, img) {
+  try {
+    const subj = subjOf(ref, img); const subject = subjChar(subj);
+    const pick = pickForgeModel(picCtx(ref), img.prompt, subject, img.model);
+    const why = picGuard(img.prompt, ref, subject);
+    return { kind: pick.kind, label: pick.kind === 'nsfw' ? 'NSFW model' : 'SFW model', blocked: !!why, why };
+  } catch { return { kind: 'sfw', label: 'SFW model', blocked: false, why: '' }; }
+}
 /* ---------- deleting a picture (Gallery and the large view) ---------- */
 function picDeleteWhat(ref) {
   if (ref?.t === 'port') return `This removes ${PALS.pals[ref.pal]?.name || 'this companion'}'s profile picture.`;
@@ -121,6 +141,14 @@ async function captureRef(src) {
   return k;
 }
 const refReady = () => S.settings.image.mode === 'local' && S.settings.image.refPhotos !== false;
+/* model for this one picture; online services don't use it, and the age guard always wins */
+function lbModelHTML(img, model) {
+  const html = modelPickHTML('lb', img?.model || '', 'Model for this picture', 'lbModel');
+  if (!html) return '';
+  if (model?.blocked) return `<label class="f"><span>Model for this picture</span><select id="lbModel" disabled><option>Safe model only</option></select></label>
+    <p class="hint" style="margin-top:-4px">The age guard blocks this picture (${esc(model.why || 'a minor or protected character')}), so the safe model is used and the model choice is ignored.</p>`;
+  return html;
+}
 
 function openLightbox(src, cap, ref) {
   closeLightbox(); if (!src) return;
@@ -132,22 +160,25 @@ function openLightbox(src, cap, ref) {
   const rp = who?.refPhoto?.k;
   const refRow = who ? `<div class="lbref"><span class="rth">${rp ? '<img id="lbRefImg" alt="">' : '<i>none</i>'}</span><div><b>Reference photo</b><small>${rp ? `New pictures of ${esc(nm)} use this face.` : subj.t === 'pal' && who.portrait?.data ? 'Her uploaded photo is used.' : `None yet. Pick a picture of ${esc(nm)} you like and set it here.`}${refReady() ? (LOCAL.cn === null ? ' (Forge has no IP-Adapter face model yet: see Settings → Images.)' : '') : ' Reference photos are used with Stable Diffusion on your PC; with other picture services the saved look keeps them consistent.'}</small>
       <div class="row wrap"><button class="btn sm" data-lb="useref" ${local ? 'disabled' : ''}>${icon('image')} Use this picture as ${esc(nm)}'s reference</button>${rp ? '<button class="link" data-lb="noref">Remove</button>' : ''}</div></div></div>` : '';
+  const model = img && ref && ref.t ? picModel(ref, img) : null;
   const editor = !(info && info.prompt != null && !info.data) ? '' : !img ? `<div class="lbprompt"><b>Prompt</b><p>${esc(info.prompt)}</p></div>`
     : who ? `<label class="f"><span>${esc(nm)}'s look: used in every picture of ${esc(nm)}</span><textarea id="lbLook" rows="3" placeholder="How ${esc(nm)} looks: age, hair, eyes, build, usual clothes">${esc(who[subjField(subj)] || '')}</textarea></label>
         ${subj.t === 'pal' ? `<p class="hint" style="margin-top:-4px">These are her locked picture tags. Her Face, Body and current outfit from her card are added too.</p>` : ''}
         ${refRow}
         <label class="f"><span>This picture only: pose, place, outfit, mood</span><textarea id="lbPose" rows="3" placeholder="e.g. sitting on a park bench, autumn afternoon, smiling, reading a book">${esc(img.pose || '')}</textarea></label>
         <label class="f"><span>Negative prompt (things to leave out)</span><textarea id="lbNeg" rows="2" placeholder="e.g. glasses, hat, blurry, extra people">${esc(img.neg || '')}</textarea></label>
+        ${lbModelHTML(img, model)}
         <div class="row wrap"><button class="btn sm gold" data-lb="regen">${icon('redo')} Regenerate</button>${ref.t !== 'port' ? `<button class="btn sm" data-lb="more">${icon('plus')} More like this</button>` : ''}</div>
         <p class="hint">Type only what's different in this picture: ${esc(nm)}'s look and reference photo are added for you. Regenerate repaints this one; More like this keeps it and adds another.</p>
         <details class="lbfull"><summary class="hint">Full prompt (advanced)</summary><textarea id="lbPrompt" rows="5">${esc(img.prompt || '')}</textarea><p class="hint">If you change this box, it is used exactly as written.</p></details>`
     : `<label class="f"><span>Prompt</span><textarea id="lbPrompt" rows="5">${esc(img.prompt || '')}</textarea></label>
         <label class="f"><span>Negative prompt (things to leave out)</span><textarea id="lbNeg" rows="2" placeholder="e.g. glasses, hat, blurry, extra people">${esc(img.neg || '')}</textarea></label>
+        ${lbModelHTML(img, model)}
         <div class="row wrap"><button class="btn sm gold" data-lb="regen">${icon('redo')} Regenerate</button>${ref.t !== 'port' ? `<button class="btn sm" data-lb="more">${icon('plus')} More like this</button>` : ''}</div>
         <p class="hint">Regenerate repaints this picture from the prompt above (a new take each time). More like this keeps this one and adds another.</p>`;
   el.innerHTML = `<button class="iconbtn lbx" data-lb="close" aria-label="Close">${icon('x')}</button>
     <div class="lbimg"><img src="${esc(src)}" alt="" ${local ? '' : 'class="ld"'} onload="if(this.src.indexOf('data:image/svg'))this.classList.add('ld')">${local ? '<div class="lbwait"><span class="spin"></span> Painting…</div>' : ''}</div>
-    <div class="lbside">${cap ? `<div class="cap">${esc(cap)}</div>` : ''}${img ? `<div class="row wrap lbtop"><button class="btn sm favbtn ${img.fav ? 'gold' : ''}" data-lb="fav">${img.fav ? '★ In your favorites' : '☆ Add to favorites'}</button><button class="btn sm ghost" data-lb="del">${icon('trash')} Delete picture</button></div>` : ''}${editor}</div>`;
+    <div class="lbside">${cap ? `<div class="cap">${esc(cap)}</div>` : ''}${model ? `<div class="row wrap" style="gap:6px;margin-bottom:8px"><span class="pill" title="Which picture model this uses: the safe one, or the adult one for M-rated games with protected characters out of the shot">${esc(model.label)}</span>${img.nsfw ? '<span class="pill">Flagged NSFW</span>' : ''}<button class="btn sm ghost" data-lb="nsfw">${img.nsfw ? 'Remove NSFW flag' : 'Flag as NSFW'}</button></div>` : ''}${img ? `<div class="row wrap lbtop"><button class="btn sm favbtn ${img.fav ? 'gold' : ''}" data-lb="fav">${img.fav ? '★ In your favorites' : '☆ Add to favorites'}</button><button class="btn sm ghost" data-lb="del">${icon('trash')} Delete picture</button></div>` : ''}${editor}</div>`;
   if (rp) refThumb(rp).then(u => { const t = $('#lbRefImg'); if (t && u) t.src = u; });
   el.addEventListener('click', async e => {
     const b = e.target.closest('[data-lb]'); const k = b?.dataset.lb;
@@ -156,6 +187,7 @@ function openLightbox(src, cap, ref) {
     const r = S.lb.ref; const im = lbImage(r); if (!im) return closeLightbox();
     const sj = S.lb.subj; const ch0 = subjChar(sj);
     if (k === 'fav') { if (im.fav) delete im.fav; else im.fav = true; lbSave(r); return openLightbox(lbSrc(r), S.lb.cap, r); }
+    if (k === 'nsfw') { if (im.nsfw) delete im.nsfw; else im.nsfw = true; lbSave(r); return openLightbox(lbSrc(r), S.lb.cap, r); }
     if (k === 'del') { if (picDeleteAsk(r)) closeLightbox(); return; }
     if (k === 'useref' && ch0) {
       const shown = el.querySelector('.lbimg img')?.getAttribute('src') || ''; if (!shown || shown.startsWith('data:image/svg')) return toast('Wait for the picture to finish first.');
@@ -166,6 +198,7 @@ function openLightbox(src, cap, ref) {
     }
     if (k === 'noref' && ch0) { delete ch0.refPhoto; subjSave(sj); return openLightbox(lbSrc(r), S.lb.cap, r); }
     const neg = ($('#lbNeg')?.value || '').replace(/\s+/g, ' ').trim();
+    const chosenModel = ($('#lbModel')?.value || '').trim();   /* '' means the usual model for this adventure */
     let prompt, pose = null;
     if (sj && ch0) {
       const lookIn = $('#lbLook'); const f = subjField(sj);
@@ -173,14 +206,20 @@ function openLightbox(src, cap, ref) {
       const full = ($('#lbPrompt')?.value || '').replace(/\s+/g, ' ').trim(); pose = ($('#lbPose')?.value || '').trim();
       prompt = full && full !== String(im.prompt || '').replace(/\s+/g, ' ').trim() ? full : composePic(sj, pose, im.prompt);
     } else prompt = ($('#lbPrompt')?.value || '').replace(/\s+/g, ' ').trim() || im.prompt;
+    /* the age guard always wins: if the typed prompt brings in a minor or protected character, say so and use the safe model */
+    const blockedWhy = sj ? picGuard(prompt, r, ch0) : '';
+    if (blockedWhy) toast(`Safe model used: ${blockedWhy}. The model choice is ignored for this picture.`, 5000);
+    const useModel = blockedWhy ? '' : chosenModel;
     const extra = sj ? { subj: { ...sj }, pose: pose || '' } : {};
-    if (k === 'regen') { im.prompt = prompt; im.neg = neg; im.seed = d(999999); Object.assign(im, extra); if (!sj) { delete im.subj; delete im.pose; } lbSave(r); openLightbox(lbSrc(r), S.lb.cap, r); }
-    else if (k === 'more') {
-      const nu = { prompt, neg, seed: d(999999), ...(im.kind ? { kind: im.kind } : {}), ...(im.user ? { user: im.user } : {}), ...extra }; let nr = r;
+    if (k === 'regen') { askPicNsfw(nsfw => {
+      im.prompt = prompt; im.neg = neg; im.seed = d(999999); Object.assign(im, extra); if (nsfw) im.nsfw = true; else delete im.nsfw;
+      if (useModel) im.model = useModel; else delete im.model;
+      if (!sj) { delete im.subj; delete im.pose; } lbSave(r); openLightbox(lbSrc(r), S.lb.cap, r); }, 'a new version', !!im.nsfw); return; }
+    if (k === 'more') { askPicNsfw(nsfw => {
+      const nu = { prompt, neg, seed: d(999999), ...(im.kind ? { kind: im.kind } : {}), ...(im.user ? { user: im.user } : {}),           ...(nsfw ? { nsfw: true } : {}), ...(useModel ? { model: useModel } : {}), ...extra }; let nr = r;
       if (r.t === 'pal') { const ch = PALS.chats[r.chat]; const i = ch.messages.findIndex(m => m.id === r.msg); const src0 = ch.messages[i]; const nm2 = { id: uid(), role: 'pal', who: src0.who, text: '', mode: src0.mode, pic: 'more', image: nu, t: Date.now() }; ch.messages.splice(i + 1, 0, nm2); nr = { t: 'pal', chat: ch.id, msg: nm2.id }; }
       else { const c = S.campaigns[r.id]; const g = { id: uid(), kind: im.kind === 'character' ? 'character' : 'place', name: (im.name || S.lb.cap || 'Scene').slice(0, 70), ...nu, day: c.time?.day || 1, t: Date.now() }; c.gallery = arr(c.gallery); c.gallery.unshift(g); nr = { t: 'gal', id: c.id, gid: g.id }; }
-      lbSave(nr); openLightbox(lbSrc(nr), S.lb.cap, nr);
-    }
+      lbSave(nr); openLightbox(lbSrc(nr), S.lb.cap, nr); }, 'another picture', !!im.nsfw); return; }
   });
   document.body.appendChild(el);
 }
@@ -266,7 +305,7 @@ Reply with JSON only: {"prompt":"","wearing":"","you_in_frame":false,"caption":"
   const desc = String(j?.prompt || '').trim() || [selfie ? 'smiling at the camera' : 'candid moment', ch.scene || 'casual setting'].join(', ');
   const prompt = o.exact && user ? user : [selfie ? 'selfie, phone camera photo' : subjects.length > 1 ? `photo of ${subjects.length} people together` : 'candid photo', ...looks, wearing && subjects.length === 1 ? `wearing ${wearing}` : '', desc, user && !desc.toLowerCase().includes(user.toLowerCase().slice(0, 24)) ? user : '', j?.you_in_frame === true && me?.look ? `with ${me.sex === 'female' ? 'a woman' : 'a man'}: ${me.look.slice(0, 160)}` : ''].map(s => String(s || '').trim()).filter(Boolean).join(', ').replace(/\s+/g, ' ').slice(0, 860);
   delete msg.picBusy;
-  msg.image = { prompt, seed: d(999999), neg, kind: selfie ? 'selfie' : 'scene', ...(user ? { user } : {}), ...(subjects.length === 1 && !o.exact ? { subj: { t: 'pal', id: p.id }, pose: [desc, user].filter(Boolean).join(', ').slice(0, 500) } : {}) };
+  msg.image = { prompt, seed: d(999999), neg, kind: selfie ? 'selfie' : 'scene', ...(o.model ? { model: o.model } : {}), ...(user ? { user } : {}), ...(subjects.length === 1 && !o.exact ? { subj: { t: 'pal', id: p.id }, pose: [desc, user].filter(Boolean).join(', ').slice(0, 500) } : {}) };
   msg.text = selfie ? String(j?.caption || '').replace(/^["“]|["”]$/g, '').trim().slice(0, 300) || '*sends a selfie*' : '';
   if (o.saveNeg) ch.picNeg = neg;
   if (S.palBusy?.msg === msg.id) S.palBusy = null; if (S.abort?.signal === signal) S.abort = null;
@@ -280,13 +319,14 @@ function palPicModalHTML() {
     ${ps.length > 1 ? `<label class="f"><span>Who is in it</span><select id="ppWho">${P.kind === 'selfie' ? '' : `<option value="" ${!P.who ? 'selected' : ''}>Everyone here</option>`}${ps.map(p => `<option value="${p.id}" ${P.who === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
     <label class="f"><span>What should the picture show? (pose, outfit, place, mood, camera angle…)</span><textarea id="ppUser" rows="4" placeholder="e.g. sitting cross-legged on her bed in an oversized hoodie, messy bun, laughing, warm lamp light, shot from above">${esc(P.user || '')}</textarea></label>
     <label class="f"><span>Negative prompt: things you don't want in it</span><textarea id="ppNeg" rows="2" placeholder="e.g. glasses, hat, extra people, blurry, text">${esc(P.neg || '')}</textarea></label>
+    ${modelPickHTML('palpic', P.model || '')}
     <label class="chk"><input type="checkbox" id="ppSaveNeg" ${P.saveNeg ? 'checked' : ''}> <span>Use this negative prompt for every picture in this chat</span></label>
     <label class="chk"><input type="checkbox" id="ppCtx" ${P.ctx !== false ? 'checked' : ''}> <span>Also use what is happening in the chat right now (place, mood, what she is doing)</span></label>
     <label class="chk"><input type="checkbox" id="ppExact" ${P.exact ? 'checked' : ''}> <span>Use my prompt exactly as written (don't add her saved look, tags or outfit)</span></label>
     <p class="hint">Her saved look, locked tags and current outfit (${esc(palOutfitName(who) || 'none set')}) are added for you, and your Settings → Images negative list still applies on top of this one.</p>
     <div class="row" style="margin-top:10px"><button class="btn gold" data-act="palpicgo">${icon('image')} Make the picture</button><button class="btn ghost" data-act="close">Cancel</button></div>`];
 }
-function palPicRead() { const P = S.palPic; if (!P || !$('#ppUser')) return P; P.user = $('#ppUser').value; P.neg = $('#ppNeg').value; P.saveNeg = $('#ppSaveNeg').checked; P.ctx = $('#ppCtx').checked; P.exact = $('#ppExact').checked; if ($('#ppWho')) P.who = $('#ppWho').value; return P; }
+function palPicRead() { const P = S.palPic; if (!P || !$('#ppUser')) return P; P.user = $('#ppUser').value; P.neg = $('#ppNeg').value; P.saveNeg = $('#ppSaveNeg').checked; P.ctx = $('#ppCtx').checked; P.exact = $('#ppExact').checked; if ($('#ppWho')) P.who = $('#ppWho').value; if ($('#model_palpic')) P.model = $('#model_palpic').value; return P; }
 function palPicAction(act, el) {
   const ch = curChat();
   switch (act) {
@@ -296,7 +336,7 @@ function palPicAction(act, el) {
       if (P.exact && !String(P.user).trim()) { toast('Write the prompt first, or untick "exactly as written".'); return true; }
       if (S.palBusy) { toast('Wait for the reply to finish first.'); return true; }
       if (!P.saveNeg && c2.picNeg && !String(P.neg).trim()) delete c2.picNeg;
-      S.modal = null; $('#modalRoot').innerHTML = ''; palPicture(c2, { kind: P.kind, who: P.who, user: P.user, neg: P.neg, ctx: P.ctx, exact: P.exact, saveNeg: P.saveNeg }); S.palPic = null; return true; }
+      S.modal = null; $('#modalRoot').innerHTML = ''; palPicture(c2, { kind: P.kind, who: P.who, user: P.user, neg: P.neg, ctx: P.ctx, exact: P.exact, saveNeg: P.saveNeg, model: P.model || '' }); S.palPic = null; return true; }
     case 'palzoom': { const m = ch?.messages.find(x => x.id === el.dataset.id); if (m?.image && !String(el.getAttribute('src')).startsWith('data:image/svg') && !String(el.getAttribute('src')).startsWith('data:,')) { const p = palWho(ch, m); openLightbox(el.src, `${p?.name || ''}${m.image.kind === 'selfie' ? ' · selfie' : ''}`, { t: 'pal', chat: ch.id, msg: m.id }); } return true; }
     case 'palpiccancel': { const m = ch?.messages.find(x => x.id === el.dataset.id); if (!m) return true;
       if (m.picBusy) { S.abort?.abort(); return true; }
@@ -309,31 +349,43 @@ function palPicAction(act, el) {
 }
 
 /* ---------- home Gallery, grouped by the story or chat each picture belongs to ---------- */
+/* a picture painted with the adult model is NSFW whether or not it was ticked: it hides in the Gallery by default */
+function picAutoNsfw(img, ctx) {
+  if (!img || img.nsfw) return !!img?.nsfw;
+  try { return pickForgeModel(ctx, img.prompt, img.subj && typeof subjChar === 'function' ? subjChar(img.subj) : null).kind === 'nsfw'; }
+  catch { return false; }
+}
 function galleryGroups() {
   const groups = [];
   for (const c of allGames()) {
     const items = [];
-    for (const g of arr(c.gallery)) items.push({ src: imageUrl(g, c), name: g.name, fav: !!g.fav, ref: { t: 'gal', id: c.id, gid: g.id } });
-    for (const m of arr(c.messages)) if (m.image && !arr(c.gallery).some(g => g.prompt === m.image.prompt && g.seed === m.image.seed)) items.push({ src: imageUrl(m.image, c), name: '', fav: !!m.image.fav, ref: { t: 'game', id: c.id, msg: m.id } });
+    for (const g of arr(c.gallery)) items.push({ src: imageUrl(g, c), name: g.name, fav: !!g.fav, img: g, nsfw: picAutoNsfw(g, c), ref: { t: 'gal', id: c.id, gid: g.id } });
+    for (const m of arr(c.messages)) if (m.image && !arr(c.gallery).some(g => g.prompt === m.image.prompt && g.seed === m.image.seed)) items.push({ src: imageUrl(m.image, c), name: '', fav: !!m.image.fav, img: m.image, nsfw: picAutoNsfw(m.image, c), ref: { t: 'game', id: c.id, msg: m.id } });
     if (items.length) groups.push({ key: c.id, title: c.title, kind: gameKind(c) + ' story', items });
   }
   for (const ch of palChats()) {
     const ps = palsOf(ch); if (!ps.length) continue; const items = [];
-    for (const m of arr(ch.messages)) if (m.image) { const p = PALS.pals[m.who] || ps[0]; const src = palImg(m.image, p, ch); if (src) items.push({ src, name: `${p.name}${m.image.kind === 'selfie' ? ' · selfie' : ''}`, fav: !!m.image.fav, ref: { t: 'pal', chat: ch.id, msg: m.id } }); }
+    for (const m of arr(ch.messages)) if (m.image) { const p = PALS.pals[m.who] || ps[0]; const src = palImg(m.image, p, ch); if (src) items.push({ src, name: `${p.name}${m.image.kind === 'selfie' ? ' · selfie' : ''}`, fav: !!m.image.fav, img: m.image, nsfw: picAutoNsfw(m.image, palCtx(p, ch)), ref: { t: 'pal', chat: ch.id, msg: m.id } }); }
     if (items.length) groups.push({ key: 'chat_' + ch.id, title: ch.title || ps.map(p => p.name).join(', '), kind: ps.length > 1 ? 'Group chat' : 'Companion chat', items: items.reverse() });
   }
-  const ports = allPals().filter(p => p.portrait).map(p => ({ src: palImg(p.portrait, p), name: p.name, fav: !!p.portrait.fav, ref: p.portrait.data ? null : { t: 'port', pal: p.id } })).filter(x => x.src);
+  const ports = allPals().filter(p => p.portrait).map(p => ({ src: palImg(p.portrait, p), name: p.name, fav: !!p.portrait.fav, img: p.portrait, nsfw: picAutoNsfw(p.portrait, palCtx(p, null)), ref: p.portrait.data ? null : { t: 'port', pal: p.id } })).filter(x => x.src);
   if (ports.length) groups.push({ key: 'ports', title: 'Companion portraits', kind: 'Companions', items: ports });
+  const mine = allPersonas().filter(x => x.portrait).map(x => ({ src: personaImg(x), name: x.name, fav: !!x.portrait.fav, img: x.portrait, nsfw: picAutoNsfw(x.portrait, null), ref: null })).filter(x => x.src);
+  if (mine.length) groups.push({ key: 'personas', title: 'Your personas', kind: 'You', items: mine });
   return groups;
 }
 function homeGalleryHTML() {
   if (S.settings.image.mode === 'off') return `<div class="hhead"><h1>Gallery</h1></div><p class="empty">Pictures are turned off. Turn them on in Settings → Images.</p>`;
-  const groups = galleryGroups(); const total = groups.reduce((a, g) => a + g.items.length, 0);
+  const all = galleryGroups();
+  const hiddenNsfw = all.reduce((n, g) => n + g.items.filter(x => x.nsfw).length, 0);
+  const groups = all.map(g => ({ ...g, items: g.items.filter(x => S.galNsfw || !x.nsfw) })).filter(g => g.items.length);
+  const total = groups.reduce((a, g) => a + g.items.length, 0);
   const favs = groups.flatMap(g => g.items.filter(x => x.fav).map(x => ({ ...x, name: x.name || g.title })));
   if (favs.length) groups.unshift({ key: 'favs', title: '★ Favorites', kind: 'Pictures you starred', items: favs });
   const sel = groups.find(g => g.key === S.galSel);
-  const tile = (x, title) => `<div class="gwrap"><button class="gtile" data-act="lightbox" data-src="${esc(x.src)}" data-cap="${esc((x.name ? x.name + ' · ' : '') + title)}" ${x.ref ? `data-ref='${esc(JSON.stringify(x.ref))}'` : ''}>${imgTag(x.src, '', x.name)}${x.fav ? '<i class="favstar">★</i>' : ''}<span>${esc(x.name || title)}</span></button>${x.ref ? `<button class="gdel" data-act="galdelpic" data-ref='${esc(JSON.stringify(x.ref))}' title="Delete this picture" aria-label="Delete this picture">${icon('trash')}</button>` : ''}</div>`;
-  return `<div class="hhead"><h1>Gallery <span class="count">${total}</span></h1></div>
+  const tile = (x, title) => `<div class="gwrap"><button class="gtile" data-act="lightbox" data-src="${esc(x.src)}" data-cap="${esc((x.name ? x.name + ' · ' : '') + title)}" ${x.ref ? `data-ref='${esc(JSON.stringify(x.ref))}'` : ''}>${imgTag(x.src, '', x.name)}${x.fav ? '<i class="favstar">★</i>' : ''}<span>${esc(x.name || title)}${x.nsfw ? ' · NSFW' : ''}</span></button>${x.ref ? `<button class="gdel" data-act="galdelpic" data-ref='${esc(JSON.stringify(x.ref))}' title="Delete this picture" aria-label="Delete this picture">${icon('trash')}</button>` : ''}</div>`;
+  return `<div class="hhead"><h1>Gallery <span class="count">${total}</span></h1>
+      <div class="row wrap" style="gap:8px;align-items:center"><button class="chip ${S.galNsfw ? 'on' : ''}" data-act="galnsfw" title="Pictures you marked NSFW stay hidden here until you show them">${S.galNsfw ? 'NSFW shown' : 'NSFW hidden'}${hiddenNsfw ? ` · ${hiddenNsfw}` : ''}</button></div></div>
     ${groups.length ? `<div class="chips galchips"><button class="chip ${!sel ? 'on' : ''}" data-act="galsel" data-k="">All</button>${groups.map(g => `<button class="chip ${sel === g ? 'on' : ''}" data-act="galsel" data-k="${esc(g.key)}">${esc(g.title)} <small>${g.items.length}</small></button>`).join('')}</div>
       ${(sel ? [sel] : groups).map(g => `<section class="galsec"><div class="galhd"><div><b>${esc(g.title)}</b><small>${esc(g.kind)} · ${g.items.length} picture${g.items.length === 1 ? '' : 's'}</small></div>${!sel && g.items.length > 8 ? `<button class="link" data-act="galsel" data-k="${esc(g.key)}">Show all ${g.items.length}</button>` : ''}</div>
         <div class="gal">${(sel ? g.items.slice(0, 300) : g.items.slice(0, 8)).map(x => tile(x, g.title)).join('')}</div></section>`).join('')}` : '<p class="empty">Portraits and scene pictures from your games and chats collect here, sorted by the story or chat they came from.</p>'}`;

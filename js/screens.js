@@ -321,6 +321,7 @@ function renderModal() {
 }
 const tabBtn = (id, label, active) => `<button class="chip ${active === id ? 'on' : ''}" data-act="tab" data-id="${id}">${label}</button>`;
 const bindInput = (path, label, { type = 'text', ph = '', hint = '' } = {}) => `<label class="f"><span>${label}</span><input type="${type}" data-bind="${path}" value="${esc(getPath(S.settings, path) ?? '')}" placeholder="${esc(ph)}" ${type === 'password' ? 'autocomplete="off"' : ''}></label>${hint ? `<p class="hint">${hint}</p>` : ''}`;
+const bindArea = (path, label, { ph = '', hint = '', rows = 3 } = {}) => `<label class="f"><span>${label}</span><textarea rows="${rows}" data-bind="${path}" placeholder="${esc(ph)}">${esc(getPath(S.settings, path) ?? '')}</textarea></label>${hint ? `<p class="hint">${hint}</p>` : ''}`;
 const bindCheck = (path, label) => `<label class="check"><input type="checkbox" data-bind="${path}" ${getPath(S.settings, path) ? 'checked' : ''}><span>${label}</span></label>`;
 
 function settingsHTML() {
@@ -375,7 +376,8 @@ function settingsHTML() {
       ${bindInput('drive.folder', 'Drive folder link', { ph:'https://drive.google.com/drive/folders/…', hint: fid ? `Folder ID: <code>${esc(fid)}</code>` : '<span style="color:var(--red)">Paste a Google Drive folder link.</span>' })}
       ${bindInput('drive.clientId', 'Google OAuth Client ID', { ph:'xxxxxxxx.apps.googleusercontent.com', hint: /^GOCSPX/i.test(S.settings.drive.clientId || '') ? '<span style="color:var(--red)">That\'s the client <b>secret</b>, not the Client ID. The Client ID ends in .apps.googleusercontent.com.</span> <button class="link" data-act="cidreset">Use the built-in one</button>' : '' })}
       <p class="hint">One-time setup in Google Cloud Console — see the README. Add this exact address as an <b>Authorized JavaScript origin</b>: <code>${esc(/^https?:/.test(location.protocol) ? location.origin : '(host the app first — Drive can\'t work from a local file)')}</code>. Because the app writes into a folder you made, it asks for full Drive access; Google will show an "unverified app" screen — choose Advanced → Continue.</p>
-      ${bindCheck('drive.autoSync', 'Sync automatically after every turn')}
+      ${bindCheck('drive.autoSync', 'Sync automatically: after changes, when the app opens or comes back to the front, and after the quiet time below')}
+      <label class="f"><span>Also sync after this long with no activity</span><select data-bind="drive.idleSync">${[[0, 'Off'], [5, 'Every 5 minutes'], [20, 'Every 20 minutes'], [60, 'Every hour']].map(([v, l]) => `<option value="${v}" ${num(S.settings.drive.idleSync) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <p class="hint">Keys: put a file named <b>ironquill-keys…</b> in the folder (or use Settings → Story AI → Save keys to Drive) and every device loads your AI keys when it connects.</p>
       <div class="row" style="margin-top:16px"><button class="btn gold" data-act="sync">${icon('cloud')} ${Drive.valid() ? 'Sync now' : 'Connect & sync'}</button>${Drive.valid() || LS.get('iq.driveok', false) ? `<button class="btn ghost" data-act="drivedisc">Disconnect</button>` : ''}</div>
       <p class="hint" id="driveStatus">${esc(S.syncStatus || (Drive.valid() ? 'Connected.' : 'Not connected.'))}</p>`;

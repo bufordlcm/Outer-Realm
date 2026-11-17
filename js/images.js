@@ -7,6 +7,15 @@ const FORGE_PRESETS = {
 };
 const FORGE_SIZES = { xl: { landscape:[1216,832], square:[1024,1024], portrait:[832,1216], wide:[1344,768] }, '15': { landscape:[768,512], square:[512,512], portrait:[512,768], wide:[896,512] } };
 const FORGE_NEG = 'cartoon, anime, illustration, painting, drawing, sketch, 3d render, cgi, plastic skin, airbrushed, deformed, disfigured, extra fingers, bad hands, bad anatomy, blurry, lowres, watermark, text, logo, signature, jpeg artifacts';
+/* the standing additions from Settings → Images, on every picture */
+function picLook() { return String(S.settings.image.look || '').replace(/\s+/g, ' ').trim().slice(0, 300); }
+function picAvoid() { return String(S.settings.image.avoid || '').replace(/\s+/g, ' ').trim().slice(0, 400); }
+/* what is actually sent to the painter (our own cache key stays based on the picture's own prompt) */
+function forgeBodyPrompt(prompt) { return [prompt, picLook()].filter(Boolean).join(', '); }
+function forgeBodyNeg(neg, safe) {
+  const s = S.settings.image;
+  return [(s.forgeNeg || '').trim() || FORGE_NEG, neg, picAvoid(), safe ? SAFE_NEG : ''].filter(Boolean).join(', ');
+}
 const PHOTO_STYLE = 'photorealistic, cinematic film still, 35mm photograph, natural lighting, detailed skin texture, shallow depth of field, sharp focus';
 /* ---------- portraits in the character builder ---------- */
 const draftCtx = D => ({ rating: D.rating, artStyle: D.art, character: { storyRole: D.storyRole, appearance: D.appearance, backstory: D.backstory } });
@@ -15,7 +24,7 @@ function draftPortraitHTML(D) {
   const p = D.portrait;
   return `<div class="dport">${p ? `<img class="port xl" src="${esc(imageUrl(p, draftCtx(D)))}" alt="Portrait">` : `<div class="port xl ph2">${esc((D.name || '?')[0])}</div>`}
     <div><div class="hint" style="margin:0 0 8px">${p ? 'Your character\'s portrait. Change the appearance and paint again until it looks right.' : 'Paint your character from the appearance above.'}${S.settings.image.mode === 'local' ? ' On your PC this takes 20 seconds to 2 minutes.' : ''}</div>
-    <div class="row"><button class="btn sm gold" data-act="draftport">${icon('image')} ${p ? 'Paint again' : 'Paint portrait'}</button>${p ? '<button class="btn sm ghost" data-act="draftportdel">Remove</button>' : ''}</div></div></div>`;
+    <div class="row"><button class="btn sm gold" data-act="draftport">${icon('image')} ${p ? 'Paint again' : 'Paint portrait'}</button>${(() => { const per = myPersona(); return per?.portrait ? `<button class="btn sm ghost" data-act="draftpersonaport">Use ${esc(per.name)}'s photo</button>` : ''; })()}${p ? '<button class="btn sm ghost" data-act="draftportdel">Remove</button>' : ''}</div></div></div>`;
 }
 /* ---------- SFW / NSFW picture models ----------
    Models are shown as "SFW" / "NSFW", never by file name. An adventure only uses the NSFW model when it is rated
@@ -40,12 +49,16 @@ function autoAssignModels() {
   if (!im.forgeModelNsfw || (all.length && !all.includes(im.forgeModelNsfw))) im.forgeModelNsfw = all.find(m => modelKind(m) === 'nsfw') || '';
   saveSettings();
 }
-function pickForgeModel(c, prompt, subject = null) {
+function pickForgeModel(c, prompt, subject = null, wanted = '') {
   const im = S.settings.image;
-  const unsafe = !AGE.imageAllowed({ prompt, campaign: c, subject }).allowed;
+  const guard = AGE.imageAllowed({ prompt, campaign: c, subject });
+  const unsafe = !guard.allowed;
   const adult = normRating(c?.rating) === 'M' && !unsafe;
-  const model = (adult && im.forgeModelNsfw) || im.forgeModelSfw || im.forgeModel || '';
-  return { model, safe: !adult, kind: adult && im.forgeModelNsfw ? 'nsfw' : 'sfw' };
+  /* a model chosen on the picture wins, but never past the age guard: a minor always gets the safe model */
+  const want = unsafe ? '' : String(wanted || '').trim();
+  const auto = (adult && im.forgeModelNsfw) || im.forgeModelSfw || im.forgeModel || '';
+  const model = want || auto;
+  return { model, safe: !adult, kind: adult && model && model === im.forgeModelNsfw ? 'nsfw' : 'sfw' };
 }
 /* "Auto" reads the model's file name: Lightning/Turbo/Hyper/DMD/LCM models need few steps; anything else gets the standard SDXL settings */
 function forgePresetKey(model) {
@@ -65,8 +78,8 @@ const IDB = {
   async get(k) { try { const db = await this.open(); return await new Promise(res => { const q = db.transaction('img').objectStore('img').get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); } catch { return null; } },
   async put(k, v) { try { const db = await this.open(); await new Promise(res => { const t = db.transaction('img', 'readwrite'); t.objectStore('img').put(v, k); t.oncomplete = res; t.onerror = res; }); } catch {} }
 };
-function forgeJob(prompt, seed, c, neg = '', ref = null, subject = null) {
-  const s = S.settings.image; const pick = pickForgeModel(c, prompt, subject); const pk = forgePresetKey(pick.model); const P = FORGE_PRESETS[pk];
+function forgeJob(prompt, seed, c, neg = '', ref = null, subject = null, model = '') {
+  const s = S.settings.image; const pick = pickForgeModel(c, prompt, subject, model); const pk = forgePresetKey(pick.model); const P = FORGE_PRESETS[pk];
   const [FW, FH] = FORGE_SIZES[P.base][s.size] || FORGE_SIZES[P.base].square;
   /* "Fast" draws SDXL pictures at 3/4 size: about half the pixels, so roughly twice as quick on smaller cards */
   const small = [Math.round(FW * 0.75 / 64) * 64, Math.round(FH * 0.75 / 64) * 64];
@@ -79,8 +92,10 @@ function forgeJob(prompt, seed, c, neg = '', ref = null, subject = null) {
 }
 const localPH = k => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="3" height="2"><desc>${k}</desc></svg>`);
 const localFailURL = k => 'data:,fail-' + k;
-function localImageUrl(prompt, seed, c, neg = '', ref = null, subject = null) {
-  const job = forgeJob(prompt, seed, c, neg, ref, subject);
+function localImageUrl(prompt, seed, c, neg = '', ref = null, subject = null, model = '') {
+  const job = forgeJob(prompt, seed, c, neg, ref, subject, model);
+  /* which game this picture belongs to, so Drive can file it in that game's own Photos folder */
+  job.ctx = c && c.id ? { id: c.id, folder: c.driveFolder || '', title: c.title || 'Adventure' } : null;
   if (LOCAL.url[job.k]) return LOCAL.url[job.k];
   if (LOCAL.fail[job.k] && Date.now() - (LOCAL.failAt?.[job.k] || 0) < 30000) return localFailURL(job.k);
   if (LOCAL.fail[job.k]) delete LOCAL.fail[job.k];
@@ -98,7 +113,7 @@ async function pumpLocal() {
         let blob = await IDB.get(job.k);
         if (!blob) { blob = await DriveImg.get(job.k); if (blob) IDB.put(job.k, blob); }
         if (!blob && job.alt) { blob = await IDB.get(job.alt) || await DriveImg.get(job.alt); if (blob) IDB.put(job.k, blob); }
-        if (!blob) { blob = await forgeGenerate(job); await IDB.put(job.k, blob); if (S.settings.image.driveSave !== false && Drive.configured()) DriveImg.queue(job.k); }
+        if (!blob) { blob = await forgeGenerate(job); await IDB.put(job.k, blob); if (S.settings.image.driveSave !== false && Drive.configured()) DriveImg.queue(job.k, job.ctx); }
         LOCAL.url[job.k] = URL.createObjectURL(blob);
       } catch (e) { LOCAL.fail[job.k] = e.message || String(e); (LOCAL.failAt = LOCAL.failAt || {})[job.k] = Date.now(); }
       LOCAL.cur = null; delete LOCAL.jobs[job.k]; swapLocal(job.k);
@@ -147,7 +162,7 @@ async function forgeGenerate(job, retried = false, noRef = false) {
       if (cn && b64) unit = { enabled: true, image: String(b64).replace(/^data:[^,]+,/, ''), module: cn.module, model: cn.model, weight: clamp(Number(s.refWeight) || 0.7, 0.2, 1.2), resize_mode: 'Crop and Resize', processor_res: 512, guidance_start: 0, guidance_end: 1, control_mode: 'Balanced', pixel_perfect: false };
     } catch (e) { console.warn('Reference photo skipped', e); }
   }
-  const body = { prompt: job.prompt, negative_prompt: [(s.forgeNeg || '').trim() || FORGE_NEG, job.neg, job.safe ? SAFE_NEG : ''].filter(Boolean).join(', '), seed: job.seed, width: job.W, height: job.H, steps: job.P.steps, cfg_scale: job.P.cfg,
+  const body = { prompt: forgeBodyPrompt(job.prompt), negative_prompt: forgeBodyNeg(job.neg, job.safe), seed: job.seed, width: job.W, height: job.H, steps: job.P.steps, cfg_scale: job.P.cfg,
     sampler_name: job.P.sampler, scheduler: job.P.scheduler, batch_size: 1, n_iter: 1, send_images: true, save_images: false };
   if (job.model) { body.override_settings = { sd_model_checkpoint: job.model }; body.override_settings_restore_afterwards = false; }
   if (unit) body.alwayson_scripts = { ControlNet: { args: [unit] } };
@@ -212,10 +227,106 @@ function forgeSettingsHTML() {
     ${bindCheck('image.driveSave', 'Save pictures to Google Drive (your phone and PC share them, and the phone can show them even when Forge isn\'t reachable)')}
     ${bindCheck('image.forgeShare', 'Pictures and the story AI share one graphics card (pictures wait for the GM\'s turn and free the story AI\'s memory first). Turn this OFF if Forge runs on its own second graphics card.')}
     ${bindInput('image.forgeNeg', 'Things to avoid (negative prompt)', { ph: FORGE_NEG.slice(0, 60) + '…', hint:'Leave empty for the built-in list, which steers away from cartoons and bad hands.' })}
+    ${bindArea('image.look', 'Always add to the picture prompt', { ph: 'soft diffused lighting, clean natural skin texture, detailed photograph', hint: 'Added to every picture, on your PC and with the online services. Clear it to send prompts exactly as written.' })}
+    ${bindArea('image.avoid', 'Always add to the negative prompt', { ph: 'film grain, noise, gritty texture…', hint: 'Kept out of every picture, alongside the list above.' })}
     <div class="row" style="margin-top:10px"><button class="btn sm" data-act="photostyle">Make ${cur() ? 'this adventure' : 'the default style'} photo-realistic</button></div>
     <p class="hint">Sets the art style to "${esc(PHOTO_STYLE)}". Pictures are saved on each device; the same scene repaints identically on another device.</p>`;
 }
 
+/* before a picture is painted: a small confirm so you can flag it NSFW up front. Flagged pictures stay
+   out of the Gallery until you switch its NSFW filter on. */
+/* the shared model chooser for pictures made from a prompt: '' = the usual model for this adventure.
+   Hidden with online services, which pick their own model. */
+function modelPickHTML(key, cur = '', label = 'Model for this picture', elId = 'model_' + key) {
+  const s = S.settings.image;
+  if (s.mode !== 'local') return '';
+  const all = [...new Set([...(S.forgeModels || []), s.forgeModelSfw, s.forgeModelNsfw].filter(Boolean))];
+  const val = String(cur || '');
+  return `<label class="f"><span>${esc(label)}</span><select id="${elId}" data-pmodel="${key}"><option value="">Usual one${s.forgeModelSfw ? ` (${esc(modelLabel(s.forgeModelSfw))})` : ''}</option>${all.map(m => `<option value="${esc(m)}" ${m === val ? 'selected' : ''}>${esc(modelLabel(m))}</option>`).join('')}</select></label>
+    ${all.length ? '<p class="hint" style="margin-top:-4px">If the picture involves a minor, the safe model is used whichever one you pick.</p>' : '<p class="hint">Tap "Find it" in Settings → Images to load the models from your PC.</p>'}`;
+}
+
+/* ask for the prompt (and which model) before painting: scene illustrations, portraits, persona photos */
+function askPicPrompt(o, then) {
+  const el = document.createElement('div');
+  el.setAttribute('role', 'dialog');
+  el.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.62);display:grid;place-items:center;padding:20px';
+  el.innerHTML = `<div class="card" style="max-width:520px;width:100%;padding:18px;max-height:92vh;overflow:auto">
+      <b style="font-size:18px">${esc(o.title || 'Paint a picture')}</b>
+      <label class="f"><span>Prompt</span><textarea id="askPromptText" rows="${num(o.rows) || 4}">${esc(o.prompt || '')}</textarea></label>
+      ${modelPickHTML('ask', o.model || '')}
+      <p class="hint" id="askGuard" style="display:none;margin-top:-4px;color:var(--red)"></p>
+      <label class="chk"><input type="checkbox" id="askNsfwFlag" ${o.nsfw ? 'checked' : ''}> <span>Mark it NSFW — gore, explicit, or anything you'd rather keep hidden</span></label>
+      <div class="row" style="margin-top:12px;justify-content:flex-end;gap:8px"><button class="btn ghost sm" data-ask="no">Cancel</button><button class="btn gold sm" data-ask="yes">Paint it</button></div></div>`;
+  /* the age guard always wins: as the prompt is typed, a blocked picture loses the model choice and says why */
+  const guardWhy = () => {
+    if (!o.guard) return '';
+    try {
+      const g = AGE.imageAllowed({ prompt: el.querySelector('#askPromptText')?.value || '', campaign: o.guard.campaign || null, subject: o.guard.subject || null });
+      return g.allowed ? '' : (g.why || 'a minor or protected character');
+    } catch { return ''; }
+  };
+  const syncGuard = () => {
+    const why = guardWhy();
+    const sel = el.querySelector('#model_ask');
+    if (sel) { sel.disabled = !!why; if (why) sel.value = ''; }
+    const note = el.querySelector('#askGuard');
+    if (note) { note.style.display = why ? '' : 'none'; note.textContent = why ? `Safe model only: ${why}. The model choice is ignored.` : ''; }
+    return why;
+  };
+  const done = ok => {
+    const prompt = (el.querySelector('#askPromptText')?.value || '').replace(/\s+/g, ' ').trim().slice(0, 900);
+    const why = syncGuard();
+    const model = why ? '' : (el.querySelector('#model_ask')?.value || '');
+    const nsfw = !!el.querySelector('#askNsfwFlag')?.checked;
+    el.remove(); document.removeEventListener('keydown', onKey);
+    if (!ok) return;
+    if (!prompt) return toast('Write what the picture should show.');
+    if (why) toast(`Safe model used: ${why}. The model choice is ignored for this picture.`, 5000);
+    then({ prompt, model, nsfw, blocked: !!why, why });
+  };
+  const onKey = e => { if (e.key === 'Escape') done(false); };
+  el.addEventListener('click', e => {
+    const a = e.target.closest('[data-ask]')?.dataset.ask;
+    if (a === 'yes') done(true); else if (a === 'no' || e.target === el) done(false);
+  });
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(el);
+  syncGuard();   /* a prefilled prompt can already be blocked (a portrait of a minor, say) */
+  el.querySelector('#askPromptText')?.addEventListener('input', syncGuard);
+  setTimeout(() => el.querySelector('#askPromptText')?.focus(), 40);
+}
+
+function askPicNsfw(then, what = 'this picture', pre = false) {
+  const el = document.createElement('div');
+  el.setAttribute('role', 'dialog');
+  el.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.62);display:grid;place-items:center;padding:20px';
+  el.innerHTML = `<div class="card" style="max-width:440px;width:100%;padding:18px">
+      <b style="font-size:18px">Paint ${esc(what)}?</b>
+      <p class="hint" style="color:var(--ink);margin:8px 0 10px">You can flag it now: flagged pictures stay out of the Gallery until you show NSFW there.</p>
+      <label class="chk"><input type="checkbox" id="picNsfwFlag" ${pre ? 'checked' : ''}> <span>Mark it NSFW — gore, explicit, or anything you'd rather keep hidden</span></label>
+      <div class="row" style="margin-top:14px;justify-content:flex-end;gap:8px"><button class="btn ghost sm" data-pic="no">Cancel</button><button class="btn gold sm" data-pic="yes">Paint it</button></div></div>`;
+  const done = ok => {
+    const flag = !!ok && !!el.querySelector('#picNsfwFlag')?.checked;
+    el.remove(); document.removeEventListener('keydown', onKey); if (ok) then(flag);
+  };
+  const onKey = e => { if (e.key === 'Escape') done(false); };
+  el.addEventListener('click', e => {
+    const a = e.target.closest('[data-pic]')?.dataset.pic;
+    if (a === 'yes') done(true); else if (a === 'no' || e.target === el) done(false);
+  });
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(el);
+}
+
+/* the store key a picture is painted under on this device: the same key imageUrl/forgeJob use */
+function localKeyFor(img, c, subject = null, ref = null) {
+  const s = S.settings.image;
+  const style = ((c && c.artStyle) || s.style || '').trim();
+  const prompt = (img.prompt + (style ? ', ' + style : '')).replace(/\s+/g, ' ').slice(0, 900);
+  const neg = String(img.neg || '').replace(/\s+/g, ' ').trim().slice(0, 400);
+  return forgeJob(prompt, img.seed || 1, c, neg, ref, subject, img.model).k;
+}
 function imageUrl(img, c) {
   const s = S.settings.image;
   const style = ((c && c.artStyle) || s.style || '').trim();
@@ -223,11 +334,15 @@ function imageUrl(img, c) {
   const neg = String(img.neg || '').replace(/\s+/g, ' ').trim().slice(0, 400);
   /* who this picture is of, when the app knows: a companion, the player, a party member or an NPC */
   const subject = img.subj && typeof subjChar === 'function' ? subjChar(img.subj) : null;
-  if (s.mode === 'local') return localImageUrl(prompt, img.seed || 1, c, neg, s.refPhotos !== false && img.subj && typeof subjRef === 'function' ? subjRef(img.subj) : null, subject);
-  const [W, H] = SIZES[s.size] || SIZES.landscape; const seed = img.seed || 1; const p = encodeURIComponent(prompt);
+  /* the local painter adds the standing extra itself, so the picture store key stays tied to the picture's own prompt */
+  if (s.mode === 'local') return localImageUrl(prompt, img.seed || 1, c, neg, s.refPhotos !== false && img.subj && typeof subjRef === 'function' ? subjRef(img.subj) : null, subject, img.model);
+  /* online services take the standing additions in the request itself */
+  const fullPrompt = img.prompt && picLook() ? `${prompt}, ${picLook()}`.slice(0, 1200) : prompt;
+  const fullNeg = [neg, picAvoid()].filter(Boolean).join(', ').slice(0, 700);
+  const [W, H] = SIZES[s.size] || SIZES.landscape; const seed = img.seed || 1; const p = encodeURIComponent(fullPrompt);
   if (s.mode === 'template' && s.template.trim()) return s.template.trim().replaceAll('{prompt}', p).replaceAll('{seed}', seed).replaceAll('{width}', W).replaceAll('{height}', H);
   const model = encodeURIComponent(s.polliModel || 'flux');
-  const safe = (pickForgeModel(c, img.prompt, subject).safe ? '&safe=true' : '') + (neg ? '&negative_prompt=' + encodeURIComponent(neg) : '');
+  const safe = (pickForgeModel(c, img.prompt, subject).safe ? '&safe=true' : '') + (fullNeg ? '&negative_prompt=' + encodeURIComponent(fullNeg) : '');
   if (s.polliKey.trim()) return `https://gen.pollinations.ai/image/${p}?model=${model}&width=${W}&height=${H}&seed=${seed}&nologo=true${safe}&key=${encodeURIComponent(s.polliKey.trim())}`;
   return `https://image.pollinations.ai/prompt/${p}?model=${model}&width=${W}&height=${H}&seed=${seed}&nologo=true${safe}`;
 }
@@ -246,8 +361,11 @@ window.imgFail = el => { const ph = el.previousElementSibling; if (!ph) return;
 function illustrate(mid) {
   const c = cur(); const m = c?.messages.find(x => x.id === mid); if (!m) return;
   if (S.settings.image.mode === 'off') return toast('Images are turned off in Settings.');
-  m.image = { prompt: m.image?.prompt || (m.text.replace(/["“”]/g, '').split(/\n+/)[0].slice(0, 300) + ', illustration of the scene, no text'), seed: d(999999) };
-  touch(c); renderLog(); scheduleSync();
+  const def = m.image?.prompt || (m.text.replace(/["“”]/g, '').split(/\n+/)[0].slice(0, 300) + ', illustration of the scene, no text');
+  askPicPrompt({ title: 'Illustrate this moment', prompt: def, model: m.image?.model || '', nsfw: !!m.image?.nsfw, rows: 5, guard: { campaign: c, subject: null } }, ({ prompt, model, nsfw }) => {
+    m.image = { prompt, seed: d(999999), ...(model ? { model } : {}), ...(nsfw ? { nsfw: true } : {}) };
+    touch(c); renderLog(); scheduleSync();
+  });
 }
 
 /* =========================================================================
@@ -299,7 +417,18 @@ const Drive = {
   },
   async createFolder(name, parent, appProperties) {
     const r = await this.api('https://www.googleapis.com/drive/v3/files?fields=id&supportsAllDrives=true', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ name, mimeType: FOLDER_MIME, parents:[parent], appProperties }) });
-    return (await r.json()).id;
+    const id = (await r.json()).id; this.files[parent + '/' + name] = id; return id;
+  },
+  /* find a folder by name, or make it */
+  async folder(parent, name, appProperties) {
+    const key = 'dir:' + parent + '/' + name; if (this.files[key]) return this.files[key];
+    const f = await this.list(`name='${qs(name)}' and '${parent}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`);
+    return (this.files[key] = f[0]?.id || await this.createFolder(name, parent, appProperties));
+  },
+  /* move a file or folder to a new parent (used to tidy old saves into Games) */
+  async move(id, to, from) {
+    const p = new URLSearchParams({ addParents: to, removeParents: from, supportsAllDrives:'true', fields:'id,parents' });
+    await this.api(`https://www.googleapis.com/drive/v3/files/${id}?` + p, { method:'PATCH' });
   },
   async patch(id, meta) { await this.api(`https://www.googleapis.com/drive/v3/files/${id}?supportsAllDrives=true`, { method:'PATCH', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(meta) }); },
   async fileId(parent, name) {
@@ -312,6 +441,15 @@ const Drive = {
     if (id) { await this.api(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media&supportsAllDrives=true`, { method:'PATCH', headers:{ 'Content-Type': mime }, body: content }); return id; }
     const b = 'iq_' + uid();
     const body = `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify({ name, parents:[parent], mimeType: mime })}\r\n--${b}\r\nContent-Type: ${mime}\r\n\r\n${content}\r\n--${b}--`;
+    const r = await this.api('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true', { method:'POST', headers:{ 'Content-Type':'multipart/related; boundary=' + b }, body });
+    return (this.files[parent + '/' + name] = (await r.json()).id);
+  },
+  /* write a file from binary (a picture), creating it or replacing it */
+  async putFile(parent, name, blob, mime) {
+    const id = await this.fileId(parent, name);
+    if (id) { await this.api(`https://www.googleapis.com/upload/drive/v3/files/${id}?uploadType=media&supportsAllDrives=true`, { method:'PATCH', headers:{ 'Content-Type': mime }, body: blob }); return id; }
+    const b = 'iq_' + uid(); const meta = JSON.stringify({ name, parents:[parent], mimeType: mime });
+    const body = new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${b}\r\nContent-Type: ${mime}\r\n\r\n`, blob, `\r\n--${b}--`]);
     const r = await this.api('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true', { method:'POST', headers:{ 'Content-Type':'multipart/related; boundary=' + b }, body });
     return (this.files[parent + '/' + name] = (await r.json()).id);
   },
@@ -335,27 +473,65 @@ const DriveImg = {
   },
   async get(k) {
     if (!this.ready()) return null;
-    try { await this.ensure(); const id = this.index[k]; if (!id) return null;
-      const r = await Drive.api(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`); const b = await r.blob(); return b.size ? b : null; }
+    try {
+      await this.ensure();
+      let id = this.index[k];
+      if (!id) { await this.scanPhotos(); id = this.index[k]; }   /* not in the old shared folder: look in the games' and companions' own Photos folders */
+      if (!id) return null;
+      const r = await Drive.api(`https://www.googleapis.com/drive/v3/files/${id}?alt=media&supportsAllDrives=true`); const b = await r.blob(); return b.size ? b : null;
+    }
     catch (e) { console.warn('Drive picture read failed', e); return null; }
   },
-  async upload(k, blob) {
+  /* the one folder every game's pictures live in: <game folder>/Photos */
+  async photosOf(parent, key) {
+    this.dirs = this.dirs || {}; if (this.dirs[key]) return this.dirs[key];
+    return (this.dirs[key] = await Drive.folder(parent, 'Photos'));
+  },
+  /* one slow pass over the Pictures folders of every game and companion, only when a picture isn't found */
+  async scanPhotos() {
+    if (this.scanned) return; if (this.scanning) return this.scanning;
+    this.scanning = (async () => {
+      const root = Drive.root();
+      const add = list => { for (const x of list) this.index[String(x.name).replace(/\.jpg$/i, '')] = x.id; };
+      const games = await Drive.folder(root, 'Games', { iqGames: '1' });
+      for (const g of await Drive.list(`'${games}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`)) {
+        if (!g.appProperties?.iqCampaign) continue;
+        const p = (await Drive.list(`name='Photos' and '${g.id}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`))[0];
+        if (p) add(await Drive.list(`'${p.id}' in parents and trashed=false`));
+      }
+      const comps = (await Drive.list(`name='Companions' and '${root}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`))[0];
+      if (comps) for (const pal of await Drive.list(`'${comps.id}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`)) {
+        const p = (await Drive.list(`name='Photos' and '${pal.id}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`))[0];
+        if (p) add(await Drive.list(`'${p.id}' in parents and trashed=false`));
+        /* pictures saved straight into the companion folder by an older version */
+        add((await Drive.list(`'${pal.id}' in parents and trashed=false`)).filter(x => /\.jpg$/i.test(x.name)));
+      }
+      this.scanned = true;
+    })().catch(e => console.warn('Picture folders', e)).finally(() => { this.scanning = null; });
+    return this.scanning;
+  },
+  async upload(k, blob, ctx) {
     await this.ensure(); if (this.index[k]) return;
-    const b = 'iq_' + uid(); const meta = JSON.stringify({ name: k + '.jpg', parents: [this.folder], mimeType: 'image/jpeg' });
-    const body = new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${b}\r\nContent-Type: image/jpeg\r\n\r\n`, blob, `\r\n--${b}--`]);
-    const r = await Drive.api('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id&supportsAllDrives=true', { method:'POST', headers:{ 'Content-Type': 'multipart/related; boundary=' + b }, body });
-    this.index[k] = (await r.json()).id;
+    let dir = this.folder;
+    if (ctx && ctx.folder) { try { dir = await this.photosOf(ctx.folder, 'camp:' + (ctx.id || ctx.folder)); } catch (e) { console.warn('Game Photos folder', e); } }
+    this.index[k] = await Drive.putFile(dir, k + '.jpg', blob, 'image/jpeg');
   },
   /* remember what still needs uploading (the picture itself waits in this device's storage) */
   pending() { return arr(LS.get('iq.imgPending', [])); },
-  queue(k) { const p = this.pending(); if (!p.includes(k)) { p.push(k); LS.set('iq.imgPending', p.slice(-500)); } this.flush(); },
+  queue(k, ctx) {
+    const p = this.pending();
+    const same = x => (typeof x === 'string' ? x : x.k) === k && (!ctx?.folder || (typeof x === 'object' && x.ctx?.folder === ctx.folder));
+    if (!p.some(same)) { p.push(ctx && ctx.folder ? { k, ctx: { id: ctx.id, folder: ctx.folder, title: ctx.title } } : k); LS.set('iq.imgPending', p.slice(-500)); }
+    this.flush();
+  },
   async flush() {
     if (this.busy || !this.ready() || !this.pending().length) return; this.busy = true;
     try {
-      for (const k of this.pending()) {
+      for (const item of this.pending()) {
+        const k = typeof item === 'string' ? item : item.k; const ctx = typeof item === 'string' ? null : item.ctx;
         const blob = await IDB.get(k);
-        if (blob) { try { await this.upload(k, blob); } catch (e) { console.warn('Drive picture upload failed', e); break; } }
-        LS.set('iq.imgPending', this.pending().filter(x => x !== k));
+        if (blob) { try { await this.upload(k, blob, ctx); } catch (e) { console.warn('Drive picture upload failed', e); break; } }
+        LS.set('iq.imgPending', this.pending().filter(x => x !== item));
       }
     } finally { this.busy = false; }
   }
@@ -448,8 +624,13 @@ async function syncNow(interactive) {
     const idxId = await Drive.fileId(root, INDEX_FILE);
     const idx = idxId ? await Drive.getJSON(idxId) : null;
     if (idx) { for (const [id, t] of Object.entries(idx.deleted || {})) S.deleted[id] = Math.max(S.deleted[id] || 0, t); if (mergeSettings(idx.settings)) changed++; }
-    /* 2. adventure folders */
-    const allFolders = await Drive.list(`'${root}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`);
+    /* 2. adventure folders: every game lives in Games/<game name>, with its own Photos folder inside */
+    const gamesRoot = await Drive.folder(root, 'Games', { iqGames: '1' });
+    const looseFolders = await Drive.list(`'${root}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`);
+    /* saves from before the Games folder are tidied into it once */
+    for (const f of looseFolders) if (f.appProperties?.iqCampaign) { try { await Drive.move(f.id, gamesRoot, root); } catch (e) { console.warn('Could not move an old save into Games', f.name, e); } }
+    const allFolders = (await Drive.list(`'${gamesRoot}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`))
+      .concat(looseFolders.filter(f => !f.appProperties?.iqCampaign && !['Games', 'Companions', 'Personas', 'Ironquill pictures'].includes(f.name)));
     /* adventure folders copied or uploaded from another Drive lose their hidden tag: find their campaign.json and tag them again */
     const seen = LS.get('iq.adoptSeen', {});
     for (const f of allFolders) {
@@ -473,6 +654,8 @@ async function syncNow(interactive) {
         if (data && data.id === id) { S.campaigns[id] = migrate(data); changed++; }
       }
     }
+    /* remember where each game lives, so a picture painted later is filed in that game's Photos folder */
+    for (const [id, f] of Object.entries(remote)) if (S.campaigns[id]) S.campaigns[id].driveFolder = f.id;
     for (const id of Object.keys(S.campaigns)) if (S.deleted[id] && S.deleted[id] >= (S.campaigns[id].updatedAt || 0)) { delete S.campaigns[id]; changed++; }
     /* 2b. Story Docs: pick up anything edited in Google Docs */
     let docs = {};
@@ -484,14 +667,16 @@ async function syncNow(interactive) {
       if (f && rUpd >= (c.updatedAt || 0)) { if (!docs[f.id]) try { await StoryDoc.write(c, f.id, null); saveCampaigns(); } catch (e) { console.warn('Story Doc', e); } continue; }
       const name = safeName(c.title);
       let folderId = f?.id;
-      if (!folderId) folderId = await Drive.createFolder(name, root, { iqCampaign: c.id, iqUpdated: String(c.updatedAt || 0) });
+      if (!folderId) folderId = await Drive.createFolder(name, gamesRoot, { iqCampaign: c.id, iqUpdated: String(c.updatedAt || 0) });
+      if (c.driveFolder !== folderId) { c.driveFolder = folderId; }   /* so a picture painted now lands in this game's own Photos folder */
       try { await StoryDoc.write(c, folderId, docs[folderId] || (c.storyDoc?.folder === folderId ? c.storyDoc : null)); } catch (e) { console.warn('Story Doc', e); }
       await Drive.put(folderId, 'campaign.json', JSON.stringify(c), 'application/json');
       await Drive.put(folderId, 'Character Sheet.md', characterMD(c), 'text/markdown');
       await Drive.put(folderId, 'Story Log.md', storyMD(c), 'text/markdown');
       await Drive.patch(folderId, { name, appProperties: { iqCampaign: c.id, iqUpdated: String(c.updatedAt || 0) } });
     }
-    /* 3b. companions */
+    saveCampaigns();
+    /* 3b. companions and personas */
     try { changed += await syncPals(root); } catch (e) { console.warn('Companions sync', e); }
     /* 4. index */
     await Drive.put(root, INDEX_FILE, JSON.stringify({ app: APP, version: 2, savedAt: Date.now(), settings: publicSettings(), deleted: S.deleted }), 'application/json');
@@ -502,6 +687,22 @@ async function syncNow(interactive) {
   } catch (e) { setSync('Not synced — ' + e.message); if (interactive) toast(e.message, 5000); }
   finally { S.syncing = false; if (S.resync) { S.resync = false; setTimeout(() => syncNow(false), 200); } }
 }
+/* After 20 quiet minutes, sync anyway: picks up what another device saved while this one sat idle.
+   Any activity (pointer, typing, scrolling) pushes the 20 minutes back, so it only runs when you've stepped away. */
+let idleTimer = null, idleMark = 0;
+/* Settings → Google Drive: off, 5, 20 or 60 minutes */
+const idleMinutes = () => Math.max(0, num(S.settings.drive.idleSync));
+function armIdleSync() {
+  clearTimeout(idleTimer); idleTimer = null; idleMark = Date.now();
+  const m = idleMinutes(); if (!m) return;   /* off: nothing armed */
+  idleTimer = setTimeout(idleTick, m * 60 * 1000);
+}
+function idleTick() {
+  idleTimer = null;
+  if (idleMinutes() && S.settings.drive.autoSync && Drive.configured() && Drive.valid() && !S.busy && !S.syncing) syncNow(false);
+  armIdleSync();
+}
+function noteActivity() { if (idleMinutes() && Date.now() - idleMark > 30000) armIdleSync(); }
 let syncTimer;
 function scheduleSync() { if (!S.settings.drive.autoSync || !Drive.configured() || !Drive.valid()) return; clearTimeout(syncTimer); syncTimer = setTimeout(() => { syncTimer = null; if (!S.busy) syncNow(false); else scheduleSync(); }, 3000); }
 function setSync(t) { S.syncStatus = t; const a = $('#syncline'); if (a) a.textContent = t; const b = $('#driveStatus'); if (b) b.textContent = t; }
@@ -510,7 +711,7 @@ function setSync(t) { S.syncStatus = t; const a = $('#syncline'); if (a) a.textC
    Character builder
    ========================================================================= */
 function newDraft(sc = SCENARIOS[0]) {
-  return { scenario: sc.id, title: sc.title, genre: sc.genre, premise: sc.premise, tone: sc.tone, art: sc.art, rating:'PG-13', magicCost: sc.magic || 'gm', gmNotes:'',
+  return { scenario: sc.id, title: sc.title, genre: sc.genre, premise: sc.premise, tone: sc.tone, art: sc.art, rating: sc.rating || 'PG-13', magicCost: sc.magic || 'gm', gmNotes:'',
     worldPrompt:'', world: sc.world || '', secrets: sc.secrets || '', plan: sc.plan || '', roadmap: sc.roadmap || '', threats: (sc.threats || []).map(t => ({ ...t })), factions: (sc.factions || []).map(f => ({ ...f })),
     people: (sc.people || []).map(p => ({ ...p })), pinned: [...(sc.pinned || [])], cards: [], gmPreset:'storyteller', gmName:'', gmStyle:'',
     concept:'', name:'', sex:'', pronouns:'', storyRole:'', appearance:'', backstory:'',

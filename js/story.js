@@ -220,13 +220,14 @@ const portraitPrompt = (look, role) => `portrait of ${look}${role ? ', ' + role 
 /* start painting right away on the PC (scene pictures are painted when shown; portraits shouldn't wait for you to open a menu) */
 function warmImage(g, c) { if (S.settings.image.mode === 'local') imageUrl(g, c); }
 const autoPortraitsOn = () => S.settings.image.mode !== 'off' && S.settings.image.autoPortraits !== false;
-function portraitFor(c, who, quiet) {
+function portraitFor(c, who, quiet, nsfw = false, prompt = '', model = '') {
   if (S.settings.image.mode === 'off') { if (!quiet) toast('Pictures are off in Settings → Images.'); return; }
   const isMain = who === 'main'; const p = isMain ? c.character : arr(c.party).find(x => x.id === who); if (!p) return;
-  const g = { id: uid(), kind:'character', name: p.name, prompt: portraitPrompt(p.appearance || p.name, p.role || p.storyRole), seed: d(999999), day: worldOf(c).time.day, t: Date.now() };
+  const use = String(prompt || '').replace(/\s+/g, ' ').trim().slice(0, 700) || portraitPrompt(p.appearance || p.name, p.role || p.storyRole);
+  const g = { id: uid(), kind:'character', name: p.name, prompt: use, seed: d(999999), day: worldOf(c).time.day, t: Date.now(), ...(model ? { model } : {}), ...(nsfw ? { nsfw: true } : {}) };
   c.gallery = arr(c.gallery); c.gallery.unshift(g);
   g.subj = isMain ? { t: 'pc', g: c.id } : { t: 'party', g: c.id, id: p.id };
-  p.portrait = { prompt: g.prompt, seed: g.seed, subj: g.subj }; touch(c); scheduleSync(); warmImage(g, c);
+  p.portrait = { prompt: g.prompt, seed: g.seed, subj: g.subj, ...(model ? { model } : {}), ...(nsfw ? { nsfw: true } : {}) }; touch(c); scheduleSync(); warmImage(g, c);
   if (!quiet) toast(`Painting ${p.name}'s portrait… it appears on their card and in Journal → Gallery.`, 4000);
 }
 function applyKeepsakes(c, st, msg, notes) {
