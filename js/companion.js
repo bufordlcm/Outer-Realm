@@ -144,8 +144,10 @@ function attachPhoto(c, msg, after, ph) {
   const look = comp?.appearance || comp?.look || '';
   const prompt = `candid photo of ${look || ph.of || 'the scene'}, ${String(ph.prompt || '').slice(0, 300)}`.replace(/\s+/g, ' ');
   const target = (after || []).filter(m => m.role === 'comp' && comp && m.name === (comp.name)).pop() || msg;
-  target.image = { prompt, seed: d(999999) };
-  addGallery(c, { kind: comp ? 'character' : 'place', name: `${comp?.name || 'Photo'} · day ${worldOf(c).time.day}`, prompt, seed: target.image.seed });
+  /* tag the picture with who is in it, so protection and age routing apply to the right person */
+  const subj = comp ? (arr(c.party).some(p => p.id === comp.id) ? { t: 'party', g: c.id, id: comp.id } : { t: 'npc', g: c.id, name: comp.name, ...(comp.id ? { id: comp.id } : {}) }) : null;
+  target.image = { prompt, seed: d(999999), ...(subj ? { subj } : {}) };
+  addGallery(c, { kind: comp ? 'character' : 'place', name: `${comp?.name || 'Photo'} · day ${worldOf(c).time.day}`, prompt, seed: target.image.seed, ...(subj ? { subj, personId: comp?.id } : {}) });
 }
 
 /* =========================================================================

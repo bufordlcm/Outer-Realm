@@ -19,19 +19,12 @@ function draftPortraitHTML(D) {
 }
 /* ---------- SFW / NSFW picture models ----------
    Models are shown as "SFW" / "NSFW", never by file name. An adventure only uses the NSFW model when it is rated
-   Adult (18+) AND nothing about the player character suggests they are under 18. Any single picture whose
+   M (Mature) AND nothing about the player character suggests they are under 18. Any single picture whose
    description mentions a child or teen goes to the SFW model with sexual content blocked, whatever the rating. */
 const NSFW_NAME = /porn|nsfw|lust|xxx|hentai|sex|nude|naked|erot|lewd|adult|r18|18\+/i;
-/* the character themself reads as under 18: an age under 18, teen / school-student words, "a child", etc.
-   (a parent's "her kid" or "two kids" doesn't count, so adult characters with families aren't caught) */
-const CHAR_MINOR = /\b(?:(?:1[0-2]|[0-9])\s*-?\s*(?:years?|yrs?)(?:[- ]?old)?|(?:1[0-2]|[0-9])\s*(?:yo|y\/o)\b|aged?\s+(?:1[0-2]|[0-9])\b|age\s*[:=]?\s*(?:1[0-2]|[0-9])\b)/i;
-const MINOR_WORDS = new RegExp(CHAR_MINOR.source + '|\\b(?:child(?:ren)?|kids?|toddlers?|infants?|newborns?|bab(?:y|ies)|little ones?)\\b', 'i');
-const MINOR_SETTING = /\b(?:(?:elementary|primary|boarding|prep)[- ]|kindergarten|daycare|nursery|orphanage|playground)\b/i;
+/* Whether a picture may use the explicit model is decided in js/ageguard.js (AGE.imageAllowed),
+   the same rule that decides what the story text may contain. */
 const SAFE_NEG = 'nsfw, nude, naked, nudity, nipples, topless, lingerie, sexual, explicit';
-function charLooksMinor(c) {
-  const ch = c?.character || {}; const txt = [ch.storyRole, ch.appearance, ch.backstory].join(' ');
-  return CHAR_MINOR.test(txt);
-}
 const modelKind = m => NSFW_NAME.test(m) ? 'nsfw' : 'sfw';
 function modelLabel(m) {
   if (!m) return 'Whatever Forge has loaded';
@@ -47,11 +40,10 @@ function autoAssignModels() {
   if (!im.forgeModelNsfw || (all.length && !all.includes(im.forgeModelNsfw))) im.forgeModelNsfw = all.find(m => modelKind(m) === 'nsfw') || '';
   saveSettings();
 }
-function pickForgeModel(c, prompt) {
+function pickForgeModel(c, prompt, subject = null) {
   const im = S.settings.image;
-  const setting = [c?.title, c?.genre, c?.premise, c?.location].join(' ');
-  const unsafe = MINOR_WORDS.test(String(prompt || '')) || charLooksMinor(c) || MINOR_SETTING.test(setting);
-  const adult = c?.rating === 'Adult (18+)' && !unsafe;
+  const unsafe = !AGE.imageAllowed({ prompt, campaign: c, subject }).allowed;
+  const adult = normRating(c?.rating) === 'M' && !unsafe;
   const model = (adult && im.forgeModelNsfw) || im.forgeModelSfw || im.forgeModel || '';
   return { model, safe: !adult, kind: adult && im.forgeModelNsfw ? 'nsfw' : 'sfw' };
 }
@@ -73,8 +65,8 @@ const IDB = {
   async get(k) { try { const db = await this.open(); return await new Promise(res => { const q = db.transaction('img').objectStore('img').get(k); q.onsuccess = () => res(q.result || null); q.onerror = () => res(null); }); } catch { return null; } },
   async put(k, v) { try { const db = await this.open(); await new Promise(res => { const t = db.transaction('img', 'readwrite'); t.objectStore('img').put(v, k); t.oncomplete = res; t.onerror = res; }); } catch {} }
 };
-function forgeJob(prompt, seed, c, neg = '', ref = null) {
-  const s = S.settings.image; const pick = pickForgeModel(c, prompt); const pk = forgePresetKey(pick.model); const P = FORGE_PRESETS[pk];
+function forgeJob(prompt, seed, c, neg = '', ref = null, subject = null) {
+  const s = S.settings.image; const pick = pickForgeModel(c, prompt, subject); const pk = forgePresetKey(pick.model); const P = FORGE_PRESETS[pk];
   const [FW, FH] = FORGE_SIZES[P.base][s.size] || FORGE_SIZES[P.base].square;
   /* "Fast" draws SDXL pictures at 3/4 size: about half the pixels, so roughly twice as quick on smaller cards */
   const small = [Math.round(FW * 0.75 / 64) * 64, Math.round(FH * 0.75 / 64) * 64];
@@ -87,8 +79,8 @@ function forgeJob(prompt, seed, c, neg = '', ref = null) {
 }
 const localPH = k => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="3" height="2"><desc>${k}</desc></svg>`);
 const localFailURL = k => 'data:,fail-' + k;
-function localImageUrl(prompt, seed, c, neg = '', ref = null) {
-  const job = forgeJob(prompt, seed, c, neg, ref);
+function localImageUrl(prompt, seed, c, neg = '', ref = null, subject = null) {
+  const job = forgeJob(prompt, seed, c, neg, ref, subject);
   if (LOCAL.url[job.k]) return LOCAL.url[job.k];
   if (LOCAL.fail[job.k] && Date.now() - (LOCAL.failAt?.[job.k] || 0) < 30000) return localFailURL(job.k);
   if (LOCAL.fail[job.k]) delete LOCAL.fail[job.k];
@@ -207,8 +199,8 @@ function forgeSettingsHTML() {
     ${(() => { const all = [...new Set([...models, im.forgeModelSfw, im.forgeModelNsfw].filter(Boolean))];
       const opts = sel => all.map(m => `<option value="${esc(m)}" ${sel === m ? 'selected' : ''}>${modelLabel(m)}</option>`).join('');
       return `<label class="f"><span>Pictures for regular adventures</span><select data-bind="image.forgeModelSfw">${all.length ? opts(im.forgeModelSfw) : '<option value="">Tap "Find it" to load models</option>'}</select></label>
-      <label class="f"><span>Pictures for Adult (18+) adventures</span><select data-bind="image.forgeModelNsfw"><option value="" ${im.forgeModelNsfw ? '' : 'selected'}>Same as regular (SFW)</option>${opts(im.forgeModelNsfw)}</select></label>
-      <p class="hint">The app chooses for you: Adult (18+) adventures use the NSFW model, everything else uses SFW. If the player character might be under 18, or a picture shows a child or teen, the SFW model is used with adult content blocked.</p>
+      <label class="f"><span>Pictures for M (Mature) adventures</span><select data-bind="image.forgeModelNsfw"><option value="" ${im.forgeModelNsfw ? '' : 'selected'}>Same as regular (SFW)</option>${opts(im.forgeModelNsfw)}</select></label>
+      <p class="hint">The app chooses for you: M (Mature) adventures use the NSFW model, everything else uses SFW. If the player character might be under 18, or a picture shows a child or teen, the SFW model is used with adult content blocked.</p>
       ${all.length ? `<details style="margin-top:6px"><summary class="hint" style="cursor:pointer">Show file names</summary><p class="hint">${all.map(m => `${modelLabel(m)}: ${esc(m)}`).join('<br>')}</p></details>` : ''}`; })()}
     <label class="f"><span>Quality preset</span><select data-bind="image.forgePreset"><option value="auto" ${(im.forgePreset || 'auto') === 'auto' ? 'selected' : ''}>Auto: match each model</option>${Object.entries(FORGE_PRESETS).map(([k, v]) => `<option value="${k}" ${im.forgePreset === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
     <p class="hint">Auto picks the right speed settings for each model: fast for the SFW model, standard SDXL for the NSFW one.</p>
@@ -229,11 +221,13 @@ function imageUrl(img, c) {
   const style = ((c && c.artStyle) || s.style || '').trim();
   const prompt = (img.prompt + (style ? ', ' + style : '')).replace(/\s+/g, ' ').slice(0, 900);
   const neg = String(img.neg || '').replace(/\s+/g, ' ').trim().slice(0, 400);
-  if (s.mode === 'local') return localImageUrl(prompt, img.seed || 1, c, neg, s.refPhotos !== false && img.subj && typeof subjRef === 'function' ? subjRef(img.subj) : null);
+  /* who this picture is of, when the app knows: a companion, the player, a party member or an NPC */
+  const subject = img.subj && typeof subjChar === 'function' ? subjChar(img.subj) : null;
+  if (s.mode === 'local') return localImageUrl(prompt, img.seed || 1, c, neg, s.refPhotos !== false && img.subj && typeof subjRef === 'function' ? subjRef(img.subj) : null, subject);
   const [W, H] = SIZES[s.size] || SIZES.landscape; const seed = img.seed || 1; const p = encodeURIComponent(prompt);
   if (s.mode === 'template' && s.template.trim()) return s.template.trim().replaceAll('{prompt}', p).replaceAll('{seed}', seed).replaceAll('{width}', W).replaceAll('{height}', H);
   const model = encodeURIComponent(s.polliModel || 'flux');
-  const safe = (pickForgeModel(c, img.prompt).safe ? '&safe=true' : '') + (neg ? '&negative_prompt=' + encodeURIComponent(neg) : '');
+  const safe = (pickForgeModel(c, img.prompt, subject).safe ? '&safe=true' : '') + (neg ? '&negative_prompt=' + encodeURIComponent(neg) : '');
   if (s.polliKey.trim()) return `https://gen.pollinations.ai/image/${p}?model=${model}&width=${W}&height=${H}&seed=${seed}&nologo=true${safe}&key=${encodeURIComponent(s.polliKey.trim())}`;
   return `https://image.pollinations.ai/prompt/${p}?model=${model}&width=${W}&height=${H}&seed=${seed}&nologo=true${safe}`;
 }

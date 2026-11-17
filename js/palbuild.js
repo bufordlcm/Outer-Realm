@@ -39,7 +39,7 @@ const PAL_TEXT_KEYS = ['name', 'tagline', 'personality', 'backstory', 'face', 'b
 function palBlank() {
   return { id: uid(), name: '', age: 25, sex: '', tagline: '', look: '', face: '', body: '', clothing: '', tags: '', outfits: [], outfit: '', personality: '', vibes: [], backstory: '',
     speech: '', speechText: '', speechPerson: '', exText: '', exPerson: '', likes: '', notes: '', userRole: '', personaId: '', feels: {}, scenario: '', greeting: '',
-    goal: 'romance', stage: 'stranger', affection: 5, adult: false, intensity: 'balanced', limits: '', art: 'photorealistic, natural light, detailed', memory: [], jokes: [], createdAt: Date.now(), updatedAt: Date.now() };
+    goal: 'romance', stage: 'stranger', affection: 5, adult: false, protected: false, intensity: 'balanced', limits: '', art: 'photorealistic, natural light, detailed', memory: [], jokes: [], createdAt: Date.now(), updatedAt: Date.now() };
 }
 function openPalEditor(id) {
   S.palDraft = id && PALS.pals[id] ? palUpgrade(deep(PALS.pals[id])) : palBlank(); S.palDraftNew = !(id && PALS.pals[id]);
@@ -48,7 +48,7 @@ function openPalEditor(id) {
 const palStepDone = (D, st) => st.k === 'voice' ? !!(D.vPC || D.vDev) : st.k === 'rel' ? !!(D.userRole || D.personaId) : st.keys.filter(k => k !== 'age' && k !== 'sex').some(k => Array.isArray(D[k]) ? D[k].length : String(D[k] || '').trim());
 /* keep the rules that follow from age and relationship choices */
 function palRules(D) {
-  if (palMinor(D)) { D.adult = false; D.goal = 'friends'; if (palStage(D).romance) D.stage = 'friend'; }
+  if (AGE.isProtected(D)) { D.adult = false; D.goal = 'friends'; if (palStage(D).romance) D.stage = 'friend'; }
   if (D.goal === 'friends' && palStage(D).romance) D.stage = 'close';
 }
 function renderPalEditor() {
@@ -94,7 +94,8 @@ function renderPalEditor() {
       <label class="f"><span>Intensity</span><select data-pd="intensity"><option value="gentle" ${D.intensity === 'gentle' ? 'selected' : ''}>Gentle: soft and slow</option><option value="balanced" ${D.intensity !== 'gentle' && D.intensity !== 'bold' ? 'selected' : ''}>Balanced</option><option value="bold" ${D.intensity === 'bold' ? 'selected' : ''}>Bold: intense, takes initiative</option></select></label>
       ${t('limits', 'Hard limits (they will never go here)', 'Anything you never want in your chats, one per line', 2)}
       ${palFeelsHTML(D)}
-      ${minor ? '' : `<label class="chk"><input type="checkbox" data-pd="adult" ${D.adult ? 'checked' : ''}> <span>Allow 18+ content with this companion</span></label>`}`;
+      ${minor ? '' : `<label class="chk"><input type="checkbox" data-pd="adult" ${D.adult ? 'checked' : ''}> <span>Allow 18+ content with this companion</span></label>`}
+      <label class="chk"><input type="checkbox" data-pd="protected" ${AGE.isProtected(D) ? 'checked' : ''} ${AGE.isMinor(D) ? 'disabled' : ''}> <span>${AGE.isMinor(D) ? 'Protected: this companion is under 18, so this cannot be turned off' : 'Protect this companion: platonic only, no 18+ content, safe pictures'}</span></label>`;
   else if (st.k === 'open') body = `${t('scenario', 'How it starts', 'e.g. We matched on a dating app last night', 3)}${t('greeting', 'Their first message', 'The AI writes one if you leave it empty', 3)}`;
   else body = `${t('likes', 'Likes, dislikes and interests', '', 3)}${t('notes', 'Anything else', 'Job, schedule, habits, pets, people in their life, things they would never do…', 5)}`;
 
@@ -250,7 +251,7 @@ document.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.pd && S.palDraft && S.view === 'paledit') {
     if (el.type === 'checkbox') S.palDraft[el.dataset.pd] = el.checked;
-    if (['age', 'sex', 'face', 'body', 'backstory', 'tagline', 'goal', 'stage', 'adult', 'personality', 'scenario', 'userRole', 'notes', 'name'].includes(el.dataset.pd)) { palRules(S.palDraft); const y = scrollY; renderPalEditor(); scrollTo(0, y); }
+    if (['age', 'sex', 'face', 'body', 'backstory', 'tagline', 'goal', 'stage', 'adult', 'protected', 'personality', 'scenario', 'userRole', 'notes', 'name'].includes(el.dataset.pd)) { palRules(S.palDraft); const y = scrollY; renderPalEditor(); scrollTo(0, y); }
   } else if (el.dataset.pdvoice && S.palDraft) {
     const D = S.palDraft; const fld = engine() === 'pc' ? 'vPC' : 'vDev'; if (el.value) D[fld] = el.value; else delete D[fld]; if (fld === 'vDev') D.ttsVoice = el.value;
     speak(`${D.name || 'Hi'} here. This is how I sound.`, voiceOf(palCtx(D), D, D.name));

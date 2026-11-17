@@ -17,7 +17,7 @@ Genre: <e.g. Grim low fantasy, cyberpunk heist, 1920s cosmic horror>
 Tone: <e.g. Tense and mysterious, with dark humor>
 Art style: <a short phrase for the illustrator>
 Magic: <free | strain | none>
-Rating: <Family-friendly | PG-13 | Mature (R) | Adult (18+)>
+Rating: <PG | PG-13 | R | M>
 
 ## Premise
 <2-4 sentences: the situation the player character starts in and the hook. Never decide what the player does or feels.>
@@ -144,7 +144,7 @@ function applyBible(target, b, isGame) {
   set('title', su.title); set('genre', su.genre); set('tone', su.tone);
   set(isGame ? 'artStyle' : 'art', su['art style'] || su.art);
   const magic = String(su.magic || '').toLowerCase(); if (['free','strain','none'].includes(magic)) target.magicCost = magic;
-  if (su.rating && RATING_RULES[su.rating.trim()]) target.rating = su.rating.trim();
+  if (su.rating && RATING_ALIAS[su.rating.trim()]) target.rating = normRating(su.rating);
   const prem = bibleSec(b, 'premise'); if (prem) target.premise = prem.slice(0, 1500);
   const open = bibleSec(b, 'opening'); if (open) target.gmNotes = [String(target.gmNotes || '').trim(), 'Open with: ' + open.replace(/\n+/g, ' ')].filter(Boolean).join('\n');
   const world = bibleSec(b, 'world'); if (world) target.world = world.slice(0, 4000);

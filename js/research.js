@@ -33,8 +33,8 @@ SECRETS: max 1400 characters. Hidden truths and twists the player doesn't know y
 PINNED FACTS: 6-12 short lines, each a rule of this world that must always hold.
 PEOPLE: 6-12 lines, each exactly: Name | who they are | appearance (age, build, hair, clothes) | where they're usually found
 ${comp ? 'CAST: 2-5 lines, each: Name, role, personality and flaws, how they talk, what they want, one private secret. All adults (18+).\n' : ''}OPENING: max 300 characters. Where and how the story should begin.
-Everyone is an adult unless the source truly requires otherwise, and never write anyone under 18 into anything romantic or sexual.` },
-      { role:'user', content:`REQUEST: ${q}\n${D.premise ? 'PLAYER\'S PREMISE SO FAR: ' + D.premise + '\n' : ''}${D.genre ? 'GENRE: ' + D.genre + '\n' : ''}MODE: ${comp ? 'Companion mode (dice-free, character-driven)' : D.mode === 'mp' ? 'Multiplayer D&D' : 'Single-player D&D'}\nRATING: ${D.rating}\n\n${sourcesText(sources)}` }
+Record each person's age exactly as the source gives it: children, teenagers and adults all belong in this world. Never write anyone under 18 into anything romantic or sexual.` },
+      { role:'user', content:`REQUEST: ${q}\n${D.premise ? 'PLAYER\'S PREMISE SO FAR: ' + D.premise + '\n' : ''}${D.genre ? 'GENRE: ' + D.genre + '\n' : ''}MODE: ${comp ? 'Companion mode (dice-free, character-driven)' : D.mode === 'mp' ? 'Multiplayer D&D' : 'Single-player D&D'}\nRATING: ${normRating(D.rating)} — ${contentRules(D.rating, D)}\n\n${sourcesText(sources)}` }
     ], { build:true, stream:false, maxTokens:2200, temperature:0.4, helper:true }));
     const sec = parseSections(raw);
     if (!sec.WORLD) throw new Error('The AI\'s reply didn\'t have the expected sections. Tap Research again.');

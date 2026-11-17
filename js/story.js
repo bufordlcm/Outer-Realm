@@ -6,7 +6,7 @@ async function session0Say(text) {
   c.session0 = arr(c.session0);
   if (text) c.session0.push({ role:'you', text, t: Date.now() });
   S.asking = true; renderLog(true); renderDock();
-  const sys = personaText(c) + `\n\nSESSION ZERO. The campaign hasn't started yet. If rules come up, describe ONLY this app's real system (never invent another one, like dice pools): when an action is uncertain the player rolls one d20, adds their stat bonus and any trait bonuses, and must meet or beat a difficulty (DC); a natural 20 is a critical success and a natural 1 a critical failure; in fights, successes build Momentum (spend it for +3 or a reroll); playing into a flaw earns EP, and EP and TP raise stats and traits when leveling up. The app handles all the math. You are getting to know your player and what they want, like a real GM at a session-zero chat. Be warm and curious, in your persona's voice. Ask one or two questions at a time and react to the answers like a person would.\nOver the conversation, cover: what they want more and less of (combat, mystery, intrigue, romance, exploration, horror, humor); anything to keep out of the game; their character's goals, fears, secrets and the people they care about; how the character fits into this world; what kind of companions they'd enjoy travelling with; how dark or light the game should feel.\nBuild on what you already know (below). Never start the story or narrate scenes. Once you have enough (usually after 5-10 exchanges), tell them they can press "I'm ready" whenever they like.\n\nCAMPAIGN\nTitle: ${c.title}\nGenre: ${c.genre}\nPremise: ${c.premise}\nTone: ${c.tone}\nContent rating: ${c.rating}${c.world ? '\nWorld:\n' + c.world : ''}\n\nPLAYER CHARACTER\n${sheetText(c)}`;
+  const sys = personaText(c) + `\n\nSESSION ZERO. The campaign hasn't started yet. If rules come up, describe ONLY this app's real system (never invent another one, like dice pools): when an action is uncertain the player rolls one d20, adds their stat bonus and any trait bonuses, and must meet or beat a difficulty (DC); a natural 20 is a critical success and a natural 1 a critical failure; in fights, successes build Momentum (spend it for +3 or a reroll); playing into a flaw earns EP, and EP and TP raise stats and traits when leveling up. The app handles all the math. You are getting to know your player and what they want, like a real GM at a session-zero chat. Be warm and curious, in your persona's voice. Ask one or two questions at a time and react to the answers like a person would.\nOver the conversation, cover: what they want more and less of (combat, mystery, intrigue, romance, exploration, horror, humor); anything to keep out of the game; their character's goals, fears, secrets and the people they care about; how the character fits into this world; what kind of companions they'd enjoy travelling with; how dark or light the game should feel.\nBuild on what you already know (below). Never start the story or narrate scenes. Once you have enough (usually after 5-10 exchanges), tell them they can press "I'm ready" whenever they like.\n\nCAMPAIGN\nTitle: ${c.title}\nGenre: ${c.genre}\nPremise: ${c.premise}\nTone: ${c.tone}\nContent rating: ${c.rating} — ${contentRules(c.rating, c)}${c.world ? '\nWorld:\n' + c.world : ''}\n\nPLAYER CHARACTER\n${sheetText(c)}`;
   const hist = c.session0.filter(m => !m.err).slice(-24).map(m => ({ role: m.role === 'gm' ? 'assistant' : 'user', content: m.text }));
   if (!hist.length) hist.push({ role:'user', content:'(The player has just sat down for session zero. Greet them warmly in your persona and ask your first question.)' });
   else if (hist[hist.length - 1].role !== 'user') hist.push({ role:'user', content:'(continue)' });
@@ -73,7 +73,8 @@ function normComp(x, madeBy = 'ai') {
     personality: txt(x.personality, 300), voice: txt(x.voice || x.speech, 160), goals: txt(x.goals || x.goal, 240), appearance: txt(x.appearance, 300), secrets: txt(x.secrets || x.secret, 400),
     stats, traits: arr(x.traits).map(t => normTrait(t)).filter(t => t.name !== 'Unnamed trait').slice(0, 6), hp: Math.min(maxHp, num(x.hp) || maxHp), maxHp, level: Math.max(1, num(x.level) || 1),
     trust: clamp(num(x.trust), -5, 5), status: ['active','left','dead'].includes(x.status) ? x.status : 'active', madeBy: x.madeBy || madeBy,
-    revealed: x.revealed ?? (madeBy === 'player'), ttsVoice: x.ttsVoice || '', portrait: x.portrait || null };
+    revealed: x.revealed ?? (madeBy === 'player'), ttsVoice: x.ttsVoice || '', portrait: x.portrait || null,
+    protected: x.protected === true || undefined, age: num(x.age) >= 1 ? clamp(num(x.age), 1, 120) : undefined };
 }
 const activeParty = c => arr(c.party).filter(p => p.status === 'active');
 function partyText(c, withSecrets) {
@@ -141,25 +142,27 @@ function compCardHTML(c, p) {
   const port = p.portrait ? `<img class="port" src="${esc(imageUrl(p.portrait, c))}" alt="">` : `<div class="port ph2">${esc(p.name[0] || '?')}</div>`;
   const status = p.status === 'active' ? `<span class="pill" style="color:${p.trust > 0 ? 'var(--green)' : p.trust < 0 ? 'var(--red)' : 'var(--muted)'}">${isCompanion(c) ? 'Closeness' : 'Trust'} ${fmt(p.trust)}</span>` : `<span class="note bad">${p.status === 'dead' ? 'Dead' : 'Left'}</span>`;
   const voices = voiceOn() ? `<label class="f"><span>Voice</span>${voicePickerHTML(`data-pvoice="${p.id}"`, engine() === 'pc' ? p.vPC : (p.vDev || p.ttsVoice), genderOf(p))}</label>` : '';
-  return `<div class="ccard ${p.status !== 'active' ? 'gone' : ''}"><div class="row">${port}<div class="grow"><b style="font-size:17px">${esc(p.name)}</b><div class="hint" style="margin:0">${esc(p.role || 'Companion')}${p.status === 'active' && !isCompanion(c) ? ` · Lv ${p.level} · ${p.hp}/${p.maxHp} HP` : ''}</div></div>${status}</div>
+  return `<div class="ccard ${p.status !== 'active' ? 'gone' : ''}"><div class="row">${port}<div class="grow"><b style="font-size:17px">${esc(p.name)}</b><div class="hint" style="margin:0">${esc(p.role || 'Companion')}${p.status === 'active' && !isCompanion(c) ? ` · Lv ${p.level} · ${p.hp}/${p.maxHp} HP` : ''}</div></div>${status}${AGE.isProtected(p) ? `<span class="pill" style="color:var(--muted)" title="No sexual content or explicit pictures of them">🔒 ${AGE.isMinor(p) ? 'Under 18' : 'Protected'}</span>` : '<span class="pill" style="color:var(--muted)" title="Not protected: adult content depends on the game&rsquo;s rating">Open</span>'}</div>
     ${hidden ? `<p class="hint">The GM made ${esc(p.name)}. Their full card and secrets are hidden so the story can surprise you.</p><button class="btn sm" data-act="compreveal" data-id="${p.id}">Reveal full card (spoilers)</button>`
       : `<div class="hint" style="color:var(--ink);margin-top:8px">${esc(p.personality)}${p.voice ? `<br><i>Talks: ${esc(p.voice)}</i>` : ''}${p.goals ? `<br>Wants: ${esc(p.goals)}` : ''}</div>
       ${isCompanion(c) ? '' : `<div class="statline">${STATS.map(k => `<span><b>${SN(k)}</b> ${p.stats[k]}</span>`).join('')}</div>`}
       ${p.traits.length ? `<div class="chips" style="margin-top:6px">${p.traits.map(t => `<span class="chip" style="font-size:12.5px;padding:5px 10px">${t.polarity === '-' ? '−' : '+'} ${esc(t.name)} <span class="tb ${t.tier}">${t.tier}</span></span>`).join('')}</div>` : ''}
       ${p.directive ? `<div class="hint" style="margin-top:4px">Replies: ${esc(p.directive)}</div>` : ''}
       ${p.secrets ? `<details style="margin-top:8px"><summary class="hint" style="cursor:pointer">Secret${p.madeBy === 'ai' ? ' (spoiler)' : ''}</summary><p class="hint" style="color:var(--ink)">${esc(p.secrets)}</p></details>` : ''}
-      ${S.compEdit === p.id ? `<div class="card" style="margin-top:8px">${[['name','Name'],['role','Role'],['personality','Personality',3],['voice','How they talk'],['directive','Response style (e.g. short flirty texts, lots of teasing; formal, never uses slang)',2],['goals','What they want'],['appearance','Appearance (for portraits and photos)',2],['secrets','Secrets',2]].map(([k, l, r]) => r ? `<label class="f"><span>${l}</span><textarea rows="${r}" data-pedit="${p.id}" data-k="${k}">${esc(p[k] || '')}</textarea></label>` : `<label class="f"><span>${l}</span><input type="text" data-pedit="${p.id}" data-k="${k}" value="${esc(p[k] || '')}"></label>`).join('')}<button class="btn sm" data-act="compeditdone" style="margin-top:8px">Done</button></div>` : ''}`}
+      ${S.compEdit === p.id ? `<div class="card" style="margin-top:8px">${[['name','Name'],['role','Role'],['personality','Personality',3],['voice','How they talk'],['directive','Response style (e.g. short flirty texts, lots of teasing; formal, never uses slang)',2],['goals','What they want'],['appearance','Appearance (for portraits and photos)',2],['secrets','Secrets',2]].map(([k, l, r]) => r ? `<label class="f"><span>${l}</span><textarea rows="${r}" data-pedit="${p.id}" data-k="${k}">${esc(p[k] || '')}</textarea></label>` : `<label class="f"><span>${l}</span><input type="text" data-pedit="${p.id}" data-k="${k}" value="${esc(p[k] || '')}"></label>`).join('')}<label class="chk"><input type="checkbox" data-pedit="${p.id}" data-k="protected" ${AGE.isProtected(p) ? 'checked' : ''} ${AGE.isMinor(p) ? 'disabled' : ''}> <span>${AGE.isMinor(p) ? 'Protected: under 18, so this cannot be turned off' : 'Protect them: no sexual content or explicit pictures'}</span></label><button class="btn sm" data-act="compeditdone" style="margin-top:8px">Done</button></div>` : ''}`}
     <div class="row" style="margin-top:8px"><button class="btn sm ghost" data-act="compportrait" data-id="${p.id}">${icon('image')} Portrait</button>${!hidden ? `<button class="btn sm ghost" data-act="compedit" data-id="${p.id}">${icon('book')} Edit</button>` : ''}${p.status === 'active' ? `<button class="btn sm ghost" data-act="comptalk" data-id="${p.id}">Talk to ${esc(p.name.split(' ')[0])}</button>` : ''}<button class="iconbtn sm" data-act="compdel" data-id="${p.id}" aria-label="Remove">${icon('trash')}</button></div>
     ${voices}</div>`;
 }
 function partyHTML() {
   const c = cur(); const list = arr(c.party); const f = S.compForm;
   let form = '';
+  const prot = list.filter(p => AGE.isProtected(p));
+  const summary = list.length ? `<p class="hint"><b>${prot.length} protected</b>${prot.length ? ': ' + prot.map(p => esc(p.name) + (AGE.isMinor(p) ? ' (under 18)' : '')).join(', ') : ''} · <b>${list.length - prot.length} open</b></p>` : '';
   if (S.compBusy) form = `<div class="card row"><span class="spin sm"></span> The GM is creating your companion…</div>`;
   else if (f === 'ai') form = `<div class="card"><b>Describe a companion</b><textarea id="compConcept" rows="3" style="margin-top:8px" placeholder="A loyal but reckless half-orc bodyguard who owes my family a debt…"></textarea><div class="row" style="margin-top:8px"><button class="btn sm gold" data-act="compmake" data-by="ai">GM builds it (card hidden)</button><button class="btn sm" data-act="compmake" data-by="player">Build it, show me everything</button><button class="link" data-act="compcancel">Cancel</button></div></div>`;
   else if (f === 'manual') form = `<div class="card"><b>Write your own companion</b>${['name:Name','role:Role (guard, scholar, thief…)','personality:Personality','voice:How they talk','goals:What they want','appearance:Appearance','secrets:Their secret (optional)'].map(x => { const [k, l] = x.split(':'); return `<label class="f"><span>${l}</span><input type="text" id="cm_${k}"></label>`; }).join('')}<div class="row" style="margin-top:10px"><button class="btn sm gold" data-act="compsave">Add to party</button><button class="link" data-act="compcancel">Cancel</button></div></div>`;
   else form = `<div class="row"><button class="btn sm gold" data-act="compform" data-f="ai">${icon('spark')} Create a companion</button><button class="btn sm" data-act="compform" data-f="manual">${icon('plus')} Write one myself</button></div>`;
-  return `<p class="hint">${isCompanion(c) ? 'Your cast: the characters who share this story with you. They talk, act and remember on their own. Add as many as you like; the narrator can also bring new people in.' : 'Companions act on their own and follow your orders ("Mara, guard the door") depending on how much they trust you. The GM can also bring new companions into the story.'}</p>${form}
+  return `<p class="hint">${isCompanion(c) ? 'Your cast: the characters who share this story with you. They talk, act and remember on their own. Add as many as you like; the narrator can also bring new people in.' : 'Companions act on their own and follow your orders ("Mara, guard the door") depending on how much they trust you. The GM can also bring new companions into the story.'}</p>${summary}${form}
     <div style="margin-top:10px">${list.length ? list.map(p => compCardHTML(c, p)).join('') : '<p class="empty" style="font-size:18px">No companions yet.</p>'}</div>`;
 }
 /* ---------- death ---------- */
@@ -395,9 +398,26 @@ For each one write ONE short sentence of what the player character knows: who th
 "where": the place they were seen (short), or "".
 "feel": how they feel about the player character: devoted, friendly, neutral, wary or hostile.
 "sex": male, female or unknown.
-Reply with JSON only: {"people":[{"name":"","text":"","where":"","feel":"","sex":""}]}  (an empty list if nobody named is there).`;
+"age": their number of years, ONLY when the text states it or the description makes it unmistakable ("the girl is twelve"); otherwise leave it out.
+Reply with JSON only: {"people":[{"name":"","text":"","where":"","feel":"","sex":"","age":0}]}  (an empty list if nobody named is there).`;
 const FEELS = ['devoted', 'friendly', 'neutral', 'wary', 'hostile'];
 const peopleOf = c => arr(c.codex).filter(e => e.kind === 'person');
+/* rename carries every portrait painted for them, so a picture is never stranded under the old name */
+function renamePerson(c, oldName, newName, personId, oldId) {
+  const low = String(oldName || '').trim().toLowerCase(); const name = String(newName || '').trim();
+  if (!low || !name) return;
+  if (low === name.toLowerCase() && !personId) return;
+  c.gallery = arr(c.gallery).map(g => {
+    if (g.kind !== 'character') return g;
+    const match = personId
+      ? ((oldId && g.personId === oldId) || g.personId === personId || (!g.personId && String(g.name || '').trim().toLowerCase() === low))
+      : String(g.name || '').trim().toLowerCase() === low;
+    if (!match) return g;
+    const y = { ...g, name, ...(personId ? { personId } : {}) };
+    if (y.subj && y.subj.t === 'npc') y.subj = { ...y.subj, name, ...(personId ? { id: personId } : {}) };
+    return y;
+  });
+}
 function upsertPeople(c, list, notes) {
   c.codex = arr(c.codex); let added = 0;
   const skip = [c.character.name, ...arr(c.party).map(p => p.name)].map(n => String(n || '').toLowerCase());
@@ -405,9 +425,12 @@ function upsertPeople(c, list, notes) {
     const name = String(x?.name || '').trim().slice(0, 60); const text = String(x?.text || '').trim().slice(0, 400);
     if (!name || !text || skip.includes(name.toLowerCase()) || /^(the )?(player|you|gm|narrator)$/i.test(name)) continue;
     const where = String(x?.where || '').trim().slice(0, 60); const sex = /^(male|female)$/i.test(String(x?.sex || '').trim()) ? String(x.sex).trim().toLowerCase() : ''; const feel = FEELS.includes(String(x?.feel || '').toLowerCase().trim()) ? String(x.feel).toLowerCase().trim() : ''; const day = worldOf(c).time.day; const look = String(x?.look || '').trim().slice(0, 300);
-    const ex = c.codex.find(e => e.name.toLowerCase() === name.toLowerCase()) || c.codex.find(e => e.kind === 'person' && (e.name.toLowerCase().split(' ')[0] === name.toLowerCase().split(' ')[0]) && name.split(' ').length !== e.name.split(' ').length);
-    if (ex) { ex.text = text.length >= ex.text.length * 0.6 ? text : (ex.text + ' ' + text).slice(-600); ex.kind = 'person'; if (where) ex.where = where; if (look && !ex.look) ex.look = look; if (feel) ex.feel = feel; if (sex && !ex.sex) ex.sex = sex; ex.lastDay = day; if (name.length > ex.name.length) ex.name = name; }
-    else { c.codex.push({ name, kind: 'person', text, where, look, feel, sex, day, lastDay: day, madeBy: x?.madeBy || 'gm' }); added++; notes?.push(name); }
+    const a = num(x?.age); const age = a >= 1 && a <= 120 ? a : 0; const protect = x?.protected === true;
+    /* the same person, or the same first name at the same place ("Captain Ilsa" and "Ilsa" are one person; two women called Ilsa in different towns are not) */
+    const first = s => s.toLowerCase().split(' ')[0];
+    const ex = c.codex.find(e => e.name.toLowerCase() === name.toLowerCase()) || c.codex.find(e => e.kind === 'person' && first(e.name) === first(name) && name.split(' ').length !== e.name.split(' ').length && (!where || !e.where || e.where.toLowerCase() === where.toLowerCase()));
+    if (ex) { if (!ex.id) ex.id = uid(); ex.text = text.length >= ex.text.length * 0.6 ? text : (ex.text + ' ' + text).slice(-600); ex.kind = 'person'; if (where) ex.where = where; if (look && !ex.look) ex.look = look; if (feel) ex.feel = feel; if (sex && !ex.sex) ex.sex = sex; if (age) ex.age = age; if (protect) ex.protected = true; ex.lastDay = day; if (name.length > ex.name.length) ex.name = name; }
+    else { c.codex.push({ id: x?.id || uid(), name, kind: 'person', text, where, look, feel, sex, age: age || undefined, protected: protect || undefined, day, lastDay: day, madeBy: x?.madeBy || 'gm' }); added++; notes?.push(name); }
   }
   return added;
 }
@@ -442,32 +465,41 @@ async function scanPeople(c) {
 function npcPortrait(c, name, quiet) {
   if (S.settings.image.mode === 'off') { if (!quiet) toast('Pictures are off in Settings → Images.'); return; }
   const e = peopleOf(c).find(x => x.name === name); if (!e) return;
-  const g = { id: uid(), kind:'character', name: e.name, prompt: portraitPrompt(e.look || `${e.name}, ${e.text}`), seed: d(999999), day: worldOf(c).time.day, t: Date.now(), subj: { t: 'npc', g: c.id, name: e.name } };
-  c.gallery = arr(c.gallery).filter(x => !(x.kind === 'character' && x.name.toLowerCase() === e.name.toLowerCase())); c.gallery.unshift(g);
+  if (!e.id) e.id = uid();
+  const g = { id: uid(), kind:'character', name: e.name, personId: e.id, prompt: portraitPrompt(e.look || `${e.name}, ${e.text}`), seed: d(999999), day: worldOf(c).time.day, t: Date.now(), subj: { t: 'npc', g: c.id, id: e.id, name: e.name } };
+  c.gallery = arr(c.gallery).filter(x => !(x.kind === 'character' && (x.personId === e.id || String(x.name || '').toLowerCase() === e.name.toLowerCase()))); c.gallery.unshift(g);
   touch(c); scheduleSync(); warmImage(g, c); if (!quiet) toast(`Painting ${e.name}…`, 3000);
 }
 function peopleHTML() {
   const c = cur(); const q = (S.peopleQ || '').toLowerCase();
   const all = peopleOf(c).sort((a, b) => (b.lastDay || b.day || 0) - (a.lastDay || a.day || 0) || a.name.localeCompare(b.name));
-  const list = all.filter(e => !q || (e.name + ' ' + e.text + ' ' + (e.where || '')).toLowerCase().includes(q));
+  const list = all.filter(e => !q || (e.name + ' ' + e.text + ' ' + (e.where || '') + ' ' + (e.look || '') + ' ' + (e.age ? 'age ' + e.age : '')).toLowerCase().includes(q));
   const card = e => {
-    const g = arr(c.gallery).find(x => x.kind === 'character' && x.name.toLowerCase() === e.name.toLowerCase());
+    const g = arr(c.gallery).find(x => x.kind === 'character' && ((e.id && x.personId === e.id) || x.name.toLowerCase() === e.name.toLowerCase()));
     const port = g && S.settings.image.mode !== 'off' ? `<img class="port" src="${esc(imageUrl(g, c))}" alt="">` : `<div class="port ph2">${esc(e.name[0] || '?')}</div>`;
     return `<div class="ccard"><div class="row" style="align-items:flex-start">${port}<div class="grow"><b style="font-size:17px">${esc(e.name)}</b>
-      <div class="hint" style="margin:1px 0 4px">${[e.where, e.day ? `met day ${e.day}` : ''].filter(Boolean).map(esc).join(' · ')}</div>
+      <div class="hint" style="margin:1px 0 4px">${[e.where, e.age ? `age ${e.age}` : '', e.day ? `met day ${e.day}` : '', AGE.isProtected(e) ? '🔒 protected' : 'open'].filter(Boolean).map(esc).join(' · ')}</div>
       <div style="font-size:14.5px;line-height:1.45">${esc(e.text)}</div>${e.lore ? `<div class="hint" style="margin:6px 0 0;color:var(--ink)">🔎 ${esc(e.lore)}</div>` : ''}</div></div>
-      <div class="row" style="margin-top:8px">${S.settings.image.mode !== 'off' ? `<button class="btn sm ghost" data-act="npcport" data-n="${esc(e.name)}">${icon('image')} ${g ? 'Repaint' : 'Portrait'}</button>` : ''}<button class="btn sm ghost" data-act="npctalk" data-n="${esc(e.name)}">💬 Talk</button>${S.settings.net?.on !== false ? `<button class="btn sm ghost" data-act="npclook" data-n="${esc(e.name)}">${icon('search')} Look up</button>` : ''}<button class="iconbtn sm" data-act="npcdel" data-n="${esc(e.name)}" aria-label="Remove">${icon('trash')}</button></div></div>`;
+      <div class="row" style="margin-top:8px">${S.settings.image.mode !== 'off' ? `<button class="btn sm ghost" data-act="npcport" data-n="${esc(e.name)}">${icon('image')} ${g ? 'Repaint' : 'Portrait'}</button>` : ''}<button class="btn sm ghost" data-act="npctalk" data-n="${esc(e.name)}">💬 Talk</button><button class="btn sm ghost" data-act="npcedit" data-n="${esc(e.name)}">${icon('book')} Edit</button>${S.settings.net?.on !== false ? `<button class="btn sm ghost" data-act="npclook" data-n="${esc(e.name)}">${icon('search')} Look up</button>` : ''}<button class="iconbtn sm" data-act="npcdel" data-n="${esc(e.name)}" aria-label="Remove">${icon('trash')}</button></div></div>`;
   };
-  return `<p class="hint">Everyone you've met or heard about. The list fills in by itself after each scene.</p>
+  return `<p class="hint">Everyone you've met or heard about. The list fills in by itself after each scene.${all.length ? ` <b>${all.filter(e => AGE.isProtected(e)).length} protected · ${all.filter(e => !AGE.isProtected(e)).length} open</b>` : ''}</p>
     <input type="text" id="peopleQ" placeholder="Search people…" value="${esc(S.peopleQ || '')}" style="margin-top:4px">
-    ${S.npcForm ? `<div class="card" style="margin-top:10px"><b>Add a person</b>
-      <label class="f"><span>Name</span><input type="text" id="np_name" placeholder="Captain Ilsa Varn"></label>
-      <label class="f"><span>Who they are</span><input type="text" id="np_text" placeholder="Harbor captain who owes my family money"></label>
-      <label class="f"><span>Appearance (used for the portrait)</span><input type="text" id="np_look" placeholder="Weathered woman in her 50s, grey braid, navy coat"></label>
-      <label class="f"><span>Where they are (optional)</span><input type="text" id="np_where" placeholder="Greywater docks"></label>
-      <label class="check"><input type="checkbox" id="np_bring" checked> Ask the GM to bring them into the story</label>
-      ${S.settings.image.mode !== 'off' ? '<label class="check"><input type="checkbox" id="np_paint" checked> Paint their portrait</label>' : ''}
-      <div class="row" style="margin-top:10px"><button class="btn sm gold" data-act="npcsave">Add</button><button class="link" data-act="npccancel">Cancel</button></div></div>` : ''}
+    ${(() => {
+      if (!S.npcForm) return '';
+      const ed = S.npcEdit ? peopleOf(c).find(x => x.name === S.npcEdit) : null;
+      const cleared = ed && S.npcClearLook === true;
+      return `<div class="card" style="margin-top:10px"><b>${ed ? 'Edit ' + esc(ed.name) : 'Add a person'}</b>
+      <label class="f"><span>Name</span><input type="text" id="np_name" value="${esc(ed?.name || '')}" placeholder="Captain Ilsa Varn"></label>
+      <label class="f"><span>Who they are</span><input type="text" id="np_text" value="${esc(ed?.text || '')}" placeholder="Harbor captain who owes my family money"></label>
+      <label class="f"><span>Appearance (used for the portrait)</span><input type="text" id="np_look" value="${esc(cleared ? '' : ed?.look || '')}" placeholder="Weathered woman in her 50s, grey braid, navy coat">${ed ? `<span class="hint" id="np_look_hint" style="margin:2px 0 0">${cleared ? 'Will be cleared when you save.' : 'Leave this empty to keep the look their portrait was painted from.'}</span>` : ''}</label>
+      ${ed && !cleared && ed.look ? `<button type="button" class="link" data-act="npcclearlook" style="margin:-4px 0 8px;font-size:12.5px">Clear appearance</button>` : ''}
+      <div class="kv"><label class="f"><span>Age (optional)</span><input type="number" id="np_age" value="${esc(ed?.age ?? '')}" placeholder="34"></label>
+        <label class="f"><span>Where they are (optional)</span><input type="text" id="np_where" value="${esc(ed?.where || '')}" placeholder="Greywater docks"></label></div>
+      ${ed ? '' : '<label class="check"><input type="checkbox" id="np_bring" checked> Ask the GM to bring them into the story</label>'}
+      <label class="check"><input type="checkbox" id="np_protect" ${AGE.isProtected(ed) ? 'checked' : ''} ${AGE.guardMinor(ed) ? 'disabled' : ''}> Protect this person: no sexual content or explicit pictures of them${AGE.guardMinor(ed) ? ' (always on under 18)' : ''}</label>
+      ${S.settings.image.mode !== 'off' ? `<label class="check"><input type="checkbox" id="np_paint" ${ed ? '' : 'checked'}> ${ed ? 'Paint a new portrait' : 'Paint their portrait'}</label>` : ''}
+      <div class="row" style="margin-top:10px"><button class="btn sm gold" data-act="npcsave">${ed ? 'Save changes' : 'Add'}</button><button class="link" data-act="npccancel">Cancel</button></div></div>`;
+    })()}
     <div class="row" style="margin-top:8px">${S.npcForm ? '' : `<button class="btn sm gold" data-act="npcadd">${icon('plus')} Add a person</button>`}<button class="btn sm" data-act="npcscan" ${S.peopleBusy ? 'disabled' : ''}>${S.peopleBusy ? '<span class="spin sm"></span> Reading the story…' : icon('spark') + ' Find people from the story so far'}</button>${arr(c.party).length ? `<button class="btn sm ghost" data-act="party">${icon('users')} Your party</button>` : ''}</div>
     <div style="margin-top:12px">${list.length ? list.map(card).join('') : `<p class="empty" style="font-size:18px">${all.length ? 'Nobody matches that search.' : 'Nobody yet. Tap "Find people from the story so far" to fill this in from what\'s happened.'}</p>`}</div>`;
 }

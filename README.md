@@ -12,6 +12,7 @@ An AI tabletop RPG that runs on your own PC: the story AI (Ollama), pictures (Fo
 | `css/app.css` | Base styles for every screen |
 | `css/realm.css` | The Outer Realm look (navy and violet theme, home screens, story panel, choice cards) |
 | `js/core.js` | Rules, helpers, built-in content, app state |
+| `js/ageguard.js` | The age guard: who counts as a minor, and what that allows in story text, companion chats and pictures. Everything asks this one file |
 | `js/stories.js` | The built-in stories written out in full: world, secrets, factions, threats, key people, plot roadmap. Add new stories here |
 | `js/ai.js` | AI connections and the GM's prompts |
 | `js/turn.js` | One turn: dice referee, web lookup, writer, agency guard, bookkeeper, rolls |

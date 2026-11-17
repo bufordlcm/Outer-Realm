@@ -96,6 +96,7 @@ textarea{resize:vertical;min-height:70px;line-height:1.45}
 /* game */
 .game{flex:1;display:flex;flex-direction:column;min-height:0}
 .gbar{display:flex;align-items:center;gap:4px;padding:6px;border-bottom:1px solid var(--line);background:rgba(12,13,34,.94);backdrop-filter:blur(8px);position:relative;z-index:2}
+.rtag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.06em;padding:1px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted);vertical-align:1px;white-space:nowrap}
 .gtitle{flex:1;min-width:0;padding:0 4px}
 .gtitle .t{font-family:var(--display);font-weight:700;font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.15}
 .gtitle .s{font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

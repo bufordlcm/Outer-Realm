@@ -26,17 +26,50 @@ document.addEventListener('click', e => {
       lookupLore(c, n, { manual: true }).then(r => toast(r ? `🔎 Looked up ${r.name}` : `Nothing clear online about ${n}.`, 3000)).catch(e => toast(e.message, 4000)).finally(() => renderModal()); break; }
     case 'netcheck': NET.checked = 0; S.netStatus = 'Checking…'; renderModal(); NET.helper().then(h => { S.netStatus = h ? `✓ Helper on your PC found: web search via ${h.searxng ? 'SearXNG (no limits)' : 'DuckDuckGo (SearXNG isn\'t running; Wikipedia as backup)'}, plus full page reading.` : '✗ The helper on your PC isn\'t reachable, so research uses Wikipedia only. Start "Start Ironquill pictures" on your PC (and on the phone, connect Tailscale).'; renderModal(); }); break;
     case 'researchtoggle': c.research = { ...(c.research || {}), auto: el.checked }; touch(c); break;
-    case 'npcadd': S.npcForm = true; renderModal(); setTimeout(() => $('#np_name')?.focus(), 40); break;
-    case 'npccancel': S.npcForm = false; renderModal(); break;
+    case 'npcadd': S.npcEdit = null; S.npcClearLook = false; S.npcForm = true; renderModal(); setTimeout(() => $('#np_name')?.focus(), 40); break;
+    case 'npcedit': S.npcEdit = el.dataset.n || null; S.npcClearLook = false; S.npcForm = true; renderModal(); setTimeout(() => $('#np_name')?.focus(), 40); break;
+    case 'npccheckrules': { const bad = AGE.selfTest(); if (bad.length) { console.warn('Content rule checks failed', bad); toast(`Content rules: ${bad.length} failing check${bad.length > 1 ? 's' : ''}. First: ${bad[0]}`, 9000); } else toast('✓ Content rules check out: ages, protection and picture routing.', 4500); break; }
+    case 'npcclearlook': { S.npcClearLook = true; const inp = $('#np_look'); if (inp) inp.value = ''; const hint = $('#np_look_hint'); if (hint) hint.textContent = 'Will be cleared when you save.'; el.remove(); break; }
+    case 'npccancel': S.npcForm = false; S.npcEdit = null; S.npcClearLook = false; renderModal(); break;
     case 'npcsave': { const g = k => ($('#np_' + k)?.value || '').trim(); const name = g('name'); if (!name) { toast('Give them a name.'); break; }
-      upsertPeople(c, [{ name, text: g('text') || 'Someone you created.', look: g('look'), where: g('where'), madeBy: 'player' }]);
-      const e = peopleOf(c).find(x => x.name.toLowerCase() === name.toLowerCase()); if (e) { e.madeBy = 'player'; if (g('look')) e.look = g('look'); }
-      if ($('#np_bring')?.checked) c.gmNotes = [c.gmNotes, `Bring ${name} into the story soon: ${g('text')}${g('look') ? ' (looks: ' + g('look') + ')' : ''}.`].filter(Boolean).join('\n');
-      if (S.settings.image.mode !== 'off' && $('#np_paint')?.checked) npcPortrait(c, name, true);
-      S.npcForm = false; touch(c); scheduleSync(); renderModal(); toast(`${name} added to People.`); break; }
+      const age = Number(g('age')) || undefined; const protect = !!$('#np_protect')?.checked;
+      const editing = S.npcEdit ? peopleOf(c).find(x => x.name === S.npcEdit) : null;
+      if (editing) {
+        const before = editing.name;
+        const clash = peopleOf(c).find(x => x !== editing && x.name.toLowerCase() === name.toLowerCase());
+        if (clash) {
+          if (!confirm(`There is already someone called ${clash.name}. Merge ${before} into them? Their notes are combined and their pictures move across.`)) break;
+          if (!clash.id) clash.id = uid();
+          clash.text = [clash.text, g('text') || editing.text].filter(Boolean).join(' ').slice(-600);
+          if (!clash.look) clash.look = editing.look || '';
+          if (!clash.age && editing.age) clash.age = editing.age;
+          if (AGE.isProtected(editing)) clash.protected = true;
+          if (!clash.where && editing.where) clash.where = editing.where;
+          renamePerson(c, before, clash.name, clash.id, editing.id);
+          c.codex = arr(c.codex).filter(x => x !== editing);
+          S.npcEdit = clash.name;
+        } else {
+          /* an emptied appearance field keeps the look their portrait was painted from; edit it deliberately to change it */
+          const look = g('look') || (S.npcClearLook ? '' : editing.look || '');
+          Object.assign(editing, { name, text: g('text') || editing.text, look, where: g('where') });
+          if (before !== name) renamePerson(c, before, name);
+          if (age) editing.age = age; else delete editing.age;
+          editing.protected = protect || AGE.guardMinor(editing) || undefined;
+        }
+      } else {
+        upsertPeople(c, [{ name, text: g('text') || 'Someone you created.', look: g('look'), where: g('where'), age, protected: protect, madeBy: 'player' }]);
+        const e = peopleOf(c).find(x => x.name.toLowerCase() === name.toLowerCase()); if (e) { e.madeBy = 'player'; if (g('look')) e.look = g('look'); if (age) e.age = age; if (protect) e.protected = true; }
+        if ($('#np_bring')?.checked) c.gmNotes = [c.gmNotes, `Bring ${name} into the story soon: ${g('text')}${g('look') ? ' (looks: ' + g('look') + ')' : ''}.`].filter(Boolean).join('\n');
+      }
+      if (S.settings.image.mode !== 'off' && $('#np_paint')?.checked) npcPortrait(c, S.npcEdit || name, true);
+      S.npcForm = false; S.npcEdit = null; S.npcClearLook = false; touch(c); scheduleSync(); renderModal(); toast(`${name} ${editing ? 'updated' : 'added to People'}.`); break; }
     case 'npcport': npcPortrait(c, el.dataset.n); renderModal(); break;
     case 'npctalk': { const n = el.dataset.n; closeModal(); const inp = $('#input'); if (inp) { inp.value = `I turn to ${n}: "`; autoGrow(inp); inp.focus(); } break; }
-    case 'npcdel': if (confirm(`Remove ${el.dataset.n} from your People list?`)) { c.codex = arr(c.codex).filter(e => !(e.kind === 'person' && e.name === el.dataset.n)); touch(c); scheduleSync(); renderModal(); } break;
+    case 'npcdel': { const n = el.dataset.n; if (!confirm(`Remove ${n} from your People list?`)) break;
+      const e = peopleOf(c).find(x => x.name === n); c.codex = arr(c.codex).filter(x => x !== e);
+      const pics = arr(c.gallery).filter(x => x.kind === 'character' && ((e?.id && x.personId === e.id) || String(x.name || '').toLowerCase() === n.toLowerCase()));
+      if (pics.length && confirm(`Also delete ${pics.length} picture${pics.length > 1 ? 's' : ''} of ${n}?`)) c.gallery = arr(c.gallery).filter(x => !pics.includes(x));
+      touch(c); scheduleSync(); renderModal(); break; }
     case 'menu': openModal('menu'); break;
     case 'tools': openModal('tools', el.dataset.tab); break;
     case 'storybook': exportStorybook(c); break;
@@ -224,18 +257,18 @@ document.addEventListener('input', e => {
   } else if (el.dataset.lpath && S.lu) {
     setPath(S.lu.ch, el.dataset.lpath, el.value.split('\n').map(s => s.trim()).filter(Boolean));
   } else if (el.dataset.cbind && cur()) {
-    const c = cur(); let v = el.value;
+    const c = cur(); let v = el.type === 'checkbox' ? el.checked : el.value;
     if (el.dataset.list) v = v.split('\n').map(s => s.trim()).filter(Boolean);
     else if (el.type === 'number') v = num(v);
     setPath(c, el.dataset.cbind, v);
     const ch = c.character; ch.maxHp = Math.max(1, ch.maxHp); ch.hp = clamp(ch.hp, 0, ch.maxHp); ch.momentum = clamp(num(ch.momentum), 0, 3); ch.strain = Math.max(0, num(ch.strain));
     touch(c); renderHUD(); scheduleSync();
-    if (el.tagName === 'SELECT' && S.modal) renderModal();
+    if ((el.tagName === 'SELECT' || el.type === 'checkbox') && S.modal) renderModal();
   } else if (el.id === 'rollHow') { const r = cur()?.pendingRoll; if (r) { r.how = el.value.slice(0, 400); touch(cur()); } }
   else if (el.id === 'modelQ') { S.modelQ = el.value; const c2 = conns().find(x => x.id === el.dataset.cid); const l = $('#mlist'); if (c2 && l) l.innerHTML = modelListHTML(c2); }
   else if (el.id === 'input') autoGrow(el);
   else if (el.id === 'askText') S.askDraft = el.value;
-  else if (el.dataset.pedit) { const p = arr(cur()?.party).find(x => x.id === el.dataset.pedit); if (p) { p[el.dataset.k] = el.value; touch(cur()); } }
+  else if (el.dataset.pedit) { const p = arr(cur()?.party).find(x => x.id === el.dataset.pedit); if (p) { p[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; touch(cur()); if (el.type === 'checkbox' && S.modal) renderModal(); } }
   else if (el.id === 'lookupQ') S.lookupQ = el.value;
   else if (el.id === 'peopleQ') { S.peopleQ = el.value; const pos = el.selectionStart; renderModal(); const n = $('#peopleQ'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }
   else if (el.id === 'codexQ') { S.codexQ = el.value; const pos = el.selectionStart; renderModal(); const n = $('#codexQ'); if (n) { n.focus(); n.setSelectionRange(pos, pos); } }

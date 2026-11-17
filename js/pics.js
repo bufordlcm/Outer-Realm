@@ -67,21 +67,25 @@ function gameSubj(c, name) {
   const n = String(name || '').toLowerCase().trim(); if (!c || !n) return null;
   if (String(c.character?.name || '').toLowerCase() === n) return { t: 'pc', g: c.id };
   const p = arr(c.party).find(x => x.name.toLowerCase() === n); if (p) return { t: 'party', g: c.id, id: p.id };
-  const e = peopleOf(c).find(x => x.name.toLowerCase() === n); if (e) return { t: 'npc', g: c.id, name: e.name };
+  const e = peopleOf(c).find(x => x.name.toLowerCase() === n); if (e) return { t: 'npc', g: c.id, name: e.name, id: e.id };
   return null;
 }
 function subjOf(ref, img) {
   if (img?.subj) return img.subj; if (!ref || !img) return null;
   if (ref.t === 'pal') { const ch = PALS.chats[ref.chat]; const m = ch?.messages.find(x => x.id === ref.msg); return m && PALS.pals[m.who] && (img.kind === 'selfie' || palsOf(ch).length === 1) ? { t: 'pal', id: m.who } : null; }
   if (ref.t === 'port') return { t: 'pal', id: ref.pal, port: true };
-  if (ref.t === 'gal') return img.kind === 'character' ? gameSubj(S.campaigns[ref.id], img.name) : null;
+  if (ref.t === 'gal') {
+    if (img.kind !== 'character') return null;
+    if (img.personId) { const e = peopleOf(S.campaigns[ref.id]).find(x => x.id === img.personId); if (e) return { t: 'npc', g: ref.id, id: e.id, name: e.name }; }
+    return gameSubj(S.campaigns[ref.id], img.name);
+  }
   return null;
 }
 function subjChar(s) {
   if (!s) return null; if (s.t === 'pal') return PALS.pals[s.id] || null;
   const c = S.campaigns[s.g]; if (!c) return null;
   if (s.t === 'pc') return c.character; if (s.t === 'party') return arr(c.party).find(p => p.id === s.id) || null;
-  if (s.t === 'npc') return peopleOf(c).find(e => e.name === s.name) || null; return null;
+  if (s.t === 'npc') return (s.id && peopleOf(c).find(e => e.id === s.id)) || peopleOf(c).find(e => e.name === s.name) || null; return null;
 }
 const subjField = s => s.t === 'pal' ? 'tags' : s.t === 'npc' ? 'look' : 'appearance';
 function subjLook(s) {
@@ -230,7 +234,8 @@ async function palPicture(ch, o = {}) {
   const p = PALS.pals[o.who] || (ps.length === 1 ? ps[0] : to !== 'all' ? to : selfie ? null : ps[0]);
   if (!p) return toast('Pick who should send it first (the To: buttons).');
   const subjects = selfie || ps.length === 1 || o.who || to !== 'all' ? [p] : ps.slice(0, 3);
-  const minor = ps.some(palMinor); const adult = !minor && ps.every(x => x.adult);
+  /* per picture: only the people actually in it decide the rating, not everyone in the chat */
+  const guarded = subjects.some(AGE.isProtected); const adult = !guarded && subjects.every(x => x.adult);
   const user = String(o.user || '').replace(/\s+/g, ' ').trim().slice(0, 500); const neg = String(o.neg ?? ch.picNeg ?? '').replace(/\s+/g, ' ').trim().slice(0, 400);
   const me = personaOf(ch); const you = meName(ch);
   if (selfie && !o.quiet) ch.messages.push({ id: uid(), role: 'user', text: user ? `Send me a selfie? ${user}` : 'Send me a selfie?', mode: ch.channel || 'text', t: Date.now(), ...(ps.length > 1 ? { to: p.id } : {}) });
@@ -248,7 +253,7 @@ Base it on what is actually happening in the chat at this moment: where they are
 "wearing": what ${first(p.name)} is wearing in this exact moment if the chat makes it different from the usual outfit (${palOutfit(p) || 'not set'}); otherwise "".
 "you_in_frame": true only if ${you} is clearly in the picture too.
 "caption": ${selfie ? `the short message ${first(p.name)} sends with the selfie, in ${p.sex === 'male' ? 'his' : 'her'} own voice` : '""'}.
-${minor ? 'IMPORTANT: someone in this chat is under 18. The picture is wholesome and fully clothed, nothing suggestive.' : adult ? 'This is an adults-only chat between adults; follow where the chat actually is.' : 'Keep it PG-13: fully clothed, nothing explicit.'}
+${guarded ? 'IMPORTANT: someone in this picture is under 18 or protected. The picture is wholesome and fully clothed, nothing suggestive.' : adult ? 'This is an adults-only chat between adults; follow where the chat actually is.' : 'Keep it PG-13: fully clothed, nothing explicit.'}
 ${user ? `THE PLAYER ASKED FOR THIS IN THE PICTURE (it must be shown): ${user}` : ''}
 Reply with JSON only: {"prompt":"","wearing":"","you_in_frame":false,"caption":""}` },
         { role: 'user', content: `${ch.scene ? `WHERE THEY ARE: ${ch.scene}\n` : ''}${ch.channel === 'person' ? 'They are together in person.' : 'They are texting, not in the same place.'}\n\nTHE CHAT RIGHT NOW:\n${recent || '(just starting)'}` }

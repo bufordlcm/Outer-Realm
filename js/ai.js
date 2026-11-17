@@ -57,6 +57,7 @@ function migrate(c) {
   c.gm = c.gm || { preset:'storyteller', name:'The Narrator', style:'' };
   c.pinned = arr(c.pinned); c.saves = arr(c.saves); c.tableTalk = arr(c.tableTalk); c.roadmap = c.roadmap || ''; c.rmAct = num(c.rmAct); c.rmDone = arr(c.rmDone);
   worldOf(c); c.phase = c.phase || 'play'; c.plan = c.plan || ''; c.session0 = arr(c.session0);
+  for (const e of arr(c.codex)) if (e && e.kind === 'person' && !e.id) e.id = uid();   /* people get a stable id so their pictures survive a rename */
   return c;
 }
 /* saved campaigns are migrated in events.js, once every script has loaded (migrate uses helpers from later files) */
@@ -388,7 +389,7 @@ function sheetText(c) {
 }
 function buildMessages(c) {
   const sys = [GM_RULES, '', personaText(c), '', magicRule(c), '',
-    'CAMPAIGN', `Title: ${c.title}`, `Genre/setting: ${c.genre || 'open'}`, `Premise: ${c.premise}`, `Tone: ${c.tone || 'GM\'s choice'}`, `Content rating: ${c.rating || 'PG-13'} — ${RATING_RULES[c.rating] || RATING_RULES['PG-13']}`,
+    'CAMPAIGN', `Title: ${c.title}`, `Genre/setting: ${c.genre || 'open'}`, `Premise: ${c.premise}`, `Tone: ${c.tone || 'GM\'s choice'}`, `Content rating: ${c.rating || 'PG-13'} — ${contentRules(c.rating, c)}`,
     '', 'PLAYER CHARACTER', sheetText(c)];
   if (arr(c.party).length) sys.push('', 'THE PARTY (companions travelling with the player; you voice them)', partyText(c, true));
   if (c.pinned?.length) sys.push('', 'PINNED FACTS (always true — never contradict)', ...c.pinned.map(f => '- ' + f));
@@ -543,7 +544,7 @@ function buildWriterMessages(c) {
   /* Ordered from never-changing to changing-every-turn: Ollama re-reads the prompt only from the first
      line that changed, so keeping the stable parts first makes each turn start much faster. */
   const sys = [comp ? companionCore(c) : writerCore(c), '', personaText(c), '',
-    'CAMPAIGN', `${c.title}. ${c.genre || ''}`.trim(), `Premise: ${c.premise}`, `Tone: ${c.tone || 'GM\'s choice'}. Content rating: ${c.rating || 'PG-13'} — ${RATING_RULES[c.rating] || RATING_RULES['PG-13']}`];
+    'CAMPAIGN', `${c.title}. ${c.genre || ''}`.trim(), `Premise: ${c.premise}`, `Tone: ${c.tone || 'GM\'s choice'}. Content rating: ${c.rating || 'PG-13'} — ${contentRules(c.rating, c)}`];
   if (c.world) sys.push('', 'WORLD', c.world.slice(0, 2500));
   if (c.pinned?.length) sys.push('', 'PINNED FACTS (always true)', ...c.pinned.map(f => '- ' + f));
   if (c.secrets) sys.push('', 'GM SECRETS (never state them; let the player uncover them)', c.secrets.slice(0, 1500));

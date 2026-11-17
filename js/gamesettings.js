@@ -56,8 +56,11 @@ function gameSettingsHTML() {
   } else if (tab === 'story' && c) {
     const comp = isCompanion(c); const g = c.gm || {};
     body = `<p class="hint" style="margin-top:0;color:var(--ink)">Only for <b>${esc(c.title)}</b>. Changes apply from the next turn.</p>
-      <label class="f"><span>Content rating</span><select data-cbind="rating">${Object.keys(RATING_RULES).map(k => `<option ${(c.rating || 'PG-13') === k ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
-      <p class="hint">${esc(RATING_RULES[c.rating || 'PG-13'] || '')}</p>
+      <label class="f"><span>Content rating</span><select data-cbind="rating">${RATINGS.map(r => `<option value="${r}" ${normRating(c.rating) === r ? 'selected' : ''}>${RATING_LABEL[r]}</option>`).join('')}</select></label>
+      <p class="hint">${esc(RATING_BLURB[normRating(c.rating)] || '')}</p>
+      <div class="sect" style="font-size:18px">Who is protected in this story</div>
+      ${(() => { const all = [...AGE.subjectsOf(c), ...arr(c.codex).filter(e => e.kind === 'person')]; const prot = all.filter(x => AGE.isProtected(x)); const open = all.length - prot.length; return `<p class="hint" style="color:var(--ink)"><b>${prot.length} protected</b>${prot.length ? ': ' + prot.map(x => esc(x.name) + (AGE.guardMinor(x) ? ' (under 18)' : '')).join(', ') : ''} · <b>${open} open</b></p>`; })()}
+      <p class="hint">Protected characters are never written into sexual or romantic content and never get explicit pictures, whatever the rating. Anyone under 18 is always protected.</p>
       <label class="f"><span>${comp ? 'Narrator' : 'Game Master'} personality</span><select data-cbind="gm.preset">${Object.entries(GM_PRESETS).map(([k, v]) => `<option value="${k}" ${(g.preset || 'storyteller') === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
       ${g.preset === 'custom' ? `<label class="f"><span>Describe your GM</span><textarea rows="2" data-cbind="gm.style" placeholder="A gravel-voiced old mercenary who narrates like he was there…">${esc(g.style || '')}</textarea></label>` : `<p class="hint">${esc(GM_PRESETS[g.preset || 'storyteller']?.style || '')}</p>`}
       ${!comp ? `<label class="f"><span>Magic</span><select data-cbind="magicCost">${Object.entries(MAGIC_LABEL).map(([k, v]) => `<option value="${k}" ${(c.magicCost || 'gm') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>

@@ -34,14 +34,35 @@ const NEG_PLAY = { D:1, C:2, B:4, A:6, S:8 };
 const GEAR_COST = { D:1, C:2, B:3, A:4, S:5 };
 const POINT_COST = { 8:0, 9:1, 10:2, 11:3, 12:4, 13:5, 14:7, 15:9, 16:10, 17:11, 18:12, 19:13, 20:15 };
 const STAT_BUDGET = 35, START_TP = 10, START_GOLD = 15;
-const RATINGS = ['Family-friendly','PG-13','Mature (R)','Adult (18+)'];
+const RATINGS = ['PG','PG-13','R','M'];
+const RATING_LABEL = { 'PG':'PG · Storybook', 'PG-13':'PG-13 · Adventurous', 'R':'R · Brutal', 'M':'M · No limits' };
+/* Old tier names still turn up in saves, story bibles and Drive files, so every rating is read through here. */
+const RATING_ALIAS = { 'PG':'PG', 'Family-friendly':'PG', 'Family friendly':'PG', 'PG-13':'PG-13', 'PG13':'PG-13', 'R':'R', 'Mature (R)':'R', 'Restricted':'R', 'M':'M', 'Mature':'M', 'Adult (18+)':'M', 'Adult':'M' };
+const normRating = r => RATING_ALIAS[String(r || '').trim()] || 'PG-13';
+/* The rating a game is set to decides what the story may contain. Level 0 is the tightest and level 3 has no
+   content limits. Every prompt that sets content expectations reads RATING_RULES through contentRules(), so
+   each step up a tier loosens all of them together. */
+const RATING_LEVEL = { 'PG':0, 'PG-13':1, 'R':2, 'M':3 };
 const RATING_RULES = {
-  'Family-friendly': 'no gore, no sexual content, no strong language.',
-  'PG-13': 'action violence without lingering gore, mild language, romance fades to black.',
-  'Mature (R)': 'graphic violence, strong language and dark themes are fine; sexual scenes fade to black.',
-  'Adult (18+)': 'graphic violence, strong language, dark themes and explicit sexual content are allowed when the story and the player lead there. Respect the player\'s lead and the standing requests. Sexual content only ever involves adults (18+), never anyone under 18.'
+  'PG': 'Tell it like a Disney or Pixar film. Danger, chases, monsters and scrappy fights are fine; blood, gore and on-screen death are not, and nobody loses a limb. No sex, no innuendo, no strong language, no drugs. Villains frighten, then lose to courage, friendship and cleverness. A happy ending is always allowed.',
+  'PG-13': 'Tell it like a PG-13 adventure. Fights hurt and people get wounded; keep the blood brief. Anyone can die, and not every story ends well. Attraction and romance are fine, but the scene cuts away before anything explicit. Mild swearing. Darkness is welcome as long as you do not dwell in it.',
+  'R': 'Tell it like a hard R. Violence is graphic and you can linger on it: dismemberment, torture, massacre, the on-screen death of anyone, guilty or innocent. Swearing is constant. Adult scenes play out but stop short of explicit. Cruelty, addiction, betrayal and bleak endings are all on the table.',
+  'M': 'Tell it with no brakes. Nothing is off the table: a child taken by a monster, a grandparent blown apart, an ally committing something monstrous. Gore, swearing and any dark theme go as far as the story takes them, and explicit sex is allowed between adults. Follow the player\'s lead and their standing requests.'
 };
+/* The age rule, and the rating + age text every prompt reads, live in js/ageguard.js. */
+/* Short, player-facing copy for the pickers. RATING_RULES above is what the GM is told. */
+const RATING_BLURB = {
+  'PG': 'Disney or Pixar adventure: danger without blood, and a happy ending is always on the table.',
+  'PG-13': 'Real fights and real losses, romance that cuts away. Not everyone makes it out.',
+  'R': 'Graphic violence, constant swearing, cruel turns. Adult scenes play out, but nothing explicit.',
+  'M': 'No brakes. Anyone can die badly, and explicit scenes are allowed between adults.'
+};
+const ratingShort = c => normRating(c?.rating);
+const ratingTag = c => RATING_LABEL[normRating(c?.rating)];
+const ratingChip = c => `<span class="rtag" title="${esc(ratingTag(c))} · content rating">${esc(ratingShort(c))}</span>`;
+const playLocText = c => c.phase === 'session0' ? 'Session zero' : `${c.location || c.character?.name || ''} · ${timeLabel(worldOf(c))}`;
 const MAGIC_LABEL = { gm:"GM's call", strain:'Strain', free:'Free casting', none:'No magic' };
+
 
 /* ---------- helpers ---------- */
 function folderIdFrom(s) { s = String(s || '').trim(); const m = s.match(/folders\/([\w-]{10,})/) || s.match(/[?&]id=([\w-]{10,})/); if (m) return m[1]; return /^[\w-]{10,}$/.test(s) ? s : ''; }

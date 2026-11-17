@@ -49,7 +49,7 @@ function renderNew(keepScroll) {
     ${f('genre', 'Genre / setting', 'High fantasy, cyberpunk, post-apocalyptic…')}
     ${ta('premise', 'Premise', 'What\'s happening when the story begins?', 5)}
     ${f('tone', 'Tone', 'Grim, cozy, funny, epic…')}
-    <div class="kv"><label class="f"><span>Content rating</span><select data-dpath="rating">${RATINGS.map(r => `<option ${D.rating === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+    <div class="kv"><label class="f"><span>Content rating</span><select data-dpath="rating">${RATINGS.map(r => `<option value="${r}" ${normRating(D.rating) === r ? 'selected' : ''}>${RATING_LABEL[r]}</option>`).join('')}</select><span class="hint" style="margin-top:4px">${esc(RATING_BLURB[normRating(D.rating)])}</span></label>
     <label class="f" ${isComp ? 'style="display:none"' : ''}><span>Magic cost</span><select data-dpath="magicCost">${Object.entries(MAGIC_LABEL).map(([k, v]) => `<option value="${k}" ${D.magicCost === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
     <div class="kv"><label class="f"><span>${isComp ? 'Narrator personality' : 'Game Master personality'}</span><select data-dpath="gmPreset">${Object.entries(GM_PRESETS).map(([k, v]) => `<option value="${k}" ${D.gmPreset === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>${f('gmName', 'GM name', 'The Narrator')}</div>
     ${D.gmPreset === 'custom' ? ta('gmStyle', 'Describe your GM', 'A gravel-voiced old mercenary who narrates like he was there…', 2) : `<p class="hint">${esc(GM_PRESETS[D.gmPreset]?.style || '')}</p>`}
@@ -150,7 +150,7 @@ function renderGame() {
 function renderHUD() {
   const c = cur(); const el = $('#hud'); if (!c || !el) return;
   const ch = c.character;
-  if (isCompanion(c)) { el.innerHTML = ''; const loc = $('#gloc'); if (loc) loc.textContent = c.phase === 'session0' ? 'Session zero' : `${c.location || ch.name} · ${timeLabel(worldOf(c))}`; return; } const pct = ch.maxHp ? Math.round(ch.hp / ch.maxHp * 100) : 0;
+  if (isCompanion(c)) { el.innerHTML = ''; const loc = $('#gloc'); if (loc) loc.innerHTML = esc(playLocText(c)) + ' ' + ratingChip(c); return; } const pct = ch.maxHp ? Math.round(ch.hp / ch.maxHp * 100) : 0;
   el.innerHTML = `<button class="hud" data-act="sheet" aria-label="Character sheet">
       <span class="hudhp"><span class="n">${isMP(c) ? esc(ch.name) + ' · ' : ''}${ch.hp}/${ch.maxHp} HP</span><span class="hpbar ${pct > 50 ? 'ok' : ''}"><i style="width:${pct}%"></i></span></span>
       <span class="hs">Lv <b>${ch.level}</b></span><span class="hs">EP <b>${ch.ep}</b></span><span class="hs">TP <b>${ch.tp}</b></span>
@@ -159,7 +159,7 @@ function renderHUD() {
       ${ch.injuries.length ? `<span class="hs bad">${ch.injuries.length} injur${ch.injuries.length > 1 ? 'ies' : 'y'}</span>` : ''}
       <span class="hs gold">${ch.gold} gold</span></button>
     ${c.levelPending ? '<button class="lvlbtn" data-act="levelup">Level up!</button>' : ''}`;
-  const loc = $('#gloc'); if (loc) loc.textContent = c.phase === 'session0' ? 'Session zero' : `${c.location || ch.name} · ${timeLabel(worldOf(c))}`;
+  const loc = $('#gloc'); if (loc) loc.innerHTML = esc(playLocText(c)) + ' ' + ratingChip(c);
 }
 
 function msgHTML(m, c, isLastGM) {
@@ -389,6 +389,9 @@ function settingsHTML() {
       <div class="sect" style="font-size:20px">Backups</div>
       <p class="hint">A backup file holds every adventure and your settings (keys excluded).</p>
       <div class="row" style="margin-top:10px"><button class="btn" data-act="export">${icon('download')} Back up everything</button><button class="btn" data-act="import">${icon('upload')} Restore backup</button></div>
+      <div class="sect" style="font-size:20px">Content rules</div>
+      <p class="hint">A fixed set of checks for the age and protection rules every story prompt uses: ages, protection, and which pictures are allowed.</p>
+      <button class="btn" data-act="npccheckrules">Check content rules</button>
       <div class="sect" style="font-size:20px">Danger zone</div>
       <button class="btn danger" data-act="wipe">Erase everything on this device</button>`;
   }

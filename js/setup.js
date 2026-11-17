@@ -43,8 +43,10 @@ function sheetHTML() {
     <p class="hint">The narrator and cast know what's written here. Things they learn about you as you talk are kept in More → Story tools → Memory.</p>`];
   if (tab === 'sheet') {
     body = `<div style="text-align:center;margin:10px 0 4px">${S.settings.image.mode !== 'off' ? `<div class="sheetport">${ch.portrait ? `<img class="port xl" src="${esc(imageUrl(ch.portrait, c))}" alt="">` : `<div class="port xl ph2">${esc(ch.name[0] || '?')}</div>`}<button class="btn sm ghost" data-act="compportrait" data-id="main">${icon('image')} ${ch.portrait ? 'New portrait' : 'Paint portrait'}</button></div>` : ''}<div style="font-family:var(--display);font-size:30px;font-weight:700;color:var(--gold2)">${esc(ch.name)}</div>
-        <div class="hint">${esc(ch.storyRole || '')} · Level ${ch.level} · ${MAGIC_LABEL[c.magicCost] || ''}</div></div>
-      <div class="kv">${cf('character.hp', 'HP', 'number')}${cf('character.maxHp', 'Max HP', 'number')}</div>
+        <div class="hint">${esc(ch.storyRole || '')} · Level ${ch.level} · ${MAGIC_LABEL[c.magicCost] || ''} · ${esc(ratingTag(c))}${AGE.isProtected(ch) ? ' · Protected' : ''}</div></div>
+      <div class="kv">${cf('character.hp', 'HP', 'number')}${cf('character.maxHp', 'Max HP', 'number')}${cf('character.age', 'Age', 'number')}</div>
+      ${AGE.isMinor(ch) ? '<p class="hint">Under 18: this character is always protected, whatever the rating.</p>' : ''}
+      <label class="chk"><input type="checkbox" data-cbind="character.protected" ${AGE.isProtected(ch) ? 'checked' : ''} ${AGE.isMinor(ch) ? 'disabled' : ''}> <span>${AGE.isMinor(ch) ? 'Protected: this character is under 18, so this cannot be turned off' : 'Protect this character: no sexual content or explicit pictures of them, whatever their age'}</span></label>
       <div class="kv">${cf('character.gold', 'Gold', 'number')}<label class="f"><span>Banked</span><div class="row" style="padding:10px 0"><b>${ch.ep}</b> EP · <b>${ch.tp}</b> TP</div></label></div>
       <label class="f"><span>Stats (raised with EP at level-ups)</span></label>
       <div class="statgrid">${STATS.map(k => `<div class="stat" title="${esc(STAT_DESC[k])}"><b>${SN(k)}</b><div class="v">${ch.stats[k]}</div><div class="mod">${fmt(mod(ch.stats[k]))}</div></div>`).join('')}</div>
@@ -101,7 +103,7 @@ function journalHTML() {
   else {
     const cf = (path, label, rows = 0) => rows ? `<label class="f"><span>${label}</span><textarea rows="${rows}" data-cbind="${path}">${esc(getPath(c, path) || '')}</textarea></label>` : `<label class="f"><span>${label}</span><input type="text" data-cbind="${path}" value="${esc(getPath(c, path) || '')}"></label>`;
     body = cf('title', 'Title') + cf('genre', 'Genre / setting') + cf('premise', 'Premise', 5) + cf('tone', 'Tone')
-      + `<div class="kv"><label class="f"><span>Content rating</span><select data-cbind="rating">${RATINGS.map(r => `<option ${c.rating === r ? 'selected' : ''}>${r}</option>`).join('')}</select></label>
+      + `<div class="kv"><label class="f"><span>Content rating</span><select data-cbind="rating">${RATINGS.map(r => `<option value="${r}" ${normRating(c.rating) === r ? 'selected' : ''}>${RATING_LABEL[r]}</option>`).join('')}</select><span class="hint" style="margin-top:4px">${esc(RATING_BLURB[normRating(c.rating)])}</span></label>
          <label class="f"><span>Magic cost</span><select data-cbind="magicCost">${Object.entries(MAGIC_LABEL).map(([k, v]) => `<option value="${k}" ${c.magicCost === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>`
       + `<div class="kv"><label class="f"><span>GM personality</span><select data-cbind="gm.preset">${Object.entries(GM_PRESETS).map(([k, v]) => `<option value="${k}" ${(c.gm?.preset || 'storyteller') === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>${cf('gm.name', 'GM name')}</div>`
       + (c.gm?.preset === 'custom' ? cf('gm.style', 'Describe your GM', 2) : `<p class="hint">${esc(GM_PRESETS[c.gm?.preset || 'storyteller']?.style || '')}</p>`)

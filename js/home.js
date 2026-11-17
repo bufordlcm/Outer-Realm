@@ -63,6 +63,16 @@ function renderLibrary() {
 }
 
 /* ---------- My Games ---------- */
+/* when the mode tab, the rating filter and the search between them hide every game, say which ones did it */
+function emptyGamesMsg(filt, rf, q) {
+  const mode = { solo: 'Single player', mp: 'Multiplayer', companion: 'Companion' }[filt] || '';
+  let msg = 'No';
+  if (rf !== 'all') msg += ` ${rf}`;
+  msg += ' games';
+  if (q) msg += ` match "${esc(q)}"`;
+  if (mode) msg += ` in ${mode} mode`;
+  return msg + '.';
+}
 function gamesHTML() {
   const filt = S.gameFilter || 'all';
   const q = String(S.gameQ || '').toLowerCase();
@@ -71,17 +81,23 @@ function gamesHTML() {
       <h1>Your story starts with a single choice.</h1>
       <p>Pick a ready-made world or build your own. Your Game Master runs on your own AI: no turn limits, no filters.</p>
       <div class="row center"><button class="btn white lg" data-act="new">${icon('play')} Start new game</button><button class="btn lg" data-act="htab" data-t="discover">${icon('compass')} Browse campaigns</button></div></section>`;
-  const list = all.filter(c => (filt === 'all' || (filt === 'solo' ? !c.mode || c.mode === 'solo' : c.mode === filt)) && (!q || `${c.title} ${c.character?.name}`.toLowerCase().includes(q)));
+  const rf = S.ratingFilter && RATINGS.includes(S.ratingFilter) ? S.ratingFilter : 'all';
+  const list = all.filter(c => (filt === 'all' || (filt === 'solo' ? !c.mode || c.mode === 'solo' : c.mode === filt))
+    && (rf === 'all' || normRating(c.rating) === rf)
+    && (!q || `${c.title} ${c.character?.name} ${normRating(c.rating)} ${RATING_LABEL[normRating(c.rating)]} ${RATING_BLURB[normRating(c.rating)]}`.toLowerCase().includes(q)));
   const sel = S.campaigns[S.gameSel] && list.includes(S.campaigns[S.gameSel]) ? S.campaigns[S.gameSel] : list[0];
   return `<div class="hhead"><h1>My Games</h1>
-      <div class="seg">${[['all', 'All'], ['solo', 'Single player'], ['mp', 'Multiplayer'], ['companion', 'Companion']].map(([k, l]) => `<button class="${filt === k ? 'on' : ''}" data-act="gfilter" data-k="${k}">${l}</button>`).join('')}</div></div>
+      <div class="row wrap" style="gap:8px;align-items:center">
+        <select id="ratingFilter" aria-label="Filter by content rating" style="width:auto" title="Show only one content rating">${[['all', 'All ratings'], ...RATINGS.map(r => [r, RATING_LABEL[r]])].map(([v, l]) => `<option value="${v}" ${rf === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <div class="seg">${[['all', 'All'], ['solo', 'Single player'], ['mp', 'Multiplayer'], ['companion', 'Companion']].map(([k, l]) => `<button class="${filt === k ? 'on' : ''}" data-act="gfilter" data-k="${k}">${l}</button>`).join('')}</div>
+      </div></div>
     <div class="gamesplit">
       <div class="glist panelbox">
         <label class="search">${icon('search')}<input type="search" id="gameQ" placeholder="Search" value="${esc(S.gameQ || '')}"></label>
         ${list.length ? list.map(c => `<button class="gamerow ${c === sel ? 'on' : ''}" data-act="gsel" data-id="${c.id}">
             <span class="gthumb">${imgTag(coverOf(c)) || initial(c.title)}</span>
-            <span class="grow"><b>${esc(c.title)}${c.character?.name && c.mode !== 'companion' ? ', ' + esc(c.character.name) : ''}</b><small>${gameKind(c)} · played ${esc(ago(c.updatedAt))}</small></span>
-            <span class="chev">›</span></button>`).join('') : '<p class="empty">Nothing matches.</p>'}
+            <span class="grow"><b>${esc(c.title)}${c.character?.name && c.mode !== 'companion' ? ', ' + esc(c.character.name) : ''}</b><small>${gameKind(c)} · ${esc(normRating(c.rating))} · played ${esc(ago(c.updatedAt))}</small></span>
+            <span class="chev">›</span></button>`).join('') : `<p class="empty">${emptyGamesMsg(filt, rf, q)}</p>`}
       </div>
       ${sel ? gamePreviewHTML(sel) : '<div class="gprev panelbox"></div>'}
     </div>`;
@@ -91,6 +107,7 @@ function gamePreviewHTML(c) {
   const party = c.mode === 'mp' && arr(c.players).length > 1 ? c.players : [ch];
   return `<div class="gprev panelbox">
     <h2>${esc(c.title)}</h2>
+    <p class="hint" style="margin:2px 0 10px">${esc(ratingTag(c))} · ${esc(RATING_BLURB[normRating(c.rating)])}</p>
     <div class="lbl">${icon('scroll')} Current situation</div>
     <div class="situ">${esc(situationOf(c)).replace(/\n\n/g, '</p><p>').replace(/^/, '<p>') + '</p>'}</div>
     <div class="lbl">${icon('person')} ${c.mode === 'companion' ? 'You' : party.length > 1 ? 'Characters' : 'Character'}</div>
@@ -119,12 +136,22 @@ function discoverHTML() {
 function charsHTML() {
   const rows = [];
   for (const c of allGames()) for (const p of (c.mode === 'mp' && arr(c.players).length ? c.players : [c.character])) if (p?.name) rows.push({ p, c });
-  return `<div class="hhead"><h1>My Characters <span class="count">${rows.length}</span></h1><button class="btn" data-act="new">${icon('plus')} Create character</button></div>
-    ${rows.length ? `<div class="pcards">${rows.map(({ p, c }) => { const pct = p.maxHp ? Math.round(p.hp / p.maxHp * 100) : 0; return `<button class="pcard" data-act="open" data-id="${c.id}">
+  const rf = S.ratingFilter && RATINGS.includes(S.ratingFilter) ? S.ratingFilter : 'all';
+  const pf = S.protFilter === 'protected' || S.protFilter === 'open' ? S.protFilter : 'all';
+  const list = (rf === 'all' ? rows : rows.filter(r => normRating(r.c.rating) === rf))
+    .filter(r => pf === 'all' || (pf === 'protected' ? AGE.isProtected(r.p) : !AGE.isProtected(r.p)));
+  const emptyMsg = rows.length ? `No ${pf !== 'all' ? (pf === 'protected' ? 'protected' : 'open') + ' ' : ''}characters${rf !== 'all' ? ' at ' + rf : ''}.` : 'Characters you play show up here.';
+  return `<div class="hhead"><h1>My Characters <span class="count">${list.length}</span></h1>
+    <div class="row wrap" style="gap:8px;align-items:center">
+      <select id="ratingFilter" aria-label="Filter by content rating" style="width:auto" title="Show only characters from games with one content rating">${[['all', 'All ratings'], ...RATINGS.map(r => [r, RATING_LABEL[r]])].map(([v, l]) => `<option value="${v}" ${rf === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <select id="protFilter" aria-label="Filter by protection" style="width:auto" title="Show only protected or open characters">${[['all', 'All characters'], ['protected', '🔒 Protected only'], ['open', 'Open only']].map(([v, l]) => `<option value="${v}" ${pf === v ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <button class="btn" data-act="new">${icon('plus')} Create character</button>
+    </div></div>
+    ${list.length ? `<div class="pcards">${list.map(({ p, c }) => { const pct = p.maxHp ? Math.round(p.hp / p.maxHp * 100) : 0; return `<button class="pcard" data-act="open" data-id="${c.id}">
         <div class="pimg">${imgTag(portraitOf(p, c), '', p.name) || `<span class="ph">${initial(p.name)}</span>`}</div>
         <div class="pbody"><b>${esc(p.name)}</b><small>${esc(p.storyRole || '')}</small>
           ${c.mode === 'companion' ? '' : `<div class="stats"><span>Lvl ${p.level || 1}</span><span>${icon('heart')} ${p.hp}/${p.maxHp}</span><span>${p.gold ?? 0} gold</span></div><div class="bar"><i style="width:${pct}%"></i></div>`}
-          <div class="in">in ${esc(c.title)}</div></div></button>`; }).join('')}</div>` : '<p class="empty">Characters you play show up here.</p>'}`;
+          <div class="in">in ${esc(c.title)} · ${esc(normRating(c.rating))}${AGE.isProtected(p) ? ` · 🔒 ${AGE.isMinor(p) ? 'Under 18' : 'Protected'}` : ' · Open'}</div></div></button>`; }).join('')}</div>` : `<p class="empty">${emptyMsg}</p>`}`;
 }
 
 /* the Gallery (grouped by story or chat) and the large picture view are in pics.js */
@@ -143,4 +170,6 @@ function homeAction(act, el) {
 }
 document.addEventListener('input', e => {
   if (e.target.id === 'gameQ') { S.gameQ = e.target.value; const pos = e.target.selectionStart; renderLibrary(); const i = $('#gameQ'); if (i) { i.focus(); i.setSelectionRange(pos, pos); } }
+  else if (e.target.id === 'ratingFilter') { S.ratingFilter = e.target.value; renderLibrary(); }
+  else if (e.target.id === 'protFilter') { S.protFilter = e.target.value; renderLibrary(); }
 });

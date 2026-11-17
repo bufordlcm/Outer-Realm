@@ -69,13 +69,9 @@ function personaOf(ch, p) {
 const meName = (ch, p) => (personaOf(ch, p)?.name || '').trim() || 'you';
 const sexWord = x => x?.sex === 'female' ? 'female' : x?.sex === 'male' ? 'male' : '';
 
-/* a companion under 18 (by age or by how they're described) is always platonic: no romance, no 18+, safe pictures */
-const palMinor = p => !!p && (
-  (p.age != null && String(p.age).trim() !== '' && Number(p.age) < 10) ||
-  CHAR_MINOR.test([p.name, p.tagline, p.look, p.face, p.body, p.tags].join(' ')) ||
-  /* history and notes often mention the past ("as a teenager she…"), so that one word alone doesn't count there */
-  CHAR_MINOR.test([p.backstory, p.personality, p.scenario, p.userRole, p.notes].join(' ').replace(/\b(?:pre-?)?teen(?:s|ager|agers|aged?)?\b/gi, ' '))
-);
+/* a companion under 18 (by age or by how they're described) is always platonic: no romance, no 18+, safe pictures.
+   The rule itself lives in js/ageguard.js (AGE.isMinor) so pictures and chats can never disagree. */
+const palMinor = p => AGE.isMinor(p);
 const palStage = p => PAL_STAGES.find(s => s.k === p.stage) || PAL_STAGES[0];
 
 /* ---------- how a companion looks (used by the chat and by every picture) ---------- */
@@ -86,12 +82,13 @@ const palOutfitName = p => arr(p?.outfits).find(x => x.id === p.outfit)?.name ||
 /* the picture engine and voice engine expect a game; this is the companion's stand-in */
 function palCtx(p, chat) {
   const group = chat ? palsOf(chat) : [p];
-  const adultOK = group.every(x => x.adult && !palMinor(x));
+  /* per character: this picture is of p, so only p's own card and age decide it */
+  const adultOK = !!p.adult && !AGE.isProtected(p);
   const ctx = p._ctx || (Object.defineProperty(p, '_ctx', { value: {}, enumerable: false, writable: true }), p._ctx);
   const me = personaOf(chat, p);
   Object.assign(ctx, {
     id: 'pal_' + p.id, title: p.name, genre: '', premise: '', location: chat?.scene || '', artStyle: p.art || 'photorealistic, natural light, detailed',
-    rating: adultOK ? 'Adult (18+)' : 'PG-13', character: { name: meName(chat, p), appearance: [palLook(p), group.some(palMinor) ? 'under 18 years old' : ''].filter(Boolean).join(', '), backstory: '', storyRole: '' },
+    rating: adultOK ? 'M' : 'PG-13', character: { name: meName(chat, p), appearance: [palLook(p), AGE.isMinor(p) ? 'under 18 years old' : ''].filter(Boolean).join(', '), backstory: '', storyRole: '' },
     party: group, codex: [], voiceMap: chat ? (chat.voiceMap = chat.voiceMap || {}) : {}
   });
   return ctx;
@@ -263,7 +260,7 @@ const memSrcLabel = m => m.src === 'private' ? 'One-on-one' : m.src === 'manual'
 function palSystem(ch, to) {
   const ps = palsOf(ch); const group = ps.length > 1; const me = personaOf(ch); const you = meName(ch);
   const person = ch.channel === 'person';
-  const minors = ps.filter(palMinor); const adultAll = !minors.length && ps.every(p => p.adult);
+  const minors = ps.filter(palMinor); const adultAll = ps.every(p => p.adult && !AGE.isProtected(p));
   const gkey = 'group:' + ch.id;
   const style = p => { const s = person ? (p.speechPerson || p.speechText || p.speech) : (p.speechText || p.speech || p.speechPerson); const ex = person ? (p.exPerson || '') : (p.exText || '');
     return [s && `How ${first(p.name)} ${person ? 'talks in person' : 'texts'}: ${s}`, ex.trim() && `Examples of ${first(p.name)}'s ${person ? 'spoken lines' : 'texts'} (copy the style and rhythm, never reuse the words):\n${ex.trim().split('\n').filter(Boolean).slice(0, 8).map(l => '  > ' + l.trim()).join('\n')}`].filter(Boolean).join('\n'); };
@@ -301,7 +298,7 @@ function palSystem(ch, to) {
     `Stay fully in character as a real person with your own life, moods, opinions and memory. Never mention being an AI, a model or a story. Be warm and engaging, follow ${you}'s lead, and also bring your own ideas, questions, feelings and plans so the conversation goes somewhere. React to what ${you} actually said. Don't repeat yourself.`,
     `Never write ${you}'s words, actions, thoughts or feelings. Only your own.`,
     `If ${you} writes something in ((double brackets)), it is a direction from the player about the story or your behaviour: follow it without commenting on it. In ${you}'s messages, *text in asterisks* is something ${you} does and "text in quotes" is something ${you} says out loud.`,
-    minors.length ? `Keep everything wholesome and age-appropriate: ${minors.map(p => p.name).join(', ')} ${minors.length > 1 ? 'are minors' : 'is a minor'}. No romance, flirting or sexual content of any kind.` : adultAll ? `This is an adults-only app and every character is an adult (18+). Romantic and sexual content is allowed when the relationship and the moment lead there and ${you} wants it; follow ${you}'s lead and stay within the hard limits.` : `Keep things PG-13: affection and flirting are fine, nothing explicit.`,
+    minors.length ? `Keep everything wholesome and age-appropriate: ${minors.map(p => p.name).join(', ')} ${minors.length > 1 ? 'are minors' : 'is a minor'}. No romance, flirting or sexual content of any kind.` : contentRules(adultAll ? 'M' : 'PG-13', { character: ps[0], party: ps }),
     '', ...ps.map(desc), '',
     shared.length ? `WHAT EVERYONE IN THIS GROUP KNOWS:\n${shared.map(m => '- ' + m.t).join('\n')}` : '',
     late.length ? late.map(p => `${p.name} joined this chat later and knows nothing that was said here before she joined.`).join(' ') : '',

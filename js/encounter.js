@@ -249,7 +249,7 @@ async function encGM(c, what, signal, o = {}) {
 - "react": when something comes straight at ${ch.name} and they must react at once (a tackler closing in, a shot at their goal), stop before it resolves and set {"what":"under 10 words","stat":"DEX","dc":14}. Otherwise null.
 - "over": null while it goes on; the app ends the contest after the last period.`;
   const raw = await chat([
-    { role: 'system', content: `${personaText(c)}\nYou are running ONE ${fight ? 'fight' : 'contest'} turn by turn. THE GOLDEN RULE: never write ${ch.name}'s words, actions, decisions, thoughts or feelings beyond the move the player made. Other characters speak in their own voices: put the speaker's name in braces before each quote, like {Name}"Words." Keep it tight and physical. Content rating: ${c.rating || 'PG-13'} — ${RATING_RULES[c.rating] || RATING_RULES['PG-13']}\nReply with JSON only:\n${spec}` },
+    { role: 'system', content: `${personaText(c)}\nYou are running ONE ${fight ? 'fight' : 'contest'} turn by turn. THE GOLDEN RULE: never write ${ch.name}'s words, actions, decisions, thoughts or feelings beyond the move the player made. Other characters speak in their own voices: put the speaker's name in braces before each quote, like {Name}"Words." Keep it tight and physical. Content rating: ${c.rating || 'PG-13'} — ${contentRules(c.rating, c)}\nReply with JSON only:\n${spec}` },
     { role: 'user', content: `CHARACTER:\n${sheetBrief(c)}\n\n${encStateText(c)}\n\nSO FAR IN THIS ENCOUNTER:\n${encRecent(e, 5)}\n\nNOW:\n${what}` }
   ], { stream: false, signal, maxTokens: 480, temperature: 0.8, json: true });
   const clean = stripThink(raw).trim(); let j = tryJSON(clean);
