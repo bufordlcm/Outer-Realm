@@ -380,7 +380,8 @@ function settingsHTML() {
       <label class="f"><span>Also sync after this long with no activity</span><select data-bind="drive.idleSync">${[[0, 'Off'], [5, 'Every 5 minutes'], [20, 'Every 20 minutes'], [60, 'Every hour']].map(([v, l]) => `<option value="${v}" ${num(S.settings.drive.idleSync) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <p class="hint">Keys: put a file named <b>ironquill-keys…</b> in the folder (or use Settings → Story AI → Save keys to Drive) and every device loads your AI keys when it connects.</p>
       <div class="row" style="margin-top:16px"><button class="btn gold" data-act="sync">${icon('cloud')} ${Drive.valid() ? 'Sync now' : 'Connect & sync'}</button>${Drive.valid() || LS.get('iq.driveok', false) ? `<button class="btn ghost" data-act="drivedisc">Disconnect</button>` : ''}</div>
-      <p class="hint" id="driveStatus">${esc(S.syncStatus || (Drive.valid() ? 'Connected.' : 'Not connected.'))}</p>`;
+      <p class="hint" id="driveStatus">${esc(S.syncStatus || (Drive.valid() ? 'Connected.' : 'Not connected.'))}</p>
+      ${Drive.valid() && S.driveAs ? `<p class="hint">Signed in as <b>${esc(S.driveAs)}</b>.</p>` : ''}`;
   } else {
     body = `<label class="f"><span>Text size (stories and companion chats)</span><input type="range" min="14" max="24" step="1" data-bind="ui.narr" value="${S.settings.ui.narr}" style="width:100%;accent-color:var(--gold)"></label>
       <label class="f"><span>Empty bar at the bottom of the screen (keeps the Netlify banner off the Send button)</span><select data-bind="ui.bottomGap"><option value="phone" ${(S.settings.ui.bottomGap || 'phone') === 'phone' ? 'selected' : ''}>On phones only</option><option value="always" ${S.settings.ui.bottomGap === 'always' ? 'selected' : ''}>Always</option><option value="off" ${S.settings.ui.bottomGap === 'off' ? 'selected' : ''}>Off</option></select></label>

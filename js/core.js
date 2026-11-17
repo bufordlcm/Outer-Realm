@@ -6,7 +6,9 @@
    ========================================================================= */
 
 const APP = 'Outer Realm';
-const DEFAULT_DRIVE_FOLDER = 'https://drive.google.com/drive/folders/1OmcF_QlkQbFngOgVjhxDZuYh6OeBkDeN';   /* Iron Quill Stories, michael@bufordlcm.com */
+const DEFAULT_DRIVE_FOLDER = 'https://drive.google.com/drive/folders/1H7jtaAPFoch12ejohaDg60VA-kb55xDF';   /* Iron Quill Stories */
+/* the folder this app used before; a saved setting still pointing there is moved to the current default */
+const LEGACY_DRIVE_FOLDER = '1OmcF_QlkQbFngOgVjhxDZuYh6OeBkDeN';
 const OLD_DRIVE_FOLDERS = ['1aWDwaZMkUamrvVr7u8ErpXrJfdkXivEr'];
 const INDEX_FILE = '_ironquill-index.json';
 const KEYS_FILE = 'ironquill-keys.json';

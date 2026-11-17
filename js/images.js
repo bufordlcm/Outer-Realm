@@ -391,17 +391,35 @@ const Drive = {
     return new Promise((res, rej) => {
       const client = google.accounts.oauth2.initTokenClient({
         client_id: cid, scope: 'https://www.googleapis.com/auth/drive',
-        callback: r => { if (r.error) return rej(new Error(r.error_description || r.error)); this.token = r.access_token; this.exp = Date.now() + (num(r.expires_in) || 3600) * 1000; LS.set('iq.drivetoken', { token: this.token, exp: this.exp }); LS.set('iq.driveok', true); res(this.token); },
+        callback: r => { if (r.error) return rej(new Error(r.error_description || r.error)); this.token = r.access_token; this.exp = Date.now() + (num(r.expires_in) || 3600) * 1000; LS.set('iq.drivetoken', { token: this.token, exp: this.exp }); LS.set('iq.driveok', true); this.who(); res(this.token); },
         error_callback: e => rej(new Error(e?.type === 'popup_closed' ? 'Google sign-in was closed.' : (e?.message || 'Google sign-in failed — allow pop-ups for this site.')))
       });
       client.requestAccessToken({ prompt: LS.get('iq.driveok', false) ? '' : 'consent' });
     });
+  },
+  /* which Google account this session belongs to, so a permissions error can name it */
+  async who() {
+    if (!this.valid()) return S.driveAs || '';
+    try {
+      const r = await fetch('https://oauth2.googleapis.com/tokeninfo?access_token=' + encodeURIComponent(this.token));
+      if (!r.ok) return S.driveAs || '';
+      const j = await r.json(); if (j.email) S.driveAs = j.email;
+      return S.driveAs || '';
+    } catch { return S.driveAs || ''; }
   },
   disconnect() { try { if (this.token && window.google?.accounts?.oauth2) google.accounts.oauth2.revoke(this.token, () => {}); } catch {} this.token = null; this.exp = 0; this.files = {}; localStorage.removeItem('iq.drivetoken'); localStorage.removeItem('iq.driveok'); },
   async api(url, opts = {}) {
     const r = await fetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: 'Bearer ' + this.token } });
     if (r.status === 401) { this.token = null; localStorage.removeItem('iq.drivetoken'); throw new Error('Drive session expired — tap Sync to reconnect.'); }
     if (r.status === 404) throw new Error('Drive folder not found — check the folder link in Settings and that it belongs to the account you signed in with.');
+    if (r.status === 403) {
+      let t = ''; try { t = await r.text(); } catch {}
+      let reason = ''; try { reason = JSON.parse(t)?.error?.errors?.[0]?.reason || ''; } catch {}
+      const denied = /insufficientPermissions|forbidden|notAuthorized|appNotAuthorized/i.test(reason + ' ' + t);
+      const hint = denied ? ' Google will not let this account edit that item: the folder, or a file inside it, probably belongs to another Google account, or was shared with you as Viewer instead of Editor.' : '';
+      const who = S.driveAs ? ` Signed in as ${S.driveAs}.` : '';
+      throw new Error(`Drive refused that change (403${reason ? ' ' + reason : ''}).${hint}${who} Sign in with the folder's owner, or paste a link to a folder you own, then tap Sync.`);
+    }
     if (!r.ok) { let t = ''; try { t = await r.text(); } catch {} throw new Error(`Drive error ${r.status}: ${t.slice(0, 200)}`); }
     return r;
   },
@@ -614,7 +632,7 @@ function mergeIn(remote) {   /* backup files */
 async function syncNow(interactive) {
   if (S.syncing) { S.resync = true; return; }
   if (!Drive.configured()) { if (interactive) { toast('Add your Google Client ID and folder link first.'); openModal('settings', 'drive'); } return; }
-  S.syncing = true; setSync('Syncing…');
+  S.syncing = true; setSync('Syncing…'); Drive.who();
   try {
     await Drive.connect(interactive);
     const root = Drive.root();

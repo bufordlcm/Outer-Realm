@@ -253,6 +253,7 @@ document.addEventListener('input', e => {
     const v = el.type === 'checkbox' ? el.checked : el.type === 'number' || el.type === 'range' ? Number(el.value) : el.value;
     setPath(S.settings, el.dataset.bind, v); if (el.dataset.bind === 'ai.helperModel') S.settings.ai.helperAuto = v ? '' : 'off'; saveSettings();
     if (['drive.idleSync', 'drive.autoSync'].includes(el.dataset.bind)) armIdleSync();   /* take effect straight away */
+    if (el.dataset.bind === 'drive.folder') { Drive.files = {}; DriveImg.index = null; DriveImg.folder = null; DriveImg.loading = null; DriveImg.dirs = {}; }   /* forget ids cached from the old folder */
     if (el.dataset.bind === 'image.refWeight') { const sv = el.closest('label')?.querySelector('.sval'); if (sv) sv.textContent = Math.round(v * 100) + '%'; }
     if (/^ui\.(music|amb|voiceVol|narr)/.test(el.dataset.bind)) { musicScene(cur()); musicLevel(); voiceLevel(); const sv = el.closest('label')?.querySelector('.sval'); if (sv) sv.textContent = el.dataset.bind === 'ui.narr' ? v + 'px' : pct(v); }
     if (el.tagName === 'SELECT' || el.dataset.bind === 'drive.folder') { if (el.tagName === 'SELECT') renderModal(); else { const h = el.closest('label')?.nextElementSibling; if (h && h.classList.contains('hint')) { const fid = folderIdFrom(el.value); h.innerHTML = fid ? `Folder ID: <code>${esc(fid)}</code>` : '<span style="color:var(--red)">Paste a Google Drive folder link.</span>'; } } }
@@ -320,7 +321,10 @@ document.addEventListener('visibilitychange', () => {
 /* ---------- boot ---------- */
 (function boot() {
   if (!S.settings.image.v2) { S.settings.image.v2 = true; if (S.settings.image.size === 'landscape') S.settings.image.size = 'square'; if (S.settings.image.forgePreset === 'lightning') S.settings.image.forgePreset = 'auto'; LS.set('iq.settings', S.settings); }
-  applyUI(); Drive.init(); saveCampaigns();
+  applyUI();
+  /* a saved settings file still pointing at the old built-in folder moves to the current one */
+  if (folderIdFrom(S.settings.drive.folder) === LEGACY_DRIVE_FOLDER) { S.settings.drive.folder = DEFAULT_DRIVE_FOLDER; saveSettings(false); }
+  Drive.init(); saveCampaigns();
   const last = LS.get('iq.active', null);
   renderLibrary();   /* always open on Home; the Continue button resumes the last story */
   if (!isPhone() && !conns().some(c => c.preset === 'ollama') && (!LS.get('iq.ollamaProbed', false) || !textReady())) {
