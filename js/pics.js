@@ -292,7 +292,7 @@ Base it on what is actually happening in the chat at this moment: where they are
 "wearing": what ${first(p.name)} is wearing in this exact moment if the chat makes it different from the usual outfit (${palOutfit(p) || 'not set'}); otherwise "".
 "you_in_frame": true only if ${you} is clearly in the picture too.
 "caption": ${selfie ? `the short message ${first(p.name)} sends with the selfie, in ${p.sex === 'male' ? 'his' : 'her'} own voice` : '""'}.
-${guarded ? 'IMPORTANT: someone in this picture is under 18 or protected. The picture is wholesome and fully clothed, nothing suggestive.' : adult ? 'This is an adults-only chat between adults; follow where the chat actually is.' : 'Keep it PG-13: fully clothed, nothing explicit.'}
+${guarded ? 'IMPORTANT: someone in this picture is under 16 or protected. The picture is wholesome and fully clothed, nothing suggestive.' : adult ? 'This is an adults-only chat between adults; follow where the chat actually is.' : 'Keep it PG-13: fully clothed, nothing explicit.'}
 ${user ? `THE PLAYER ASKED FOR THIS IN THE PICTURE (it must be shown): ${user}` : ''}
 Reply with JSON only: {"prompt":"","wearing":"","you_in_frame":false,"caption":""}` },
         { role: 'user', content: `${ch.scene ? `WHERE THEY ARE: ${ch.scene}\n` : ''}${ch.channel === 'person' ? 'They are together in person.' : 'They are texting, not in the same place.'}\n\nTHE CHAT RIGHT NOW:\n${recent || '(just starting)'}` }
