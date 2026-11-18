@@ -72,7 +72,7 @@ function personaOf(ch, p) {
 const meName = (ch, p) => (personaOf(ch, p)?.name || '').trim() || 'you';
 const sexWord = x => x?.sex === 'female' ? 'female' : x?.sex === 'male' ? 'male' : '';
 
-/* a companion under 16 (by age or by how they're described) is always platonic: no romance, safe pictures.
+/* a companion under 18 (by age or by how they're described) is always platonic: no romance, no 18+, safe pictures.
    The rule itself lives in js/ageguard.js (AGE.isMinor) so pictures and chats can never disagree. */
 const palMinor = p => AGE.isMinor(p);
 const palStage = p => PAL_STAGES.find(s => s.k === p.stage) || PAL_STAGES[0];
@@ -322,13 +322,18 @@ function palStartChat(ids) {
   const ex = palChats().find(ch => ch.palIds.length === ids.length && ids.every(id => ch.palIds.includes(id)));
   if (ex) return palOpenChat(ex.id);
   const ps = ids.map(id => PALS.pals[id]).filter(Boolean); if (!ps.length) return;
-  const ch = { id: uid(), palIds: ids, title: ps.length > 1 ? ps.map(p => p.name).join(', ') : '', channel: 'text', scene: '', length: 'normal', to: 'all', messages: [], memTurns: 0, createdAt: Date.now(), updatedAt: Date.now() };
+  /* a new chat starts by asking whether it is texting or in person */
+  const ch = { id: uid(), palIds: ids, title: ps.length > 1 ? ps.map(p => p.name).join(', ') : '', channel: '', scene: '', length: 'normal', to: 'all', messages: [], memTurns: 0, createdAt: Date.now(), updatedAt: Date.now() };
   PALS.chats[ch.id] = ch;
   for (const p of ps) if (p.greeting && ps.length === 1) ch.messages.push({ id: uid(), role: 'pal', who: p.id, text: p.greeting, mode: 'text', t: Date.now() });
   palTouch(ch); savePals(); palOpenChat(ch.id);
-  if (!ch.messages.length) palReply(ch, { opener: true });
 }
-function palOpenChat(id) { S.palChat = id; S.view = 'palchat'; S.palEdit = null; S.palMenu = false; renderPalChat(); }
+function palOpenChat(id) {
+  const ch = PALS.chats[id];
+  /* no channel yet (a brand-new chat): choose texting or in person first */
+  if (ch && !ch.channel) { S.palSetupChat = id; openModal('palchan'); return; }
+  S.palChat = id; S.view = 'palchat'; S.palEdit = null; S.palMenu = false; renderPalChat();
+}
 const palTo = ch => { const ps = palsOf(ch); return ps.length < 2 ? ps[0] || null : ps.find(p => p.id === ch.to) || 'all'; };
 const first = n => String(n || '').trim().split(/\s+/)[0];
 function renderPalChat() {
@@ -349,7 +354,7 @@ function renderPalChat() {
     <div class="palcomp">
       ${ps.length > 1 ? `<div class="palto"><span>To:</span><button class="chip ${to === 'all' ? 'on' : ''}" data-act="palto" data-id="all">Everyone</button>${ps.map(p => `<button class="chip ${to !== 'all' && to?.id === p.id ? 'on' : ''}" data-act="palto" data-id="${p.id}">${palAvatar(p, 'pav xs')}${esc(first(p.name))}</button>`).join('')}</div>` : ''}
       <div class="palquick"><button class="fmtbtn" data-act="palfmt" data-k="act" title="What you do">✋ Action</button><button class="fmtbtn" data-act="palfmt" data-k="say" title="What you say out loud">💬 Say</button><button class="fmtbtn" data-act="palfmt" data-k="ooc" title="Out of character: steer the story">(( )) Direct the story</button>
-        ${picsOn && selfieOf ? `<button class="chip" data-act="palquick" data-k="selfie">📷 Ask ${one ? '' : esc(first(selfieOf.name)) + ' '}for a selfie</button>` : ''}${picsOn ? '<button class="chip" data-act="palquick" data-k="scene">🎨 Picture the scene</button><button class="chip" data-act="palpicopen">🖼 Picture with my prompt</button>' : ''}<button class="chip" data-act="palwear">👗 Outfit</button><button class="chip" data-act="palplace">📍 Location</button><button class="chip" data-act="palquick" data-k="cont">↪ Keep going</button></div>
+        ${picsOn && selfieOf ? `<button class="chip" data-act="palquick" data-k="selfie">📷 Ask ${one ? '' : esc(first(selfieOf.name)) + ' '}for a selfie</button>` : ''}${picsOn ? '<button class="chip" data-act="palquick" data-k="scene">🎨 Picture the scene</button><button class="chip" data-act="palpicopen">🖼 Picture with my prompt</button>' : ''}${S.settings.net?.on !== false ? '<button class="chip" data-act="pallookup">🔎 Look something up</button>' : ''}<button class="chip" data-act="palwear">👗 Outfit</button><button class="chip" data-act="palplace">📍 Location</button><button class="chip" data-act="palquick" data-k="cont">↪ Keep going</button></div>
       <div class="palin"><textarea id="palInput" rows="1" placeholder="${person ? '*Smile* and say something, or describe what you do…' : 'Message ' + esc(one ? one.name : to === 'all' ? 'everyone' : first(to.name)) + '…'}"></textarea>
       ${S.palBusy ? `<button class="btn" data-act="palstop">${icon('stop')}</button>` : `<button class="btn gold" data-act="palsend">${icon('send')}</button>`}</div>
     </div></div>`;
@@ -410,7 +415,7 @@ function palLogHTML(ch) {
     }
     html += one(m, m.text, m.role === 'user' ? null : palWho(ch, m));
   }
-  if (S.palBusy && S.palBusy.chat === ch.id && !msgs.some(m => m.streaming)) html += `<div class="pmsg txt them"><div class="brow"><div class="bub typing"><i></i><i></i><i></i></div></div></div>`;
+  if (S.palBusy && S.palBusy.chat === ch.id && !msgs.some(m => m.streaming)) html += `<div class="pmsg txt them"><div class="brow"><div class="bub typing">${S.palBusy.looking ? `<span class="hint" style="margin:0">🔎 Looking up ${esc(S.palBusy.looking === '…' ? 'something' : S.palBusy.looking)}…</span>` : '<i></i><i></i><i></i>'}</div></div></div>`;
   return html || `<p class="hint" style="text-align:center;margin-top:40px">Say hi.</p>`;
 }
 function paintPalLog() { const ch = curChat(); const log = $('#pallog'); if (!ch || !log || S.view !== 'palchat') return; const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 120; log.innerHTML = palLogHTML(ch); if (atEnd) log.scrollTop = log.scrollHeight; }
@@ -465,9 +470,11 @@ function palSystem(ch, to) {
     const gap = prev ? Date.now() - prev.t : 0; const h = gap / 36e5;
     now = `THE REAL TIME NOW: ${d0.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' })}, ${d0.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.${prev ? ` The last message before this one was ${h < 0.25 ? 'moments ago' : h < 1.5 ? 'about an hour ago' : h < 20 ? `about ${Math.round(h)} hours ago` : h < 36 ? 'yesterday' : `${Math.round(h / 24)} days ago`}.` : ''} Let the time of day and the gap show naturally (a late-night text, a "where have you been?"), without announcing them.`;
   }
+  /* the model gets its own last lines spelled out, so it cannot claim it forgot them and deliver the same thing again */
+  const said = arr(ch.messages).filter(m => m.role === 'pal' && String(m.text || '').trim() && !m.streaming).slice(-3).map(m => String(m.text).replace(/\s+/g, ' ').trim().slice(0, 160));
   const sys = [
     `You are ${group ? 'playing several characters in a group conversation' : `${ps[0].name}`} in a private roleplay and companion app, talking with ${you}${sexWord(me) ? ` (${sexWord(me)})` : ''}.${me?.about ? ` About ${you}: ${me.about}` : ''}${me?.look ? ` ${you} looks like this: ${me.look}` : ''}`,
-    `Stay fully in character as a real person with your own life, moods, opinions and memory. Never mention being an AI, a model or a story. Be warm and engaging, follow ${you}'s lead, and also bring your own ideas, questions, feelings and plans so the conversation goes somewhere. React to what ${you} actually said. Don't repeat yourself.`,
+    `Stay fully in character as a real person with your own life, moods, opinions and memory. Never mention being an AI, a model or a story. Be warm and engaging, follow ${you}'s lead, and also bring your own ideas, questions, feelings and plans so the conversation goes somewhere. React to what ${you} actually said. Don't repeat yourself: never reuse a sentence, phrase, joke, greeting or question you have already used, never open two replies the same way, and never say the same thing twice in one reply.`,
     `Never write ${you}'s words, actions, thoughts or feelings. Only your own.`,
     `If ${you} writes something in ((double brackets)), it is a direction from the player about the story or your behaviour: follow it without commenting on it. In ${you}'s messages, *text in asterisks* is something ${you} does and "text in quotes" is something ${you} says out loud.`,
     minors.length ? `Keep everything wholesome and age-appropriate: ${minors.map(p => p.name).join(', ')} ${minors.length > 1 ? 'are minors' : 'is a minor'}. No romance, flirting or sexual content of any kind.` : contentRules(adultAll ? 'M' : 'PG-13', { character: ps[0], party: ps }),
@@ -477,6 +484,7 @@ function palSystem(ch, to) {
     palWorldBlock(ps),
     ch.scene ? `CURRENT SETTING: ${ch.scene}` : '',
     ch.summary ? `${group ? 'THIS GROUP\'S' : 'YOUR'} HISTORY TOGETHER SO FAR: ${ch.summary}` : '',
+    said.length ? `YOU HAVE ALREADY SAID THIS (your own most recent messages, newest last). Do not repeat these lines or their point, and do not ask a question you already asked; every reply must add something new:\n${said.map(l => '  > ' + l).join('\n')}` : '',
     now,
     person
       ? `RIGHT NOW YOU ARE TOGETHER IN PERSON. Write the moment as a roleplay scene from your side: *actions, expressions and body language in asterisks* mixed with your spoken dialogue in quotes, plus a little of the surroundings. ${PAL_LENGTHS[ch.length || 'normal'].rule || 'One to three short paragraphs.'} Leave room for ${you} to respond.`
@@ -487,6 +495,110 @@ FORMAT: start each character's part on a new line with her name in curly braces,
 {${ps[1].name}} ${person ? '"Be nice." *She waves you over.*' : 'be nice lol. hey you'}` : `Write only ${ps[0].name}'s own ${person ? 'actions and words' : 'messages'}. No name label in front.`
   ];
   return sys.filter(Boolean).join('\n');
+}
+/* ---------- looking things up, the way the GM can in a campaign ---------- */
+const palLore = ch => (ch.lore = ch.lore && typeof ch.lore === 'object' ? ch.lore : {});
+function palLoreNote(ch) {
+  /* one fact per lookup that actually found something; identical text from two questions is listed once */
+  const seen = new Set();
+  const facts = Object.values(palLore(ch)).filter(x => x && x.text).filter(x => {
+    const k = String(x.text).toLowerCase().replace(/\s+/g, ' ').trim();
+    if (seen.has(k)) return false; seen.add(k); return true;
+  }).slice(-4);
+  if (!facts.length) return '';
+  return '((FACTS THE APP LOOKED UP ONLINE (accurate; use what fits, in your own words, without mentioning searching): ' + facts.map(x => `${x.name}: ${x.text}`).join(' | ') + '))';
+}
+async function palLookup(ch, q, signal) {
+  q = String(q || '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  if (!q || S.settings.net?.on === false || !textReady()) return null;
+  const L = palLore(ch); const k = q.toLowerCase();
+  if (L[k]?.text) return L[k];
+  const { sources } = await gatherSources(q, { pages: 2, perPage: 3500 });
+  if (!sources.length) return null;
+  const raw = stripThink(await chat([
+    { role:'system', content:`Using ONLY the SOURCES, write 2-4 short sentences of facts about "${q}" that would matter in a conversation: who or what it is, key details, why people mention it. Plain sentences, no lists. If the sources don't clearly describe this exact thing, reply exactly NONE.` },
+    { role:'user', content: sourcesText(sources) }
+  ], { stream:false, maxTokens:260, temperature:0.2, helper:true, signal })).trim();
+  if (!raw || /^NONE\b/i.test(raw)) return null;
+  const entry = { name: q, text: raw.slice(0, 700), url: sources[0].url, src: sources[0].title, t: Date.now() };
+  L[k] = entry; palTouch(ch); savePals();
+  return entry;
+}
+/* ask a cheap helper whether the player's message needs the internet before the companion answers */
+async function palScout(ch, text, signal) {
+  const known = Object.values(palLore(ch)).map(x => x.name).slice(-30);
+  const ps = palsOf(ch);
+  const recent = ch.messages.filter(m => m.role !== 'sys' && String(m.text || '').trim()).slice(-8).map(m => `${m.role === 'user' ? meName(ch) : palWho(ch, m)?.name || ''}: ${m.text}`).join('\n');
+  const raw = await chat([
+    { role:'system', content:`You decide whether a companion in a private chat needs to look something up on the internet before answering well. Its own memory of real-world facts is unreliable.\nSEARCH when the message mentions or asks about something REAL or ESTABLISHED that needs accurate facts: a real place, city or building; a real person or historical figure; an event or period; real science, history, laws, sports, music, films, books, games, products or news; or a character, place or thing from an existing book, show, film or game.\nDON'T SEARCH for ordinary chat, feelings, plans, made-up names, or anything already known.\nAlready looked up: ${known.join(', ') || 'nothing yet'}.\nReply with JSON only:\n{"search":null}\nor {"search":"short search phrase, 2-6 words, the specific thing"}` },
+    { role:'user', content:`CHAT WITH: ${ps.map(p => p.name).join(', ')}${ch.scene ? `\nWHERE: ${ch.scene}` : ''}\n\nRECENT:\n${recent || '(just starting)'}\n\nTHE PLAYER'S MESSAGE NOW: ${text}` }
+  ], { stream:false, signal, maxTokens:60, temperature:0.1, helper:true, json:true });
+  const j = tryJSON(stripThink(raw));
+  const q = j && typeof j.search === 'string' ? j.search.trim().replace(/^["']|["']$/g, '').slice(0, 80) : '';
+  if (!q || q.length < 3 || /^(null|none)$/i.test(q)) return null;
+  return known.some(n => n.toLowerCase() === q.toLowerCase()) ? null : q;
+}
+/* ---------- living memory: read the whole chat back before answering ---------- */
+/* Two layers. Ch.recal is what is happening right now, rebuilt from the actual messages so a long chat
+   can never drift out of view; the lasting facts it finds are folded into what she remembers for good. */
+async function palRecall(ch, signal) {
+  const msgs = arr(ch.messages).filter(m => m.role !== 'sys' && String(m.text || '').trim());
+  const cached = ch.recall && ch.recall.text ? ch.recall : null;
+  if (msgs.length < 6 || !textReady() || signal?.aborted) return cached?.text || '';
+  /* fresh enough: rebuilt every couple of messages, so chatting stays quick */
+  if (cached && msgs.length - num(cached.n) < 2 && Date.now() - num(cached.at) < 10 * 60e3) return cached.text;
+  const ps = palsOf(ch); const group = ps.length > 1; const you = meName(ch);
+  const recent = msgs.slice(-40).map(m => `${m.role === 'user' ? you : palWho(ch, m)?.name || 'them'}: ${String(m.text).replace(/\s+/g, ' ').slice(0, 400)}`).join('\n');
+  const mem = palMemPick(ps.flatMap(p => arr(p.memory).filter(m => m.src !== 'group:' + ch.id)), 20).map(m => '- ' + m.t).join('\n');
+  const ask = () => chat([
+    { role: 'system', content: `You keep the memory of one long private conversation, the way a person remembers it before answering. Read the chat and write down what the companion must have in mind to reply well.\nBe exact and specific: use the real names, places, numbers, plans and promises from the chat. Never invent anything.\nReply with JSON only:\n{"scene":"1-2 sentences: exactly where things stand between them right now","open":["a plan, promise, question or problem still hanging in the air, if any"],"facts":["a specific thing ${you} said about themselves, or something that happened between them, that must not be forgotten"],"mood":"a few words on the tone between them right now"}` },
+    { role: 'user', content: `WHAT THEY ALREADY REMEMBER LONG-TERM:\n${mem || '(nothing yet)'}\n\nOLDER SUMMARY OF THIS CHAT: ${ch.summary || '(none yet)'}\n\nTHE CHAT SO FAR (oldest first):\n${recent}` }
+  ], { stream: false, maxTokens: 320, temperature: 0.2, helper: true, json: true, signal }).catch(e => { if (e.name !== 'AbortError') console.warn('Recall failed', e); return ''; });
+  let raw = '';
+  try { raw = await withTimeout(ask(), 9000); } catch (e) { if (e.name !== 'AbortError') console.warn('Recall failed', e); }
+  const j = tryJSON(stripThink(raw || ''));
+  if (!j) return cached?.text || '';
+  const list = k => arr(j[k]).map(x => String(x || '').replace(/\s+/g, ' ').trim()).filter(Boolean).slice(0, 6);
+  const text = [
+    String(j.scene || '').replace(/\s+/g, ' ').trim(),
+    list('open').length ? 'Still open: ' + list('open').join('; ') : '',
+    list('facts').length ? 'Must not be forgotten: ' + list('facts').join('; ') : '',
+    String(j.mood || '').replace(/\s+/g, ' ').trim() ? 'Tone right now: ' + String(j.mood).replace(/\s+/g, ' ').trim() : ''
+  ].filter(Boolean).join('\n').trim();
+  if (!text) return cached?.text || '';
+  /* the lasting facts join her long-term memory, so they survive long after these messages scroll away */
+  for (const f of list('facts')) for (const p of ps) palRemember(p, f, group ? 'group:' + ch.id : 'private');
+  ch.recall = { text: text.slice(0, 900), n: msgs.length, at: Date.now() };
+  palTouch(ch); savePals(false);
+  return ch.recall.text;
+}
+/* small or tired models drift into saying the same thing again; these keep a reply from looping on itself */
+const palLoopNorm = t => String(t || '').toLowerCase().replace(/\{[^{}]*\}/g, ' ').replace(/\*+/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+const palLoopWords = t => new Set(palLoopNorm(t).split(' ').filter(w => w.length > 2));
+/* how much of two lines is the same thing, 0…1 */
+function palLoopSame(a, b) {
+  const A = palLoopWords(a), B = palLoopWords(b);
+  if (A.size < 4 || B.size < 4) return 0;
+  let hit = 0; for (const w of A) if (B.has(w)) hit++;
+  return hit / Math.max(A.size, B.size);
+}
+/* drop a paragraph or a sentence the model wrote over and over in the same reply */
+function palDedupeText(text) {
+  const seen = new Set(); const out = []; let last = '';
+  for (const p of String(text || '').split(/\n{2,}/)) {
+    const k = palLoopNorm(p);
+    if (k) { if (seen.has(k)) continue; seen.add(k); }
+    const re = /([^.!?\n]+[.!?…]*|[^.!?\n]+$)([ \t]*)/g;
+    let s = '', m;
+    while ((m = re.exec(p))) {   /* the last kept sentence carries over from the paragraph before */
+      const n = palLoopNorm(m[1]);
+      if (n) { if (n === last) continue; last = n; }
+      s += m[1] + m[2];
+      if (!m[0]) re.lastIndex++;   /* never spin on an empty match */
+    }
+    if (s.trim()) out.push(s.trimEnd());
+  }
+  return out.join('\n\n');
 }
 async function palReply(ch, opts = {}) {
   const ps = palsOf(ch); if (!ps.length || S.palBusy) return;
@@ -502,7 +614,7 @@ async function palReply(ch, opts = {}) {
 
   const hist = [];
   const add = (role, content) => { const l = hist[hist.length - 1]; if (l && l.role === role) l.content += '\n\n' + content; else hist.push({ role, content }); };
-  for (const m of ch.messages.filter(m => m !== msg && (m.role !== 'sys' || m.note)).slice(-26)) {
+  for (const m of ch.messages.filter(m => m !== msg && (m.role !== 'sys' || m.note)).slice(-40)) {
     if (m.role === 'sys') add('user', `((${m.text}))`);
     else if (m.role === 'user') add('user', (group && m.to && m.to !== 'all' && PALS.pals[m.to] ? `(to ${PALS.pals[m.to].name}) ` : '') + m.text + (m.image ? ' ((sent a picture))' : ''));
     else add('assistant', (group ? `{${palWho(ch, m)?.name || ''}} ` : '') + m.text + (m.image ? ` *sends a photo*` : ''));
@@ -511,11 +623,41 @@ async function palReply(ch, opts = {}) {
   else if (opts.prompt) add('user', opts.prompt);
   else if (!hist.length || hist[hist.length - 1].role !== 'user') add('user', '((Continue.))');
 
-  const ask = stream => chat([{ role: 'system', content: palSystem(ch, to) }, ...hist],
-    { maxTokens: Math.round(PAL_LENGTHS[ch.length || 'normal'].tok * (group && to === 'all' ? 1.7 : 1)), temperature: 0.85, stream, signal, onToken: full => { msg.text = stripThink(full); paintPalLog(); } });
+  /* living memory: read the chat back while any lookup runs, so the reply starts with both */
+  const recallP = palRecall(ch, signal);
+  /* like the GM: if the player's message names something real, look it up before answering */
+  const asked = [...ch.messages].reverse().find(m => m.role === 'user' && m.text && m !== msg);
+  if (asked && scoutOn() && scoutWorth(palCtx(lead, ch), asked.text)) {
+    S.palBusy = { ...(S.palBusy || {}), chat: ch.id, msg: msg.id, looking: '…' }; palRedraw();
+    /* the whole lookup has the same 25-second budget as a campaign lookup: a slow source stack must not stall the reply */
+    const lookDeadline = Date.now() + 25000;
+    try {
+      const want = await withTimeout(palScout(ch, asked.text, signal), 25000);
+      if (want) {
+        S.palBusy = { ...(S.palBusy || {}), looking: want }; palRedraw();
+        const left = Math.max(1500, lookDeadline - Date.now());
+        const r = await withTimeout(palLookup(ch, want, signal), left);
+        if (r) { msg.looked = { name: r.name, url: r.url, src: r.src }; ch.messages.push({ id: uid(), role: 'sys', note: true, text: `🔎 Looked up ${r.name}`, t: Date.now() }); }
+      }
+    } catch (e) { if (e.name === 'AbortError') throw e; console.warn('Companion lookup failed', e); }
+    finally { if (S.palBusy) delete S.palBusy.looking; palRedraw(); }
+  }
+
+  const loreNote = palLoreNote(ch);
+  let recall = '';
+  try { recall = (await recallP) || ''; } catch (e) { if (e.name !== 'AbortError') console.warn('Recall failed', e); }
+  const sysMsg = { role: 'system', content: palSystem(ch, to) + (recall ? `\n\nMEMORY OF THIS CONVERSATION (your own recollection, read back from the messages: treat it as true, pick up what is still open, and never mention that it was written down):\n${recall}` : '') + (loreNote ? '\n\n' + loreNote : '') };
+  const ask = (stream, extra) => chat([sysMsg, ...hist, ...(extra || [])],
+    { maxTokens: Math.round(PAL_LENGTHS[ch.length || 'normal'].tok * (group && to === 'all' ? 1.7 : 1)), temperature: 0.85, stream, signal, onToken: full => { msg.text = palDedupeText(stripThink(full)); paintPalLog(); } });
   try {
-    let out = stripThink(await ask(true)).trim();
-    if (!out) out = stripThink(await ask(false)).trim();   /* some models send an empty first try */
+    let out = palDedupeText(stripThink(await ask(true)).trim());
+    if (!out) out = palDedupeText(stripThink(await ask(false)).trim());   /* some models send an empty first try */
+    /* it just said this: one more try, asked plainly, instead of showing the same reply again */
+    const prevPal = [...ch.messages].reverse().find(m => m.role === 'pal' && String(m.text || '').trim() && m !== msg);
+    if (out && prevPal && !signal.aborted && palLoopSame(out, prevPal.text) >= 0.8) {
+      const again = palDedupeText(stripThink(await ask(false, [{ role: 'user', content: '((That is almost exactly what you said last time. Say something genuinely different now: react to my last message, and add a new detail, question or plan in new words.))' }])).trim());
+      if (again && palLoopSame(again, prevPal.text) < palLoopSame(out, prevPal.text)) out = again;
+    }
     const i = ch.messages.indexOf(msg);
     if (!out) { if (i >= 0) ch.messages.splice(i, 1); ch.messages.push({ id: uid(), role: 'sys', retry: true, text: 'No reply came back from the AI.', t: Date.now() }); }
     else {
@@ -578,7 +720,7 @@ async function palUpdateMemory(ch, manual = false) {
     const recent = ch.messages.filter(m => m.role !== 'sys').slice(-18).map(m => `${m.role === 'user' ? you : palWho(ch, m)?.name}: ${m.text}`).join('\n');
     const raw = await chat([
       { role: 'system', content: `You keep the long-term memory for a companion chat app. From the chat below, extract what the companion${group ? 's' : ''} should remember. Reply ONLY with JSON: {"facts":["up to 4 short lasting facts about ${you} or about what happened between them: things ${you} shared, plans made, promises, feelings said out loud, important moments"],"jokes":["at most 1 inside joke, only if a real one happened"],"summary":"2-4 sentences: the running story of this chat so far, updating the previous summary"}` },
-      { role: 'user', content: `PREVIOUS SUMMARY: ${ch.summary || '(none)'}\n\nCHAT:\n${recent}` }
+      { role: 'user', content: `PREVIOUS SUMMARY: ${ch.summary || '(none)'}${ch.recall?.text ? `\n\nWHAT IS HAPPENING IN THE CHAT (read back just now):\n${ch.recall.text}` : ''}\n\nCHAT:\n${recent}` }
     ], { build: true, stream: false, maxTokens: 500, json: true });
     const j = tryJSON(stripThink(raw)); if (!j) { if (manual) toast('The AI reply was not usable. Try again.'); return; }
     let n = 0;
@@ -626,6 +768,14 @@ function palAction(act, el) {
     case 'palexit': if (S.palBusy) S.abort?.abort(); S.palChat = null; S.palMenu = false; S.homeTab = 'pals'; renderLibrary(); return true;
     case 'palmenu': S.palMenu = !S.palMenu; palRedraw(); return true;
     case 'palchan': if (ch) { ch.channel = el.dataset.k; palTouch(ch); savePals(); palRedraw(); } return true;
+    case 'palchanset': {
+      const id = S.palSetupChat || S.palChat; const c0 = PALS.chats[id]; if (!c0) return true;
+      c0.channel = el.dataset.k === 'person' ? 'person' : 'text';
+      S.palSetupChat = null; S.modal = null; $('#modalRoot').innerHTML = '';
+      palTouch(c0); savePals(); palOpenChat(c0.id);
+      if (!c0.messages.length) palReply(c0, { opener: true });
+      return true;
+    }
     case 'palto': if (ch) { ch.to = el.dataset.id; palTouch(ch); savePals(false); palRedraw(); $('#palInput')?.focus(); } return true;
     case 'palreplyto': if (ch && PALS.pals[el.dataset.id]) { ch.to = el.dataset.id; savePals(false); palRedraw(); $('#palInput')?.focus(); } return true;
     case 'palfmt': palFmt(el.dataset.k); return true;
@@ -665,6 +815,18 @@ function palAction(act, el) {
       return true;
     }
     case 'palmemnow': if (ch) palUpdateMemory(ch, true); return true;
+    /* web lookup, kept in this chat */
+    case 'pallookup': if (!ch) return true; S.palLookQ = ''; S.palLookMsg = ''; S.palLookBusy = false; openModal('pallookup'); setTimeout(() => $('#palLookQ')?.focus(), 40); return true;
+    case 'pallookgo': {
+      const q = ($('#palLookQ')?.value || '').trim(); if (!q) { toast('Type what to look up.'); return true; }
+      if (!ch) return true;
+      S.palLookQ = q; S.palLookBusy = true; S.palLookMsg = 'Searching and reading sources…'; renderModal();
+      palLookup(ch, q).then(r => {
+        S.palLookMsg = r ? `✓ Looked up ${r.name}${r.src ? ' (' + r.src + ')' : ''}. The facts are saved for this chat.` : `The sources didn't clearly cover "${q}". Try other words.`;
+        if (r) { ch.messages.push({ id: uid(), role: 'sys', note: true, text: `🔎 Looked up ${r.name}`, t: Date.now() }); palTouch(ch); savePals(); }
+      }).catch(e => { S.palLookMsg = '✗ ' + (e.message || e); }).finally(() => { S.palLookBusy = false; renderModal(); palRedraw(); });
+      return true;
+    }
     /* group membership */
     case 'palmemberadd': { const id = $('#palAddSel')?.value; const p = PALS.pals[id]; if (ch && p && !ch.palIds.includes(id)) { ch.palIds.push(id); ch.joined = { ...(ch.joined || {}), [id]: Date.now() }; ch.title = palsOf(ch).map(x => x.name).join(', '); ch.messages.push({ id: uid(), role: 'sys', note: true, text: `${p.name} joined the chat`, t: Date.now() }); palTouch(ch); savePals(); renderPalChat(); } return true; }
     case 'palmemberdel': { const id = el.dataset.id; const p = PALS.pals[id]; if (ch && p && ch.palIds.length > 2 && confirm(`Remove ${p.name} from this group? ${p.sex === 'male' ? 'He' : 'She'} keeps what ${p.sex === 'male' ? 'he' : 'she'} remembers.`)) { ch.palIds = ch.palIds.filter(x => x !== id); if (ch.to === id) ch.to = 'all'; if (ch.joined) delete ch.joined[id]; ch.title = palsOf(ch).map(x => x.name).join(', '); ch.messages.push({ id: uid(), role: 'sys', note: true, text: `${p.name} left the chat`, t: Date.now() }); palTouch(ch); savePals(); renderPalChat(); } return true; }
@@ -693,6 +855,18 @@ function palModalHTML(kind) {
   { const x = palExtraModal(kind); if (x) return x; }
   if (kind === 'palme') return personaModalHTML();
   if (kind === 'palpic') return palPicModalHTML();
+  if (kind === 'palchan') {
+    const ch = PALS.chats[S.palSetupChat] || null; const names = ch ? palsOf(ch).map(p => p.name).join(', ') : 'your companion';
+    return ['How does this start?', `<p class="hint" style="color:var(--ink)">Choose how you meet ${esc(names)}. You can switch any time in the chat with the Texting / In person buttons.</p>
+      <div class="gseg" style="margin-top:10px"><button class="segbtn" data-act="palchanset" data-k="text"><b>📱 Texting</b><small>You message each other and they reply on their phone</small></button><button class="segbtn" data-act="palchanset" data-k="person"><b>🧍 In person</b><small>You are together: what you say and do happens face to face</small></button></div>`];
+  }
+  if (kind === 'pallookup') {
+    const ch = curChat(); const names = ch ? palsOf(ch).map(p => p.name).join(', ') : '';
+    return ['Look something up', `<p class="hint">Search the web and keep the facts in this chat: ${esc(names)} will know them from then on.</p>
+      <label class="f"><span>What should I look up?</span><input id="palLookQ" placeholder="e.g. the 1987 Hamburg concert, or the Battle of Hastings" value="${esc(S.palLookQ || '')}"></label>
+      <div class="row" style="margin-top:10px"><button class="btn gold" data-act="pallookgo" ${S.palLookBusy ? 'disabled' : ''}>${S.palLookBusy ? '<span class="spin sm"></span> Searching…' : icon('search') + ' Search'}</button><button class="btn ghost" data-act="close">Cancel</button></div>
+      ${S.palLookMsg ? `<p class="hint" style="color:var(--ink)">${esc(S.palLookMsg)}</p>` : ''}`];
+  }
   if (kind === 'palmem') {
     const p = PALS.pals[S.palMemId]; if (!p) return ['Memory', '<p class="hint">That companion is gone.</p>'];
     const list = arr(p.memory).slice().sort((a, b) => (b.pin ? 1 : 0) - (a.pin ? 1 : 0) || (b.at || 0) - (a.at || 0));
