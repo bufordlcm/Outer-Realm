@@ -120,7 +120,7 @@ async function buildCast(c, concepts) {
     c.messages.push({ id: uid(), role:'sys', text:`Bringing ${concept.length > 40 ? concept.slice(0, 40) + '…' : concept} to life…`, tmp:true }); renderLog(true);
     try {
       const raw = await chat([
-        { role:'system', content:`You create a character for an immersive, free-form interactive story. They must be an ADULT (18 or older). Make them vivid and specific: a real personality with flaws, a way of talking, goals and a history of their own, and 1-2 private things they don't share easily. Fit the setting and the player's description. Reply with JSON only: ${COMP_SPEC}` },
+        { role:'system', content:`You create a character for an immersive, free-form interactive story. They must be an ADULT (16 or older). Make them vivid and specific: a real personality with flaws, a way of talking, goals and a history of their own, and 1-2 private things they don't share easily. Fit the setting and the player's description. Reply with JSON only: ${COMP_SPEC}` },
         { role:'user', content:`SETTING: ${c.title}. ${c.genre}. ${c.premise}${c.world ? '\nWORLD:\n' + c.world.slice(0, 1500) : ''}\n\nTHE PLAYER: ${c.character.name}, ${c.character.storyRole || ''}\n\nCHARACTER TO CREATE: ${concept}` }
       ], { build:true, stream:false, maxTokens:1800, temperature:0.85, json:true });
       const j = tryJSON(stripThink(raw)); if (!j?.name) throw new Error('no character');
