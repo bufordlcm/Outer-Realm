@@ -72,7 +72,7 @@ function personaOf(ch, p) {
 const meName = (ch, p) => (personaOf(ch, p)?.name || '').trim() || 'you';
 const sexWord = x => x?.sex === 'female' ? 'female' : x?.sex === 'male' ? 'male' : '';
 
-/* a companion under 18 (by age or by how they're described) is always platonic: no romance, no 18+, safe pictures.
+/* a companion under 16 (by age or by how they're described) is always platonic: no romance, no 18+, safe pictures.
    The rule itself lives in js/ageguard.js (AGE.isMinor) so pictures and chats can never disagree. */
 const palMinor = p => AGE.isMinor(p);
 const palStage = p => PAL_STAGES.find(s => s.k === p.stage) || PAL_STAGES[0];
@@ -91,7 +91,7 @@ function palCtx(p, chat) {
   const me = personaOf(chat, p);
   Object.assign(ctx, {
     id: 'pal_' + p.id, title: p.name, genre: '', premise: '', location: chat?.scene || '', artStyle: p.art || 'photorealistic, natural light, detailed',
-    rating: adultOK ? 'M' : 'PG-13', character: { name: meName(chat, p), appearance: [palLook(p), AGE.isMinor(p) ? 'under 18 years old' : ''].filter(Boolean).join(', '), backstory: '', storyRole: '' },
+    rating: adultOK ? 'M' : 'PG-13', character: { name: meName(chat, p), appearance: [palLook(p), AGE.isMinor(p) ? 'under 16 years old' : ''].filter(Boolean).join(', '), backstory: '', storyRole: '' },
     party: group, codex: [], voiceMap: chat ? (chat.voiceMap = chat.voiceMap || {}) : {}
   });
   return ctx;
