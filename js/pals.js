@@ -72,7 +72,7 @@ function personaOf(ch, p) {
 const meName = (ch, p) => (personaOf(ch, p)?.name || '').trim() || 'you';
 const sexWord = x => x?.sex === 'female' ? 'female' : x?.sex === 'male' ? 'male' : '';
 
-/* a companion under 18 (by age or by how they're described) is always platonic: no romance, no 18+, safe pictures.
+/* a companion under 16 (by age or by how they're described) is always platonic: no romance, safe pictures.
    The rule itself lives in js/ageguard.js (AGE.isMinor) so pictures and chats can never disagree. */
 const palMinor = p => AGE.isMinor(p);
 const palStage = p => PAL_STAGES.find(s => s.k === p.stage) || PAL_STAGES[0];
