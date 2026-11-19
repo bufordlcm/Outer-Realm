@@ -15,7 +15,7 @@ const PAL_STEPS = [
   { k: 'voice',       l: 'Voice',          keys: [] },
   { k: 'rel',         l: 'Relationship',   keys: ['userRole'] },
   { k: 'open',        l: 'Opening',        keys: ['scenario', 'greeting'] },
-  { k: 'notes',       l: 'Other info',     keys: ['likes', 'notes'] }
+  { k: 'notes',       l: 'Other info',     keys: ['likes', 'dislikes', 'hobbies', 'notes'] }
 ];
 /* what the AI is asked for, per field */
 const PAL_FIELD_SPEC = {
@@ -32,9 +32,9 @@ const PAL_FIELD_SPEC = {
   exText: '"exText":"3 example texts in their voice, one per line"', exPerson: '"exPerson":"3 example spoken lines in their voice, one per line"',
   userRole: '"userRole":"who the player is in their life"',
   scenario: '"scenario":"the situation when they first talk"', greeting: '"greeting":"their first message to the player, in their own voice"',
-  likes: '"likes":"likes, dislikes and interests"', notes: '"notes":"other useful details: job, schedule, habits, quirks, people in their life"'
+  likes: '"likes":"what they love: food, places, people, small pleasures"', dislikes: '"dislikes":"what they cannot stand"', hobbies: '"hobbies":"what they do with their free time"', notes: '"notes":"other useful details: job, schedule, habits, quirks, people in their life"'
 };
-const PAL_TEXT_KEYS = ['name', 'tagline', 'personality', 'backstory', 'face', 'body', 'clothing', 'tags', 'speechText', 'speechPerson', 'exText', 'exPerson', 'userRole', 'scenario', 'greeting', 'likes', 'notes', 'limits', 'art'];
+const PAL_TEXT_KEYS = ['name', 'tagline', 'personality', 'backstory', 'face', 'body', 'clothing', 'tags', 'speechText', 'speechPerson', 'exText', 'exPerson', 'userRole', 'scenario',   'greeting', 'likes', 'dislikes', 'hobbies', 'notes', 'limits', 'art'];
 
 function palBlank() {
   return { id: uid(), name: '', age: 25, sex: '', tagline: '', look: '', face: '', body: '', clothing: '', tags: '', outfits: [], outfit: '', personality: '', vibes: [], backstory: '',
@@ -87,17 +87,17 @@ function renderPalEditor() {
   } else if (st.k === 'rel') body = `${t('userRole', 'Who you are to them', 'e.g. my neighbor I keep running into; my best friend since college; a stranger who matched with me', 2)}
       <label class="f"><span>Which of your personas they talk to</span><select data-pd="personaId"><option value="">Your default persona${PALS.personas[PALS.defaultPersona] ? ' (' + esc(PALS.personas[PALS.defaultPersona].name) + ')' : ''}</option>${allPersonas().map(x => `<option value="${x.id}" ${D.personaId === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
       <p class="hint"><button class="link" data-act="palme">Manage your personas</button></p>
-      ${minor ? `<p class="hint" style="color:var(--gold2)">${esc(D.name || 'They')} ${num(D.age) && num(D.age) < 18 ? `is ${num(D.age)}` : 'is described as under 16'}, so this is a platonic relationship: friends, family, teammates or mentoring. Romance and 18+ are off.</p>` : ''}
+      ${minor ? `<p class="hint" style="color:var(--gold2)">${esc(D.name || 'They')} ${num(D.age) && num(D.age) < 16 ? `is ${num(D.age)}` : 'is described as under 16'}, so this is a platonic relationship: friends, family, teammates or mentoring. Romance and adult content are off.</p>` : ''}
       <label class="f"><span>Where it can go</span><select data-pd="goal" ${minor ? 'disabled' : ''}>${Object.entries(PAL_GOALS).filter(([k]) => !minor || k === 'friends').map(([k, l]) => `<option value="${k}" ${D.goal === k || minor ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label class="f"><span>Where you start</span><select data-pd="stage">${PAL_STAGES.filter(s => (D.goal !== 'friends' && !minor) || !s.romance).map(s => `<option value="${s.k}" ${D.stage === s.k ? 'selected' : ''}>${s.l}</option>`).join('')}</select></label>
       <p class="hint">${esc(palStage(D).d)} The relationship moves on its own as you talk.</p>
       <label class="f"><span>Intensity</span><select data-pd="intensity"><option value="gentle" ${D.intensity === 'gentle' ? 'selected' : ''}>Gentle: soft and slow</option><option value="balanced" ${D.intensity !== 'gentle' && D.intensity !== 'bold' ? 'selected' : ''}>Balanced</option><option value="bold" ${D.intensity === 'bold' ? 'selected' : ''}>Bold: intense, takes initiative</option></select></label>
       ${t('limits', 'Hard limits (they will never go here)', 'Anything you never want in your chats, one per line', 2)}
       ${palFeelsHTML(D)}
-      ${minor ? '' : `<label class="chk"><input type="checkbox" data-pd="adult" ${D.adult ? 'checked' : ''}> <span>Allow 18+ content with this companion</span></label>`}
-      <label class="chk"><input type="checkbox" data-pd="protected" ${AGE.isProtected(D) ? 'checked' : ''} ${AGE.isMinor(D) ? 'disabled' : ''}> <span>${AGE.isMinor(D) ? 'Protected: this companion is under 16, so this cannot be turned off' : 'Protect this companion: platonic only, no 18+ content, safe pictures'}</span></label>`;
+      ${minor ? '' : `<label class="chk"><input type="checkbox" data-pd="adult" ${D.adult ? 'checked' : ''}> <span>Allow adult content with this companion</span></label>`}
+      <label class="chk"><input type="checkbox" data-pd="protected" ${AGE.isProtected(D) ? 'checked' : ''} ${AGE.isMinor(D) ? 'disabled' : ''}> <span>${AGE.isMinor(D) ? 'Protected: this companion is under 16, so this cannot be turned off' : 'Protect this companion: platonic only, no adult content, safe pictures'}</span></label>`;
   else if (st.k === 'open') body = `${t('scenario', 'How it starts', 'e.g. We matched on a dating app last night', 3)}${t('greeting', 'Their first message', 'The AI writes one if you leave it empty', 3)}`;
-  else body = `${t('likes', 'Likes, dislikes and interests', '', 3)}${t('notes', 'Anything else', 'Job, schedule, habits, pets, people in their life, things they would never do…', 5)}`;
+  else body = `${t('likes', 'Likes', 'Rain on a tin roof, cheap wine, being right…', 2)}${t('dislikes', 'Dislikes', 'Crowded rooms, being interrupted, liars…', 2)}${t('hobbies', 'Hobbies', 'Woodworking, cards, collecting maps…', 2)}${t('notes', 'Anything else', 'Job, schedule, habits, pets, people in their life, things they would never do…', 5)}`;
 
   const aiRow = st.keys.length ? `<div class="aistep"><button class="btn sm gold" data-act="palbai" ${busy || S.palBuilding ? 'disabled' : ''}>${busy ? '<span class="spin sm"></span> Writing…' : icon('spark') + ' Write this step for me'}</button>
       <input id="palStepAsk" placeholder="Or say what to change: make her more sarcastic, give her a Texas accent…" value="${esc(S.palStepAsk || '')}"><button class="btn sm" data-act="palbai" data-rw="1" ${busy || S.palBuilding ? 'disabled' : ''}>${icon('redo')} Rewrite</button></div>` : '';
@@ -140,7 +140,7 @@ async function palAIBuild() {
   S.palIdea = idea; S.palBuilding = Date.now(); renderPalEditor();
   try {
     const raw = await chat([
-      { role:'system', content:`You create characters for an AI companion and roleplay app. From the player's idea, or from a finished character they pasted (keep every detail it gives), write a vivid, specific, believable character who feels like a real person with their own life, opinions and voice. The character is an adult (18+). Gender is "female" or "male". Reply with ONLY this JSON:\n{${keys.map(k => PAL_FIELD_SPEC[k]).join(',')}}` },
+      { role:'system', content:`You create characters for an AI companion and roleplay app. From the player's idea, or from a finished character they pasted (keep every detail it gives), write a vivid, specific, believable character who feels like a real person with their own life, opinions and voice. The character is an adult (16+). Gender is "female" or "male". Reply with ONLY this JSON:\n{${keys.map(k => PAL_FIELD_SPEC[k]).join(',')}}` },
       { role:'user', content: idea + (me?.name ? `\n\n(The player's name is ${me.name}.)` : '') }
     ], { build:true, stream:false, maxTokens:2800, temperature:0.85, json:true });
     const j = tryJSON(stripThink(raw)); if (!j) throw new Error('the AI reply wasn\'t usable, try again');
@@ -160,7 +160,7 @@ async function palAIStep(rewrite, onlyKeys) {
   S.palStepBusy = st.k; S.palStepAsk = ask; renderPalEditor();
   try {
     const raw = await chat([
-      { role:'system', content:`You are helping build one character for an AI companion and roleplay app, a step at a time. Write ONLY the fields asked for, so that they fit everything already decided about this character. Be specific and vivid, never generic. The character is an adult (18+). Gender is "female" or "male". Reply with ONLY this JSON:\n{${keys.map(k => PAL_FIELD_SPEC[k]).join(',')}}` },
+      { role:'system', content:`You are helping build one character for an AI companion and roleplay app, a step at a time. Write ONLY the fields asked for, so that they fit everything already decided about this character. Be specific and vivid, never generic. The character is an adult (16+). Gender is "female" or "male". Reply with ONLY this JSON:\n{${keys.map(k => PAL_FIELD_SPEC[k]).join(',')}}` },
       { role:'user', content:`THE CHARACTER SO FAR:\n${palCard(D, keys) || '(nothing yet: invent someone interesting)'}${(S.palIdea || '').trim() ? `\n\nTHE PLAYER'S ORIGINAL IDEA: ${S.palIdea.trim().slice(0, 1200)}` : ''}\n\nSTEP TO WRITE: ${st.l}${now ? `\nWHAT IS THERE NOW:\n${now}` : ''}${ask ? `\n\nTHE PLAYER WANTS THIS CHANGE: ${ask}\nKeep what they did not ask to change.` : now ? '\n\nImprove and complete it; keep the facts the player already wrote.' : ''}` }
     ], { build:true, stream:false, maxTokens:900, temperature:0.85, json:true });
     const j = tryJSON(stripThink(raw)); if (!j) throw new Error('the AI reply wasn\'t usable, try again');
@@ -253,7 +253,7 @@ document.addEventListener('input', e => {
   if (el.dataset.pd && S.palDraft) S.palDraft[el.dataset.pd] = el.type === 'checkbox' ? el.checked : el.value;
   else if (el.dataset.pout && S.palDraft) { const o = arr(S.palDraft.outfits)[num(el.dataset.pout)]; if (o) o[el.dataset.k] = el.value.slice(0, 300); }
 });
-/* things that change what the editor shows (age, gender, goal, 18+) redraw it when you finish with the field */
+/* things that change what the editor shows (age, gender, goal, adult content) redraw it when you finish with the field */
 document.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.pd && S.palDraft && S.view === 'paledit') {
@@ -288,7 +288,7 @@ Where it can go: <friends | romance | together>
 Where we start: <strangers | acquaintances | friends | close friends | something more | dating | partners>
 Intensity: <gentle | balanced | bold>
 Hard limits: <anything that must never happen in our chats, or leave blank>
-18+: <yes | no>
+adult: <yes | no>
 How it starts: <the situation when we first talk>
 First message: <their first message to me, in character>
 Likes: <likes, dislikes and interests>
@@ -304,7 +304,7 @@ Rules:
 - "Face", "Body", "Clothing" and "Picture tags" must be concrete and visual, since they are used to draw their pictures.
 - The examples and "First message" are written in their own voice, the way they would actually text or speak.
 - Never decide what I say, do, think or feel.
-- Any romantic or sexual content involves adults (18 or older) only.
+- Any romantic or sexual content involves adults (16 or older) only.
 - Output ONLY the filled-in template as plain text. No commentary before or after.
 
 TEMPLATE:
@@ -447,7 +447,14 @@ function personaImg(P) {
   if (!P?.portrait || S.settings.image.mode === 'off') return '';
   return P.portrait.data ? P.portrait.data : imageUrl(P.portrait, null);
 }
-const personaPhotoPrompt = P => [`portrait photo of ${P.look || P.name || 'me'}`, P.sex === 'male' ? 'man' : P.sex === 'female' ? 'woman' : '', 'head and shoulders, looking at the camera, natural light, detailed'].filter(Boolean).join(', ').replace(/\s+/g, ' ').slice(0, 700);
+const personaPhotoPrompt = P => {
+  /* the look is the player's own copy and can be a sentence ("I'm 6'1…" → "he is 6'1…"): that names the
+     person itself, while a list of features ("tall, short beard") reads after "of" */
+  const look = persLook(P).replace(/[.!?]+$/, '');
+  const clause = /^(?:he|she|they)(?:['’](?:s|re)|\s+(?:is|are|has|have|was|were)\b)/i.test(look);
+  const head = look && clause ? `portrait photo, ${look.replace(/^./, c => c.toLowerCase())}` : `portrait photo of ${look || P.name || 'me'}`;
+  return [head, P.sex === 'male' ? 'man' : P.sex === 'female' ? 'woman' : '', 'head and shoulders, looking at the camera, natural light, detailed'].filter(Boolean).join(', ').replace(/\s+/g, ' ').slice(0, 700);
+};
 function personaPhotoHTML(P) {
   const src = personaImg(P), on = S.settings.image.mode !== 'off';
   return `<div class="card" style="text-align:center"><div class="palportrait" style="margin:0 auto">${src ? `<button class="plain" data-act="palperzoom"><img class="port xl" src="${esc(src)}" alt=""></button>` : `<div class="port xl ph2">${esc((P.name || '?')[0])}</div>`}</div>

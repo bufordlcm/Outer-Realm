@@ -340,7 +340,7 @@ Tapping **New adventure** asks how you want to play:
   - **Memory:** things you share about yourself and important moments are saved to long-term memory (More → Story tools → Memory), and the story and cast know them.
   - **Voice:** use **Read** on any bubble, or turn on automatic reading. Each cast member can have their own voice (Cast → their card → Voice).
   - **Cast** (top bar) shows everyone. You can add more characters, paint portraits, and see how close each one feels to you.
-  - Everyone in a companion cast is an adult (18+).
+  - Everyone in a companion cast is an adult (16+).
 
 **Portraits**
 - **Character builder:** tap **Paint portrait** under Appearance to see your character before you start. Change the appearance and tap **Paint again** until it's right.
@@ -414,7 +414,7 @@ The **Companions** tab is its own app inside Outer Realm: AI characters you talk
 - Every chat is **📱 Texting** (message bubbles, voice messages, photos) or **🧍 In person** (a narrated scene with *actions* and dialogue). Tap to switch, or the companion switches when you meet up or part ways.
 - Relationships move from strangers to friends to more (or stay friends only) as you talk; companions remember facts about you, your history and inside jokes (`js/pals.js`).
 - Edit, reroll (with ‹ › to flip between replies), delete or continue any reply; `((double brackets))` direct the story; group chats with several companions.
-- Saved on the device and in Drive as `Companions/companions.json`. 18+ content must be switched on in About you and per companion; every companion must be an adult.
+- Saved on the device and in Drive as `Companions/companions.json`. Adult content must be switched on in About you and per companion; every companion must be an adult (16+).
 
 ## Game Settings, music and ambience
 

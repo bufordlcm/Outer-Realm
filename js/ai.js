@@ -135,7 +135,7 @@ function fitContext(messages, ctx, maxOut) {
   return out;
 }
 function aiError(msg, status, retry) { const e = new Error(msg); e.status = status; e.retry = retry; return e; }
-async function chatOne(conn, messages, { stream = false, onToken, signal, maxTokens, temperature, model, json } = {}) {
+async function chatOne(conn, messages, { stream = false, onToken, signal, maxTokens, temperature, model, json, frequencyPenalty } = {}) {
   const t = S.settings.text;
   const headers = { 'Content-Type':'application/json' };
   if (conn.apiKey) headers.Authorization = 'Bearer ' + conn.apiKey.trim();
@@ -146,6 +146,8 @@ async function chatOne(conn, messages, { stream = false, onToken, signal, maxTok
   const body = { model: (model || conn.model).trim(), messages, temperature: temperature ?? Number(t.temperature ?? 0.85), max_tokens: maxOut, stream };
   /* thinking models (Nemotron, DeepSeek R1, Qwen3…) can spend the whole token budget thinking: keep it short on OpenRouter, and leave room */
   if (json && (conn.preset === 'gemini' || conn.preset === 'ollama')) body.response_format = { type: 'json_object' };
+  /* small JSON steps can fall into a token loop, which Ollama aborts as a 500; a light penalty breaks it */
+  if (frequencyPenalty != null) body.frequency_penalty = frequencyPenalty;
   if (conn.preset === 'openrouter') { body.reasoning = { effort: 'low', exclude: true }; body.max_tokens = maxOut + 1200; }
   if (conn.preset === 'gemini' && /gemini-[3-9]|gemini-.*latest/.test(body.model)) { body.reasoning_effort = 'low'; body.max_tokens = maxOut + 1200; }
   let res;
@@ -380,7 +382,7 @@ function sheetText(c) {
     'Negative traits (apply whenever relevant):', ...(neg.length ? neg.map(traitLine) : ['(none)']),
     `Gear: ${ch.gear.length ? ch.gear.map(g => g.name + (g.desc ? ` (${g.desc})` : '')).join('; ') : 'nothing'}`,
     ch.signatures.length ? `Signatures: ${ch.signatures.map(s => `${s.name}${s.desc ? ` (${s.desc})` : ''}`).join('; ')}` : '',
-    `Appearance: ${ch.appearance || '—'}`,
+    `Appearance: ${lookOf(ch) || '—'}`,
     ch.backstory ? `Backstory: ${ch.backstory.slice(0, 900)}` : '',
     `Current location: ${c.location || 'unknown'}`,
     `Active quests: ${quests.length ? quests.join('; ') : 'none yet'}`
@@ -531,7 +533,7 @@ function sheetBrief(c) {
   const t = ch.traits.map(x => `${x.polarity === '-' ? '−' : '+'}${x.name}${x.trigger ? ` (${x.trigger})` : ''}`).join('; ');
   return [
     `${ch.name}${gWord(ch)}${ch.storyRole ? `, ${ch.storyRole}` : ''}. Level ${ch.level}. HP ${ch.hp}/${ch.maxHp}${ch.hp <= 0 ? ' (DOWN)' : ''}.`,
-    ch.appearance ? `Looks: ${ch.appearance}` : '',
+    lookOf(ch) ? `Looks: ${lookOf(ch)}` : '',
     t ? `Traits: ${t}` : '',
     ch.injuries.length ? `Injuries: ${ch.injuries.map(i => i.name).join(', ')}` : '',
     `Carrying: ${ch.gear.map(g => g.name).join(', ') || 'nothing'}${ch.gold ? `; ${ch.gold} gold` : ''}`,
@@ -562,7 +564,7 @@ function buildWriterMessages(c) {
   const live = c.threats.filter(t => !t.triggered); if (live.length) sys.push('', 'HIDDEN THREATS', ...live.map(t => `- ${t.name} (${t.progress}/${t.max}): ${t.effect}`));
   if (c.factions.length) sys.push('', 'FACTIONS (player standing)', c.factions.map(f => `${f.name} ${fmt(f.rep)}`).join(', '));
   if (arr(c.party).length) sys.push('', comp ? 'THE CAST (characters you voice)' : 'THE PARTY', comp ? castBrief(c) : partyText(c, true));
-  sys.push('', comp ? 'THE PLAYER' : isMP(c) ? 'THE PLAYER CHARACTER WHO IS ACTING NOW' : 'THE PLAYER CHARACTER', comp ? [c.character.name + (c.character.storyRole ? ', ' + c.character.storyRole : ''), c.character.appearance && 'Looks: ' + c.character.appearance, c.character.backstory && 'About: ' + c.character.backstory.slice(0, 600)].filter(Boolean).join('\n') : sheetBrief(c));
+  sys.push('', comp ? 'THE PLAYER' : isMP(c) ? 'THE PLAYER CHARACTER WHO IS ACTING NOW' : 'THE PLAYER CHARACTER', comp ? [c.character.name + (c.character.storyRole ? ', ' + c.character.storyRole : ''), lookOf(c.character) && 'Looks: ' + lookOf(c.character), c.character.backstory && 'About: ' + c.character.backstory.slice(0, 600)].filter(Boolean).join('\n') : sheetBrief(c));
   sys.push(...(isMP(c) && c.players.length > 1 ? ['', 'THE OTHER PLAYER CHARACTERS (controlled by other players: never act for them)', otherPlayersBrief(c)] : []));
   sys.push('', 'PACING', `Recent scene intensity (0-10): ${c.tensionLog.slice(-4).join(', ') || 'none yet'}. Alternate tense scenes with quieter ones.`);
   if (c.gmNotes) sys.push('', 'THE PLAYER\'S STANDING REQUESTS', c.gmNotes);

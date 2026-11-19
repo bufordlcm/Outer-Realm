@@ -334,7 +334,7 @@ a.btn{text-decoration:none;color:var(--ink);display:inline-flex;align-items:cent
 .palsys{align-self:center;font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px 12px;text-align:center}
 .pmsg{position:relative;max-width:100%}
 .pmsg .pacts{display:flex;gap:4px;opacity:0;transition:opacity .15s;margin-top:3px}
-.pmsg:hover .pacts,.pmsg:focus-within .pacts{opacity:1}
+.pmsg:hover .pacts,.pmsg:focus-within .pacts,.pmsg .pacts.pnow{opacity:1}
 @media (hover:none){ .pmsg .pacts{opacity:.7} }
 .pmsg.me .pacts{justify-content:flex-end}
 .pacts button{border:none;background:none;color:var(--muted);font-size:13px;padding:2px 6px;border-radius:6px}

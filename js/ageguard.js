@@ -16,6 +16,7 @@
    cannot drift apart: they all ask the same questions of the same rule.
    ========================================================================= */
 const AGE = (() => {
+  /* 16, the same line every screen draws: "anyone under 16 is always protected" */
   const MINOR_AGE = 16;
 
   /* an explicit age: "15", "15 years old", "age 15", "15yo" */
@@ -26,6 +27,9 @@ const AGE = (() => {
   const SCHOOL_SETTING = /\b(?:(?:elementary|middle)[- ]|kindergarten|daycare|nursery|orphanage)\b/i;
   /* "her kid sister", "my nephew", "his daughter": family, not the person */
   const KIN = /\b(?:my|her|his|their|our|your)\s+(?:kid|kids|child|children|sons?|daughters?|nieces?|nephews?|sisters?|brothers?|baby|babies|students?)\b/gi;
+  /* "for me baby", "hey baby, ...", "baby, come here": said TO someone, a pet name, not a child.
+     With an article or a describing word it still means a baby: "a baby", "the baby", "baby girl". */
+  const PET_NAME = /\b(?:hey|oh|yeah|ok|okay|alright|come on|for me|for you|to me|with me|at me|please|you)\s*,?\s*\bbab(?:y|ies)\b|^\s*\bbab(?:y|ies)\b\s*,/gi;
 
   /* the parts that describe the person on screen */
   const IDENTITY = ['name','tagline','storyRole','role','appearance','look','face','body','clothing','tags'];
@@ -33,6 +37,12 @@ const AGE = (() => {
   const BIO = ['backstory','about','personality','scenario','userRole','notes','text','desc'];
 
   const stripKin = s => String(s || '').replace(KIN, ' ');
+  /* does this text describe a child? family and pet names are taken out first, so an adult saying
+     "for me baby" in a chat cannot block a picture of that adult */
+  const childWords = s => {
+    const t = stripKin(s).replace(PET_NAME, ' ');
+    return AGE_TEXT.test(t) || PERSON_WORDS.test(t);
+  };
   const join = (o, keys) => stripKin(keys.map(k => o?.[k]).filter(Boolean).join(' '));
   const ageOf = p => { const n = parseInt(String(p?.age ?? '').match(/\d+/)?.[0], 10); return Number.isFinite(n) ? n : null; };
 
@@ -41,8 +51,7 @@ const AGE = (() => {
     if (!p) return false;
     const n = ageOf(p);
     if (n != null && n < MINOR_AGE) return true;
-    const self = join(p, IDENTITY);
-    if (AGE_TEXT.test(self) || PERSON_WORDS.test(self)) return true;
+    if (childWords(join(p, IDENTITY))) return true;
     /* a history may state an age; it may not call them a kid ("as a teenager she...") */
     return AGE_TEXT.test(join(p, BIO));
   }
@@ -80,7 +89,7 @@ const AGE = (() => {
      character in the same save being a minor does not lock this picture. */
   function imageAllowed({ prompt = '', campaign = null, subject = null } = {}) {
     const text = String(prompt || '');
-    if (AGE_TEXT.test(text) || PERSON_WORDS.test(text)) return { allowed: false, why: 'the picture describes a minor' };
+    if (childWords(text)) return { allowed: false, why: 'the picture describes a minor' };
     const c = campaign || {};
     if (SCHOOL_SETTING.test([c.title, c.genre, c.premise, c.location].join(' '))) return { allowed: false, why: 'the setting is a school or nursery' };
     const who = subject || c.character;
@@ -98,6 +107,7 @@ const AGE = (() => {
     const eq = (label, got, want) => { if (got !== want) bad.push(`${label} (got ${got}, expected ${want})`); };
     eq('15 is a minor', isMinor({ name: 'A', age: 15 }), true);
     eq('16 is not a minor', isMinor({ name: 'B', age: 16 }), false);
+    eq('18 is not a minor', isMinor({ name: 'B2', age: 18 }), false);
     eq('"14 years old" reads as a minor', isMinor({ name: 'C', look: 'a 14 years old courier' }), true);
     eq('a relative is not the person', isMinor({ name: 'D', text: 'his daughter is missing' }), false);
     eq('protected adult', isProtected({ name: 'E', age: 40, protected: true }), true);
@@ -108,7 +118,8 @@ const AGE = (() => {
     const names = promptNames(camp).names;
     eq('only the protected party member and NPC are named', names.join(','), 'H,I');
     eq('prose alone does not protect an NPC', isProtected({ kind: 'person', name: 'K', text: 'a teenage apprentice' }), false);
-    eq('an NPC aged 17 is protected', isProtected({ kind: 'person', name: 'L', age: 17 }), true);
+    eq('an NPC aged 15 is protected', isProtected({ kind: 'person', name: 'L', age: 15 }), true);
+    eq('an NPC aged 16 is open', isProtected({ kind: 'person', name: 'L2', age: 16 }), false);
     const crowd = { character: { name: 'P', age: 40 }, codex: Array.from({ length: 20 }, (_, i) => ({ kind: 'person', name: 'N' + i, age: 30, protected: true })) };
     const capped = promptNames(crowd);
     eq('names are capped, the overflow counted and still ruled on',
@@ -118,6 +129,9 @@ const AGE = (() => {
     eq('protected NPC pictures stay safe', imageAllowed({ prompt: 'a portrait', campaign: camp, subject: camp.codex[0] }).allowed, false);
     eq('open adults still get their pictures', imageAllowed({ prompt: 'a portrait', campaign: camp, subject: camp.codex[1] }).allowed, true);
     eq('a prompt describing a child is blocked', imageAllowed({ prompt: 'a 12-year-old with a satchel', campaign: camp }).allowed, false);
+    eq('a pet name is not a child', imageAllowed({ prompt: 'sitting on a bench, legs spread for me baby', campaign: camp, subject: camp.codex[1] }).allowed, true);
+    eq('a baby is still a child', imageAllowed({ prompt: 'a baby asleep in a crib', campaign: camp }).allowed, false);
+    eq('"hey baby" is a greeting, not a minor', isMinor({ name: 'M', look: 'greets everyone with hey baby' }), false);
     return bad;
   }
 

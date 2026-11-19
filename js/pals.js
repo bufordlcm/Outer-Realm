@@ -70,9 +70,38 @@ function personaOf(ch, p) {
   return PALS.personas[ch?.personaId] || PALS.personas[one?.personaId] || PALS.personas[PALS.defaultPersona] || allPersonas()[0] || null;
 }
 const meName = (ch, p) => (personaOf(ch, p)?.name || '').trim() || 'you';
+/* the player as a prompt reads them: a name the first time, then pronouns. Repeating a name in
+   every sentence is not how a person talks, and small models start echoing it back. */
+function persRef(x) {
+  const name = String(x?.name || '').trim();
+  const f = /^f/i.test(String(x?.sex || '')), m = /^m/i.test(String(x?.sex || ''));
+  const one = f ? 'she' : m ? 'he' : 'they';
+  return {
+    n: name || 'the player', named: !!name,
+    one, One: one[0].toUpperCase() + one.slice(1),
+    obj: f ? 'her' : m ? 'him' : 'them',
+    poss: f ? 'her' : m ? 'his' : 'their',
+    self: f ? 'herself' : m ? 'himself' : 'themselves',
+    own: name ? name + (/s$/i.test(name) ? "'" : "'s") : "the player's",
+    /* "she writes" but "they write" */
+    v: w => {
+      if (f || m) return w;
+      const k = String(w).toLowerCase(), irr = { is: 'are', has: 'have', does: 'do', was: 'were' };
+      if (irr[k]) return irr[k];
+      if (/ies$/.test(k)) return String(w).slice(0, -3) + 'y';
+      if (/(?:ch|sh|ss|x|z)es$/.test(k)) return String(w).slice(0, -2);
+      return /s$/.test(k) ? String(w).slice(0, -1) : w;
+    }
+  };
+}
 const sexWord = x => x?.sex === 'female' ? 'female' : x?.sex === 'male' ? 'male' : '';
+/* A persona card is written in the player's own voice ("I'm a 26-year-old nurse, I hired Stacey…").
+   Pasted into a prompt that reads like the model's own lines, it invites the AI to answer as the player,
+   so every prompt that reads the card goes through these and gets third person back. */
+const persAbout = x => x?.about ? picThird(String(x.about).trim(), x, true).replace(/[.!?]+$/, '') : '';
+const persLook = x => x?.look ? picThird(String(x.look).trim(), x, true) : '';
 
-/* a companion under 16 (by age or by how they're described) is always platonic: no romance, no 18+, safe pictures.
+/* a companion under 16 (by age or by how they're described) is always platonic: no romance, no adult content, safe pictures.
    The rule itself lives in js/ageguard.js (AGE.isMinor) so pictures and chats can never disagree. */
 const palMinor = p => AGE.isMinor(p);
 const palStage = p => PAL_STAGES.find(s => s.k === p.stage) || PAL_STAGES[0];
@@ -91,7 +120,7 @@ function palCtx(p, chat) {
   const me = personaOf(chat, p);
   Object.assign(ctx, {
     id: 'pal_' + p.id, title: p.name, genre: '', premise: '', location: chat?.scene || '', artStyle: p.art || 'photorealistic, natural light, detailed',
-    rating: adultOK ? 'M' : 'PG-13', character: { name: meName(chat, p), appearance: [palLook(p), AGE.isMinor(p) ? 'under 16 years old' : ''].filter(Boolean).join(', '), backstory: '', storyRole: '' },
+    rating: adultOK ? 'M' : 'PG-13', character: { name: persRef(me).n, appearance: [palLook(p), AGE.isMinor(p) ? 'under 16 years old' : ''].filter(Boolean).join(', '), backstory: '', storyRole: '' },
     party: group, codex: [], voiceMap: chat ? (chat.voiceMap = chat.voiceMap || {}) : {}
   });
   return ctx;
@@ -353,7 +382,7 @@ function renderPalChat() {
     <div class="pallog" id="pallog">${palLogHTML(ch)}</div>
     <div class="palcomp">
       ${ps.length > 1 ? `<div class="palto"><span>To:</span><button class="chip ${to === 'all' ? 'on' : ''}" data-act="palto" data-id="all">Everyone</button>${ps.map(p => `<button class="chip ${to !== 'all' && to?.id === p.id ? 'on' : ''}" data-act="palto" data-id="${p.id}">${palAvatar(p, 'pav xs')}${esc(first(p.name))}</button>`).join('')}</div>` : ''}
-      <div class="palquick"><button class="fmtbtn" data-act="palfmt" data-k="act" title="What you do">✋ Action</button><button class="fmtbtn" data-act="palfmt" data-k="say" title="What you say out loud">💬 Say</button><button class="fmtbtn" data-act="palfmt" data-k="ooc" title="Out of character: steer the story">(( )) Direct the story</button>
+      <div class="palquick"><button class="fmtbtn" data-act="palfmt" data-k="act" title="What you do">✋ Action</button><button class="fmtbtn" data-act="palfmt" data-k="say" title="What you say out loud">💬 Say</button><button class="fmtbtn" data-act="palfmt" data-k="ooc" title="Out of character, for the rest of the chat">(( )) Direct the story</button><button class="fmtbtn" data-act="palsteer" title="Change the direction, force an action, break a repeat or fix a memory">🎯 Steer</button>
         ${picsOn && selfieOf ? `<button class="chip" data-act="palquick" data-k="selfie">📷 Ask ${one ? '' : esc(first(selfieOf.name)) + ' '}for a selfie</button>` : ''}${picsOn ? '<button class="chip" data-act="palquick" data-k="scene">🎨 Picture the scene</button><button class="chip" data-act="palpicopen">🖼 Picture with my prompt</button>' : ''}${S.settings.net?.on !== false ? '<button class="chip" data-act="pallookup">🔎 Look something up</button>' : ''}<button class="chip" data-act="palwear">👗 Outfit</button><button class="chip" data-act="palplace">📍 Location</button><button class="chip" data-act="palquick" data-k="cont">↪ Keep going</button></div>
       <div class="palin"><textarea id="palInput" rows="1" placeholder="${person ? '*Smile* and say something, or describe what you do…' : 'Message ' + esc(one ? one.name : to === 'all' ? 'everyone' : first(to.name)) + '…'}"></textarea>
       ${S.palBusy ? `<button class="btn" data-act="palstop">${icon('stop')}</button>` : `<button class="btn gold" data-act="palsend">${icon('send')}</button>`}</div>
@@ -363,9 +392,14 @@ function renderPalChat() {
 }
 function palMenuHTML(ch) {
   const ps = palsOf(ch); const one = ps.length === 1 ? ps[0] : null; const me = personaOf(ch); const others = allPals().filter(p => !ch.palIds.includes(p.id));
+  const recall = ch.recall && ch.recall.text ? ch.recall : null;
   return `<div class="palmenu card">
     <label class="f"><span>Where are you right now? (sets the scene)</span><input id="palScene" value="${esc(ch.scene || '')}" placeholder="e.g. Her apartment, late at night, rain on the windows"></label>
     <div class="row wrap"><button class="btn sm" data-act="palsceneset">Set scene</button></div>
+    <div class="lbl">Living memory: what she reads back before replying</div>
+    ${recall ? `<div class="memitem"><div class="mt">${String(recall.text).split('\n').map(l => esc(l)).join('<br>')}<small>read back ${esc(ago(recall.at))} · from the last ${num(recall.n)} messages</small></div></div>`
+      : `<p class="hint">Nothing read back yet. She reads the chat back just before each reply; build it now to check it.</p>`}
+    <div class="row wrap" style="margin:-2px 0 10px"><button class="btn sm ghost" data-act="palrecallnow" ${S.palRecallBusy ? 'disabled' : ''}>${S.palRecallBusy ? '<span class="spin sm"></span> Reading the chat back…' : icon('book') + ' Read the chat back now'}</button></div>
     <div class="kv"><label class="f"><span>Reply length</span><select data-pch="length">${Object.entries(PAL_LENGTHS).map(([k, v]) => `<option value="${k}" ${ch.length === k ? 'selected' : ''}>${v.l}</option>`).join('')}</select></label>
     <label class="f"><span>You are (persona)</span><select data-pch="personaId"><option value="">${one?.personaId && PALS.personas[one.personaId] ? `From ${esc(one.name)}'s card: ${esc(PALS.personas[one.personaId].name)}` : `Default${PALS.personas[PALS.defaultPersona] ? ': ' + esc(PALS.personas[PALS.defaultPersona].name) : ''}`}</option>${allPersonas().map(x => `<option value="${x.id}" ${ch.personaId === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label></div>
     ${me ? '' : '<p class="hint">You have no persona yet, so they don\'t know your name. <button class="link" data-act="palme">Make one</button></p>'}
@@ -395,9 +429,11 @@ function palParts(ch, text, fallbackId) {
 function palLogHTML(ch) {
   const msgs = arr(ch.messages); const ps = palsOf(ch); const group = ps.length > 1;
   const lastPal = [...msgs].reverse().find(m => m.role === 'pal'); const lastTurn = lastPal ? (lastPal.gid || lastPal.id) : null;
+  /* the last thing in the chat keeps its edit / delete / regen row visible, not just on hover */
+  const lastId = [...msgs].reverse().find(m => m.role !== 'sys')?.id || null;
   const one = (m, text, p, opts = {}) => {
     const mine = m.role === 'user';
-    const acts = S.palBusy || opts.live ? '' : `<div class="pacts">${group && !mine ? `<button data-act="palreplyto" data-id="${p?.id || ''}" title="Reply to ${esc(first(p?.name))}">↩ Reply</button>` : ''}${!mine ? `<button data-act="palspeak" data-id="${m.id}" title="Play">🔊</button>` : ''}<button data-act="paleditmsg" data-id="${m.id}" title="Edit">✎</button>${!mine && (m.gid || m.id) === lastTurn ? `<button data-act="palreroll" data-id="${m.id}" title="New reply">↻</button>` : ''}<button data-act="paldelmsg" data-id="${m.id}" title="Delete">🗑</button>${arr(m.alts).length > 1 ? `<span class="palts"><button data-act="palalt" data-id="${m.id}" data-d="-1">‹</button>${(m.altI ?? m.alts.length - 1) + 1}/${m.alts.length}<button data-act="palalt" data-id="${m.id}" data-d="1">›</button></span>` : ''}</div>`;
+    const acts = S.palBusy || opts.live ? '' : `<div class="pacts${opts.now ? ' pnow' : ''}">${group && !mine ? `<button data-act="palreplyto" data-id="${p?.id || ''}" title="Reply to ${esc(first(p?.name))}">↩ Reply</button>` : ''}${!mine ? `<button data-act="palspeak" data-id="${m.id}" title="Play">🔊</button>` : ''}<button data-act="paleditmsg" data-id="${m.id}" title="Edit">✎</button>${!mine && (m.gid || m.id) === lastTurn ? `<button data-act="palregen" data-id="${m.id}" title="Regen, or try something else">↻</button>` : ''}<button data-act="paldelmsg" data-id="${m.id}" title="Delete">🗑</button>${arr(m.alts).length > 1 ? `<span class="palts"><button data-act="palalt" data-id="${m.id}" data-d="-1">‹</button>${(m.altI ?? m.alts.length - 1) + 1}/${m.alts.length}<button data-act="palalt" data-id="${m.id}" data-d="1">›</button></span>` : ''}</div>`;
     if (S.palEdit === m.id) return `<div class="pmsg ${mine ? 'me' : 'them'}"><textarea id="palEditBox" rows="4">${esc(m.text)}</textarea><div class="row"><button class="btn sm gold" data-act="paleditsave" data-id="${m.id}">Save</button><button class="btn sm ghost" data-act="paleditcancel">Cancel</button></div></div>`;
     const img = m.image ? palPhotoHTML(ch, m, p || ps[0]) : m.picBusy ? `<div class="palphoto wait"><span class="spin"></span><span>${esc(m.picBusy)}</span><button class="link" data-act="palpiccancel" data-id="${m.id}">Cancel</button></div>` : '';
     const toTag = mine && group && m.to && m.to !== 'all' && PALS.pals[m.to] ? `<div class="pwho sm to">to ${esc(first(PALS.pals[m.to].name))}</div>` : '';
@@ -413,7 +449,7 @@ function palLogHTML(ch) {
       html += parts.length ? parts.map(x => one(m, x.text, PALS.pals[x.who] || ps[0], { live: true })).join('') : one(m, '', palWho(ch, m), { live: true });
       continue;
     }
-    html += one(m, m.text, m.role === 'user' ? null : palWho(ch, m));
+    html += one(m, m.text, m.role === 'user' ? null : palWho(ch, m), { now: m.id === lastId });
   }
   if (S.palBusy && S.palBusy.chat === ch.id && !msgs.some(m => m.streaming)) html += `<div class="pmsg txt them"><div class="brow"><div class="bub typing">${S.palBusy.looking ? `<span class="hint" style="margin:0">🔎 Looking up ${esc(S.palBusy.looking === '…' ? 'something' : S.palBusy.looking)}…</span>` : '<i></i><i></i><i></i>'}</div></div></div>`;
   return html || `<p class="hint" style="text-align:center;margin-top:40px">Say hi.</p>`;
@@ -435,7 +471,9 @@ const memSrcLabel = m => m.src === 'private' ? 'One-on-one' : m.src === 'manual'
 
 /* ---------- the reply engine ---------- */
 function palSystem(ch, to) {
-  const ps = palsOf(ch); const group = ps.length > 1; const me = personaOf(ch); const you = meName(ch);
+  const ps = palsOf(ch); const group = ps.length > 1; const me = personaOf(ch); const you = meName(ch); const R = persRef(me);
+  const about = persAbout(me);
+  const look = persLook(me);
   const person = ch.channel === 'person';
   const minors = ps.filter(palMinor); const adultAll = ps.every(p => p.adult && !AGE.isProtected(p));
   const gkey = 'group:' + ch.id;
@@ -451,16 +489,16 @@ function palSystem(ch, to) {
       palLook(p) && `Looks: ${palLook(p)}`, palOutfit(p) && `Wearing now: ${palOutfit(p)}`,
       p.personality && `Personality: ${p.personality}`, arr(p.vibes).length && `Vibe: ${p.vibes.join(', ')}`,
       style(p), p.backstory && `Backstory: ${p.backstory}`, p.likes && `Likes/dislikes: ${p.likes}`, p.notes && `Other things about ${first(p.name)}: ${p.notes}`,
-      p.userRole && `Who ${you} is to ${first(p.name)}: ${p.userRole}`,
+      p.userRole && `Who ${R.n} is to ${first(p.name)}: ${p.userRole}`,
       group && palFeelsLine(p, ps),
-      `Relationship with ${you} now: ${st.l} (affection ${Math.round(num(p.affection))}/100). ${st.d}${palMinor(p) ? ` ${p.name} is a minor: the relationship is strictly platonic and age-appropriate (friend, family, teammate, mentor). Never flirt, never romance, nothing sexual or suggestive, ever; if the conversation heads that way, ${p.name} shuts it down and changes the subject.` : p.goal === 'friends' ? ' This stays platonic: friendship only, never romance.' : ''}`,
+      `Relationship with ${R.n} now: ${st.l} (affection ${Math.round(num(p.affection))}/100). ${st.d}${palMinor(p) ? ` ${p.name} is a minor: the relationship is strictly platonic and age-appropriate (friend, family, teammate, mentor). Never flirt, never romance, nothing sexual or suggestive, ever; if the conversation heads that way, ${p.name} shuts it down and changes the subject.` : p.goal === 'friends' ? ' This stays platonic: friendship only, never romance.' : ''}`,
       `Intensity: ${p.intensity === 'gentle' ? 'gentle, soft and slow-burn' : p.intensity === 'bold' ? 'bold: confident, takes initiative, intense' : 'balanced'}.`,
       p.limits && `HARD LIMITS (never, under any circumstances): ${p.limits.replace(/\n+/g, '; ')}`,
-      own.length && (group ? `PRIVATE to ${first(p.name)} (from her one-on-one time with ${you}; the others here do NOT know these until someone says them out loud; ${first(p.name)} may bring one up when it fits):` : `What ${first(p.name)} remembers:`) + '\n' + own.map(m => '- ' + m.t).join('\n'),
-      solo && `PRIVATE to ${first(p.name)}: how things have gone between her and ${you} one-on-one: ${solo.summary}`,
+      own.length && (group ? `PRIVATE to ${first(p.name)} (from her one-on-one time with ${R.n}; the others here do NOT know these until someone says them out loud; ${first(p.name)} may bring one up when it fits):` : `What ${first(p.name)} remembers:`) + '\n' + own.map(m => '- ' + m.t).join('\n'),
+      solo && `PRIVATE to ${first(p.name)}: how things have gone between her and ${R.n} one-on-one: ${solo.summary}`,
       fromGroups.length && `What ${first(p.name)} knows from group chats (the others in those chats know it too):\n${fromGroups.map(m => '- ' + m.t).join('\n')}`,
       ...groups.map(x => `From the group chat with ${palsOf(x).filter(o => o !== p).map(o => o.name).join(' and ')} (${first(p.name)} was there and can bring it up): ${x.summary}`),
-      arr(p.jokes).length && `Inside jokes with ${you}: ${p.jokes.slice(-8).join('; ')}`].filter(Boolean).join('\n');
+      arr(p.jokes).length && `Inside jokes with ${R.n}: ${p.jokes.slice(-8).join('; ')}`].filter(Boolean).join('\n');
   };
   const shared = group ? palMemPick([...new Map(ps.flatMap(p => arr(p.memory).filter(m => m.src === gkey)).map(m => [memKey(m.t), m])).values()], 20) : [];
   const late = group ? ps.filter(p => ch.joined?.[p.id]) : [];
@@ -472,11 +510,15 @@ function palSystem(ch, to) {
   }
   /* the model gets its own last lines spelled out, so it cannot claim it forgot them and deliver the same thing again */
   const said = arr(ch.messages).filter(m => m.role === 'pal' && String(m.text || '').trim() && !m.streaming).slice(-3).map(m => String(m.text).replace(/\s+/g, ' ').trim().slice(0, 160));
+  const steer = String(ch.steer || '').trim();   /* set for one reply by the Steer window */
+  /* the player's name must never read as one of the companions' */
+  const clash = R.named && ps.some(p => String(first(p.name)).toLowerCase() === R.n.toLowerCase());
+  const who = [clash ? 'the player' : '', sexWord(me)].filter(Boolean).join(', ');
   const sys = [
-    `You are ${group ? 'playing several characters in a group conversation' : `${ps[0].name}`} in a private roleplay and companion app, talking with ${you}${sexWord(me) ? ` (${sexWord(me)})` : ''}.${me?.about ? ` About ${you}: ${me.about}` : ''}${me?.look ? ` ${you} looks like this: ${me.look}` : ''}`,
-    `Stay fully in character as a real person with your own life, moods, opinions and memory. Never mention being an AI, a model or a story. Be warm and engaging, follow ${you}'s lead, and also bring your own ideas, questions, feelings and plans so the conversation goes somewhere. React to what ${you} actually said. Don't repeat yourself: never reuse a sentence, phrase, joke, greeting or question you have already used, never open two replies the same way, and never say the same thing twice in one reply.`,
-    `Never write ${you}'s words, actions, thoughts or feelings. Only your own.`,
-    `If ${you} writes something in ((double brackets)), it is a direction from the player about the story or your behaviour: follow it without commenting on it. In ${you}'s messages, *text in asterisks* is something ${you} does and "text in quotes" is something ${you} says out loud.`,
+    `You are ${group ? 'playing several characters in a group conversation' : `${ps[0].name}`} in a private roleplay and companion app, talking with ${R.n}${who ? ` (${who})` : ''}.${about ? ` About ${R.obj}: ${about}.` : ''}${look ? ` ${R.One} looks like this: ${look}` : ''}`,
+    `Stay fully in character as a real person with your own life, moods, opinions and memory. Never mention being an AI, a model or a story. Be warm and engaging, follow ${R.own} lead, and also bring your own ideas, questions, feelings and plans so the conversation goes somewhere. React to what ${R.one} actually said. Don't repeat yourself: never reuse a sentence, phrase, joke, greeting or question you have already used, never open two replies the same way, and never say the same thing twice in one reply.`,
+    `Never write ${R.poss} words, actions, thoughts or feelings. Only your own.`,
+    `If ${R.one} ${R.v('writes')} something in ((double brackets)), it is a direction from the player about the story or your behaviour: follow it without commenting on it. In ${R.poss} messages, *text in asterisks* is something ${R.one} ${R.v('does')} and "text in quotes" is something ${R.one} ${R.v('says')} out loud.`,
     minors.length ? `Keep everything wholesome and age-appropriate: ${minors.map(p => p.name).join(', ')} ${minors.length > 1 ? 'are minors' : 'is a minor'}. No romance, flirting or sexual content of any kind.` : contentRules(adultAll ? 'M' : 'PG-13', { character: ps[0], party: ps }),
     '', ...ps.map(desc), '',
     shared.length ? `WHAT EVERYONE IN THIS GROUP KNOWS:\n${shared.map(m => '- ' + m.t).join('\n')}` : '',
@@ -484,12 +526,13 @@ function palSystem(ch, to) {
     palWorldBlock(ps),
     ch.scene ? `CURRENT SETTING: ${ch.scene}` : '',
     ch.summary ? `${group ? 'THIS GROUP\'S' : 'YOUR'} HISTORY TOGETHER SO FAR: ${ch.summary}` : '',
+    steer ? `THE PLAYER IS STEERING THIS REPLY (follow it exactly, stay in character, never mention being told):\n${steer}` : '',
     said.length ? `YOU HAVE ALREADY SAID THIS (your own most recent messages, newest last). Do not repeat these lines or their point, and do not ask a question you already asked; every reply must add something new:\n${said.map(l => '  > ' + l).join('\n')}` : '',
     now,
     person
-      ? `RIGHT NOW YOU ARE TOGETHER IN PERSON. Write the moment as a roleplay scene from your side: *actions, expressions and body language in asterisks* mixed with your spoken dialogue in quotes, plus a little of the surroundings. ${PAL_LENGTHS[ch.length || 'normal'].rule || 'One to three short paragraphs.'} Leave room for ${you} to respond.`
+      ? `RIGHT NOW YOU ARE TOGETHER IN PERSON. Write the moment as a roleplay scene from your side: *actions, expressions and body language in asterisks* mixed with your spoken dialogue in quotes, plus a little of the surroundings. ${PAL_LENGTHS[ch.length || 'normal'].rule || 'One to three short paragraphs.'} Leave room for ${R.obj} to respond.`
       : `RIGHT NOW YOU ARE TEXTING (phone, online, messages; not together). Write natural text messages — short, casual, separated by blank lines if you send more than one bubble. ${PAL_LENGTHS[ch.length || 'normal'].rule || ''}`,
-    group ? `THIS IS A GROUP: everyone here sees every message. ${to && to !== 'all' ? `${you} is talking to ${to.name} right now, so ONLY ${to.name} answers this time. The others read it and stay quiet.` : `${you} is talking to everyone. Whoever has something to say answers: usually one to three of them, each in her own voice. They can react to each other too (tease, agree, argue, pile on). Not everyone has to speak every time.`}
+    group ? `THIS IS A GROUP: everyone here sees every message. ${to && to !== 'all' ? `${R.n} is talking to ${to.name} right now, so ONLY ${to.name} answers this time. The others read it and stay quiet.` : `${R.n} is talking to everyone. Whoever has something to say answers: usually one to three of them, each in her own voice. They can react to each other too (tease, agree, argue, pile on). Not everyone has to speak every time.`}
 FORMAT: start each character's part on a new line with her name in curly braces, exactly like this:
 {${ps[0].name}} ${person ? '*grins* "Look who showed up."' : 'look who finally showed up'}
 {${ps[1].name}} ${person ? '"Be nice." *She waves you over.*' : 'be nice lol. hey you'}` : `Write only ${ps[0].name}'s own ${person ? 'actions and words' : 'messages'}. No name label in front.`
@@ -541,17 +584,30 @@ async function palScout(ch, text, signal) {
 /* ---------- living memory: read the whole chat back before answering ---------- */
 /* Two layers. Ch.recal is what is happening right now, rebuilt from the actual messages so a long chat
    can never drift out of view; the lasting facts it finds are folded into what she remembers for good. */
-async function palRecall(ch, signal) {
+/* the read-back note only describes the messages it was written from. Clearing the chat or deleting
+   messages drops it, so an emptied chat can never be fed its own deleted conversation back. */
+function palRecallForget(ch) {
+  if (!ch || !ch.recall) return false;
+  delete ch.recall;
+  return true;
+}
+async function palRecall(ch, signal, force = false) {
   const msgs = arr(ch.messages).filter(m => m.role !== 'sys' && String(m.text || '').trim());
   const cached = ch.recall && ch.recall.text ? ch.recall : null;
-  if (msgs.length < 6 || !textReady() || signal?.aborted) return cached?.text || '';
-  /* fresh enough: rebuilt every couple of messages, so chatting stays quick */
-  if (cached && msgs.length - num(cached.n) < 2 && Date.now() - num(cached.at) < 10 * 60e3) return cached.text;
-  const ps = palsOf(ch); const group = ps.length > 1; const you = meName(ch);
-  const recent = msgs.slice(-40).map(m => `${m.role === 'user' ? you : palWho(ch, m)?.name || 'them'}: ${String(m.text).replace(/\s+/g, ' ').slice(0, 400)}`).join('\n');
+  /* nothing left worth recalling: drop the note instead of carrying it into the fresh chat */
+  if (msgs.length < 6) {
+    if (palRecallForget(ch)) { palTouch(ch); savePals(false); }
+    return '';
+  }
+  if (!textReady() || signal?.aborted) return cached?.text || '';
+  /* fresh enough: rebuilt every couple of messages, so chatting stays quick. The note never outlives its
+     messages: delete any and the count falls below n, so it is rebuilt from what is left. */
+  if (cached && !force && msgs.length >= num(cached.n) && msgs.length - num(cached.n) < 2 && Date.now() - num(cached.at) < 10 * 60e3) return cached.text;
+  const ps = palsOf(ch); const group = ps.length > 1; const you = meName(ch); const R = persRef(personaOf(ch));
+  const recent = msgs.slice(-40).map(m => `${m.role === 'user' ? R.n : palWho(ch, m)?.name || 'them'}: ${String(m.text).replace(/\s+/g, ' ').slice(0, 400)}`).join('\n');
   const mem = palMemPick(ps.flatMap(p => arr(p.memory).filter(m => m.src !== 'group:' + ch.id)), 20).map(m => '- ' + m.t).join('\n');
   const ask = () => chat([
-    { role: 'system', content: `You keep the memory of one long private conversation, the way a person remembers it before answering. Read the chat and write down what the companion must have in mind to reply well.\nBe exact and specific: use the real names, places, numbers, plans and promises from the chat. Never invent anything.\nReply with JSON only:\n{"scene":"1-2 sentences: exactly where things stand between them right now","open":["a plan, promise, question or problem still hanging in the air, if any"],"facts":["a specific thing ${you} said about themselves, or something that happened between them, that must not be forgotten"],"mood":"a few words on the tone between them right now"}` },
+    { role: 'system', content: `You keep the memory of one long private conversation, the way a person remembers it before answering. Read the chat and write down what the companion must have in mind to reply well.\nBe exact and specific: use the real names, places, numbers, plans and promises from the chat. Never invent anything.\nReply with JSON only:\n{"scene":"1-2 sentences: exactly where things stand between them right now","open":["a plan, promise, question or problem still hanging in the air, if any"],"facts":["a specific thing ${R.n} said about ${R.self}, or something that happened between them, that must not be forgotten"],"mood":"a few words on the tone between them right now"}` },
     { role: 'user', content: `WHAT THEY ALREADY REMEMBER LONG-TERM:\n${mem || '(nothing yet)'}\n\nOLDER SUMMARY OF THIS CHAT: ${ch.summary || '(none yet)'}\n\nTHE CHAT SO FAR (oldest first):\n${recent}` }
   ], { stream: false, maxTokens: 320, temperature: 0.2, helper: true, json: true, signal }).catch(e => { if (e.name !== 'AbortError') console.warn('Recall failed', e); return ''; });
   let raw = '';
@@ -571,6 +627,19 @@ async function palRecall(ch, signal) {
   ch.recall = { text: text.slice(0, 900), n: msgs.length, at: Date.now() };
   palTouch(ch); savePals(false);
   return ch.recall.text;
+}
+/* build the read-back on demand, so it can be checked without waiting for a reply */
+async function palRecallNow(ch) {
+  if (!ch || S.palRecallBusy) return;
+  const n = arr(ch.messages).filter(m => m.role !== 'sys' && String(m.text || '').trim()).length;
+  if (n < 6) return toast('Chat a little more first: the read-back needs at least six messages.');
+  if (!textReady()) return toast('Set up an AI first (Settings → Story AI).');
+  S.palRecallBusy = true; palRedraw();
+  try {
+    const t = await palRecall(ch, null, true);
+    toast(t ? 'Read the chat back just now.' : 'The AI could not read this chat back. Try again in a moment.', 3200);
+  } catch (e) { toast('Read-back failed: ' + (e.message || e), 4000); }
+  finally { S.palRecallBusy = false; palRedraw(); }
 }
 /* small or tired models drift into saying the same thing again; these keep a reply from looping on itself */
 const palLoopNorm = t => String(t || '').toLowerCase().replace(/\{[^{}]*\}/g, ' ').replace(/\*+/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -602,6 +671,7 @@ function palDedupeText(text) {
 }
 async function palReply(ch, opts = {}) {
   const ps = palsOf(ch); if (!ps.length || S.palBusy) return;
+  const R0 = persRef(personaOf(ch));
   if (!textReady()) return toast('Set up an AI first (Settings → Story AI).');
   const group = ps.length > 1; const to = opts.to || palTo(ch);
   const lead = (to && to !== 'all' ? to : null) || opts.who || ps[Math.floor(Math.random() * ps.length)];
@@ -610,6 +680,7 @@ async function palReply(ch, opts = {}) {
   ch.messages.push(msg);
   S.palBusy = { chat: ch.id, msg: msg.id };
   S.abort = new AbortController(); const signal = S.abort.signal;
+  let replied = false;   /* a real reply landed, so a picture the player asked for can follow it */
   palRedraw();
 
   const hist = [];
@@ -619,8 +690,10 @@ async function palReply(ch, opts = {}) {
     else if (m.role === 'user') add('user', (group && m.to && m.to !== 'all' && PALS.pals[m.to] ? `(to ${PALS.pals[m.to].name}) ` : '') + m.text + (m.image ? ' ((sent a picture))' : ''));
     else add('assistant', (group ? `{${palWho(ch, m)?.name || ''}} ` : '') + m.text + (m.image ? ` *sends a photo*` : ''));
   }
-  if (opts.opener && !hist.length) add('user', `((Start the conversation naturally based on your scenario: ${lead.scenario || 'saying hello for the first time'}.))`);
+  if (opts.opener && !hist.length) add('user', `((Write the first message ${lead.name} sends to ${R0.n}, in ${lead.name}'s voice. Set the scene from ${lead.name}'s side of it: ${String(lead.scenario || 'saying hello for the first time').trim().replace(/[.!?]+$/, '')}. In that line "you" and "your" mean ${R0.n}, never you; it is their house, their day, their side of the situation. Write only what ${lead.name} says and does.))`);
   else if (opts.prompt) add('user', opts.prompt);
+  /* a steer is the last thing the model reads, so it outranks the habit of reusing what it just wrote */
+  else if (ch.steer) add('user', `((DIRECTION FROM THE PLAYER FOR THIS REPLY. Follow it exactly and stay in character; never mention being told:\n${ch.steer}\n))`);
   else if (!hist.length || hist[hist.length - 1].role !== 'user') add('user', '((Continue.))');
 
   /* living memory: read the chat back while any lookup runs, so the reply starts with both */
@@ -652,11 +725,16 @@ async function palReply(ch, opts = {}) {
   try {
     let out = palDedupeText(stripThink(await ask(true)).trim());
     if (!out) out = palDedupeText(stripThink(await ask(false)).trim());   /* some models send an empty first try */
-    /* it just said this: one more try, asked plainly, instead of showing the same reply again */
-    const prevPal = [...ch.messages].reverse().find(m => m.role === 'pal' && String(m.text || '').trim() && m !== msg);
-    if (out && prevPal && !signal.aborted && palLoopSame(out, prevPal.text) >= 0.8) {
-      const again = palDedupeText(stripThink(await ask(false, [{ role: 'user', content: '((That is almost exactly what you said last time. Say something genuinely different now: react to my last message, and add a new detail, question or plan in new words.))' }])).trim());
-      if (again && palLoopSame(again, prevPal.text) < palLoopSame(out, prevPal.text)) out = again;
+    /* it just said this: one more try, asked plainly, instead of showing the same reply again.
+       A steered reply ("don't repeat") is measured against the last few lines, not only the one before. */
+    const refs = [...ch.messages].reverse().filter(m => m.role === 'pal' && String(m.text || '').trim() && !m.streaming && m !== msg).slice(0, opts.noRepeat ? 4 : 1);
+    const near = t => refs.reduce((n, r) => Math.max(n, palLoopSame(t, r.text)), 0);
+    if (out && refs.length && !signal.aborted && near(out) >= (opts.noRepeat ? 0.55 : 0.8)) {
+      const harder = opts.noRepeat
+        ? '((That is too close to something you have already said. Write a genuinely different reply: new words, a different subject, question or detail, and follow the direction above.))'
+        : '((That is almost exactly what you said last time. Say something genuinely different now: react to my last message, and add a new detail, question or plan in new words.))';
+      const again = palDedupeText(stripThink(await ask(false, [{ role: 'user', content: harder }])).trim());
+      if (again && near(again) < near(out)) out = again;
     }
     const i = ch.messages.indexOf(msg);
     if (!out) { if (i >= 0) ch.messages.splice(i, 1); ch.messages.push({ id: uid(), role: 'sys', retry: true, text: 'No reply came back from the AI.', t: Date.now() }); }
@@ -679,6 +757,7 @@ async function palReply(ch, opts = {}) {
         palTouch(p);
       }
       ch.memTurns = num(ch.memTurns) + 1;
+      replied = true;
       palTouch(ch); savePals();
       if (ch.autovoice) made.forEach((m, n) => palSpeakMsg(ch, m, n > 0));
       if (ch.memTurns % 6 === 0) palUpdateMemory(ch);
@@ -690,9 +769,12 @@ async function palReply(ch, opts = {}) {
     savePals(false);
   } finally {
     delete msg.streaming;
+    /* a steer is for one reply only: drop it whether it landed or not */
+    if (ch.steer) { delete ch.steer; palTouch(ch); savePals(false); }
     if (S.palBusy?.msg === msg.id) S.palBusy = null;
     if (S.abort?.signal === signal) S.abort = null;
     palRedraw();
+    if (replied && opts.after) { try { const r = opts.after(); if (r && r.catch) r.catch(e => console.warn('After-reply step failed', e)); } catch (e) { console.warn('After-reply step failed', e); } }
   }
 }
 /* redraw the chat without losing what you were halfway through typing */
@@ -702,6 +784,80 @@ function palRedraw() {
   renderPalChat();
   const n = $('#palInput'); if (n && v) { n.value = v; autoGrow(n); if (had) n.focus(); }
 }
+/* ---------- steer one reply: a new direction, a forced action, no repeats, corrected memory ---------- */
+/* The instruction is built here, read once by palSystem, and dropped after the reply, so steering never
+   turns into a standing rule the way (( )) does. Double brackets are stripped so it cannot close the note. */
+const STEER_KEEP = t => String(t || '').replace(/\(\(|\)\)/g, '').replace(/\s+/g, ' ').trim().slice(0, 300);
+function palSteerText(ch, o) {
+  const dir = STEER_KEEP(o?.dir), act = STEER_KEEP(o?.act), fix = STEER_KEEP(o?.fix);
+  const fresh = !!o?.fresh;
+  const said = arr(ch?.messages).filter(m => m.role === 'pal' && String(m.text || '').trim() && !m.streaming).slice(-4)
+    .map(m => '- ' + String(m.text).replace(/\s+/g, ' ').trim().slice(0, 170));
+  const rules = [
+    fresh ? `THIS REPLY MUST BE NEW.${said.length ? ` You have already said these, in this chat:\n${said.join('\n')}\nDo not repeat, reword or continue any of them.` : ''} Do not go back over old ground, do not ask a question you already asked, and do not open the same way: open differently and bring something that has not been said yet.` : '',
+    dir ? `THE PLAYER IS CHANGING THE DIRECTION OF THIS CHAT: ${dir}. Take the conversation that way now, in this reply.` : '',
+    act ? `IN THIS REPLY, MAKE THIS HAPPEN: ${act}. Play it out concretely from your own side, with words, an action or a specific detail, rather than promising it for later.` : '',
+    fix ? `THE PLAYER IS CORRECTING WHAT YOU REMEMBER: ${fix}. That is the truth now. Anything in your memory or in the chat that contradicts it is wrong: stop using it and never repeat the wrong version.` : ''
+  ].filter(Boolean);
+  return rules.length ? rules.join('\n') : '';
+}
+function palSteerGo() {
+  const ch = curChat(); if (!ch) return true;
+  const o = { dir: $('#stDir')?.value || '', act: $('#stAct')?.value || '', fix: $('#stFix')?.value || '', fresh: !!$('#stFresh')?.checked };
+  const steer = palSteerText(ch, o);
+  if (!steer) { toast('Say where it should go, what should happen, or tick "don\'t repeat".'); return true; }
+  if (S.palBusy) { toast('Wait for the reply to finish first.'); return true; }
+  const ps = palsOf(ch); const R = persRef(personaOf(ch));
+  const dir = STEER_KEEP(o.dir), fix = STEER_KEEP(o.fix);
+  /* nothing new was said since their last reply: steer that reply instead of stacking a new one on top of it */
+  const last = [...ch.messages].reverse().find(m => m.role !== 'sys' && String(m.text || '').trim() && !m.streaming);
+  const redo = !!(last && last.role === 'pal' && !last.image);
+  /* a correction is worth keeping: it joins what they remember, pinned so it always reaches the model */
+  if (fix) for (const p of ps) if (palRemember(p, `Correction from ${R.n}: ${fix}`, 'manual')) { p.memory[p.memory.length - 1].pin = true; palTouch(p); }
+  const tag = [dir && 'direction', STEER_KEEP(o.act) && 'action', o.fresh && 'no repeats', fix && 'memory fixed'].filter(Boolean).join(', ');
+  ch.steer = steer;
+  ch.messages.push({ id: uid(), role: 'sys', text: `🎯 Steered ${redo ? 'their last reply' : 'the next reply'}${tag ? ' (' + tag + ')' : ''}${dir ? ': ' + dir.slice(0, 120) : ''}`, t: Date.now() });
+  palTouch(ch); savePals(); closeModal();
+  if (redo) {
+    const gid = last.gid; const prev = last.alts || [last.text];
+    ch.messages = ch.messages.filter(x => gid ? x.gid !== gid : x !== last);
+    palReply(ch, { who: palWho(ch, last), prevAlts: gid ? [] : prev, noRepeat: true });
+  } else palReply(ch, { noRepeat: !!o.fresh });
+  return true;
+}
+/* write the last reply again. A short note from the player becomes a one-shot steer for the new version,
+   so "try something else" reaches the model the same way the Steer window does. */
+function palRerollMsg(ch, id, note) {
+  const m = ch?.messages.find(x => x.id === id);
+  if (!m || S.palBusy) return;
+  if (!textReady()) return toast('Set up an AI first (Settings → Story AI).');   /* otherwise a note would sit on the chat unspent */
+  const prev = m.alts || [m.text]; const gid = m.gid; const who = palWho(ch, m);
+  ch.messages = ch.messages.filter(x => gid ? x.gid !== gid : x !== m);
+  const d = String(note || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  if (d) ch.steer = palSteerText(ch, { dir: d, fresh: true });
+  palReply(ch, { who, prevAlts: gid ? [] : prev, noRepeat: true });
+}
+
+/* "send me a selfie" or "picture this" typed into the chat does what the 📷 and 🎨 chips do */
+const PAL_WANT_PIC = /\b(selfie|nudes?|photo(?:s|graph|graphs)?|pics?|pictures?|snaps?|snapchat)\b/i;
+const PAL_NO_PIC = /\b(?:no|not|never|don'?t|stop)\b[^.!?\n]{0,24}\b(?:more\s+)?(?:selfies?|photos?|pics?|pictures?|nudes?)\b/i;
+const PAL_PIC_SELF = /\b(?:selfie|nudes?)\b|\b(?:pic|photo|picture|snap)\b[^.!?\n]{0,18}\b(?:of\s+)?(?:you|yourself|u|her)\b|\byour\s+(?:pic|photo|picture|body|outfit|face)\b/i;
+const PAL_PIC_PLACE = /\b(?:scene|room|place|view|surroundings|moment|us|together|here|where\s+(?:you|we)\s+are)\b/i;
+function palPicAsk(txt) {
+  const t = String(txt || '');
+  if (!t || S.settings.image.mode === 'off' || !PAL_WANT_PIC.test(t) || PAL_NO_PIC.test(t)) return null;
+  if (!curChat() || !palsOf(curChat()).length) return null;
+  return { kind: PAL_PIC_SELF.test(t) ? 'selfie' : PAL_PIC_PLACE.test(t) ? 'scene' : 'selfie' };
+}
+/* the part of the message that is actually about the picture ("in the shower", "wearing my hoodie") */
+function palPicWords(txt) {
+  return String(txt || '')
+    .replace(/\b(?:please\s+)?(?:can|could|would|will)\s+you\s+/gi, '')
+    .replace(/\b(?:send|show|take|make|snap|give)\s+(?:me|us)?\s*(?:a|an|some)?\s*(?:selfie|pics?|photos?|pictures?|snaps?|nudes?)\b/gi, '')
+    .replace(/\b(?:of\s+)?(?:yourself|urself|you)\b/gi, '')
+    .replace(/\b(?:picture|photo|pic)\s+(?:this|the)\s+(?:scene|moment|room|place)\b/gi, '')
+    .replace(/\s+/g, ' ').replace(/^[\s,.!?-]+|[\s,.!?-]+$/g, '').trim().slice(0, 300);
+}
 function palSend() {
   const ch = curChat(); const inp = $('#palInput'); const txt = (inp?.value || '').trim();
   if (!ch || !txt) return;
@@ -709,17 +865,20 @@ function palSend() {
   inp.value = ''; const to = palTo(ch);
   ch.messages = ch.messages.filter(m => !m.retry);
   ch.messages.push({ id: uid(), role: 'user', text: txt, mode: ch.channel || 'text', t: Date.now(), ...(palsOf(ch).length > 1 ? { to: to === 'all' ? 'all' : to.id } : {}) });
-  palTouch(ch); savePals(); renderPalChat(); palReply(ch);
+  /* asking for a picture in words: answer first, then send the picture */
+  const pic = palPicAsk(txt);
+  palTouch(ch); savePals(); renderPalChat();
+  palReply(ch, pic ? { after: () => { if (curChat() === ch) return palPicture(ch, { ...pic, quiet: true, user: palPicWords(txt) }); } } : {});
 }
 
 async function palUpdateMemory(ch, manual = false) {
-  const ps = palsOf(ch); const group = ps.length > 1; const you = meName(ch);
+  const ps = palsOf(ch); const group = ps.length > 1; const you = meName(ch); const R = persRef(personaOf(ch));
   if (!ps.length || !textReady() || ch.messages.filter(m => m.role !== 'sys').length < 4) { if (manual) toast('Chat a bit more first so there is something to remember.'); return; }
   if (manual) toast('Updating memory…');
   try {
     const recent = ch.messages.filter(m => m.role !== 'sys').slice(-18).map(m => `${m.role === 'user' ? you : palWho(ch, m)?.name}: ${m.text}`).join('\n');
     const raw = await chat([
-      { role: 'system', content: `You keep the long-term memory for a companion chat app. From the chat below, extract what the companion${group ? 's' : ''} should remember. Reply ONLY with JSON: {"facts":["up to 4 short lasting facts about ${you} or about what happened between them: things ${you} shared, plans made, promises, feelings said out loud, important moments"],"jokes":["at most 1 inside joke, only if a real one happened"],"summary":"2-4 sentences: the running story of this chat so far, updating the previous summary"}` },
+      { role: 'system', content: `You keep the long-term memory for a companion chat app. From the chat below, extract what the companion${group ? 's' : ''} should remember. Reply ONLY with JSON: {"facts":["up to 4 short lasting facts about ${R.n} or about what happened between them: things ${R.n} shared, plans made, promises, feelings said out loud, important moments"],"jokes":["at most 1 inside joke, only if a real one happened"],"summary":"2-4 sentences: the running story of this chat so far, updating the previous summary"}` },
       { role: 'user', content: `PREVIOUS SUMMARY: ${ch.summary || '(none)'}${ch.recall?.text ? `\n\nWHAT IS HAPPENING IN THE CHAT (read back just now):\n${ch.recall.text}` : ''}\n\nCHAT:\n${recent}` }
     ], { build: true, stream: false, maxTokens: 500, json: true });
     const j = tryJSON(stripThink(raw)); if (!j) { if (manual) toast('The AI reply was not usable. Try again.'); return; }
@@ -780,7 +939,13 @@ function palAction(act, el) {
     case 'palreplyto': if (ch && PALS.pals[el.dataset.id]) { ch.to = el.dataset.id; savePals(false); palRedraw(); $('#palInput')?.focus(); } return true;
     case 'palfmt': palFmt(el.dataset.k); return true;
     case 'palsceneset': if (ch) { ch.scene = ($('#palScene')?.value || '').trim(); ch.messages.push({ id: uid(), role: 'sys', text: ch.scene ? `Scene: ${ch.scene}` : 'Scene cleared', t: Date.now() }); palTouch(ch); savePals(); renderPalChat(); } return true;
-    case 'palclear': if (ch && confirm('Clear all messages in this chat? What they remember stays.')) { ch.messages = []; ch.summary = ''; palTouch(ch); savePals(); renderPalChat(); } return true;
+    case 'palclear': if (ch && confirm('Clear all messages in this chat? What they remember stays.')) {
+      if (S.palBusy?.chat === ch.id) S.abort?.abort();   /* a reply in flight must not land in the fresh chat */
+      ch.messages = []; ch.summary = ''; palRecallForget(ch); palTouch(ch); savePals(); renderPalChat();
+    } return true;
+    case 'palrecallnow': if (ch) palRecallNow(ch); return true;
+    case 'palsteer': if (!ch) return true; if (S.palBusy) { toast('Wait for the reply to finish first.'); return true; } openModal('palsteer'); setTimeout(() => $('#stDir')?.focus(), 50); return true;
+    case 'palsteergo': return palSteerGo();
     case 'palsend': palSend(); return true;
     case 'palstop': S.abort?.abort(); return true;   /* palReply's finally clears the busy state */
     case 'palretry': if (ch && !S.palBusy) { ch.messages = ch.messages.filter(m => !m.retry); palReply(ch); } return true;
@@ -799,14 +964,22 @@ function palAction(act, el) {
       if (m && v) { m.text = v; if (m.alts) m.alts[m.altI ?? m.alts.length - 1] = v; palTouch(ch); savePals(); }
       S.palEdit = null; renderPalChat(); return true;
     }
-    case 'paldelmsg': if (ch) { ch.messages = ch.messages.filter(x => x.id !== el.dataset.id); palTouch(ch); savePals(); renderPalChat(); } return true;
-    case 'palreroll': {
-      const m = ch?.messages.find(x => x.id === el.dataset.id);
-      if (m && !S.palBusy) {
-        const prev = m.alts || [m.text]; const gid = m.gid;
-        ch.messages = ch.messages.filter(x => gid ? x.gid !== gid : x !== m);
-        palReply(ch, { who: palWho(ch, m), prevAlts: gid ? [] : prev });
-      }
+    case 'paldelmsg': if (ch) { ch.messages = ch.messages.filter(x => x.id !== el.dataset.id); palRecallForget(ch); palTouch(ch); savePals(); renderPalChat(); } return true;
+    case 'palregen': {
+      if (!ch) return true;
+      if (S.palBusy) { toast('Wait for the reply to finish first.'); return true; }
+      S.palRegen = { id: el.dataset.id, ask: false, text: '' };
+      openModal('palregen');
+      return true;
+    }
+    case 'palregenask': if (S.palRegen) S.palRegen.ask = true; renderModal(); setTimeout(() => $('#palRegenBox')?.focus(), 40); return true;
+    case 'palregenback': if (S.palRegen) S.palRegen.ask = false; renderModal(); return true;
+    case 'palregennow': { const id = S.palRegen?.id; closeModal(); if (ch && id) palRerollMsg(ch, id); return true; }
+    case 'palregenprompt': {
+      const id = S.palRegen?.id; const t = ($('#palRegenBox')?.value || '').trim();
+      if (!t) { toast('Type a short note, or use Regen last message.'); return true; }
+      S.palRegen.text = t; closeModal();
+      if (ch && id) palRerollMsg(ch, id, t);
       return true;
     }
     case 'palalt': {
@@ -855,6 +1028,28 @@ function palModalHTML(kind) {
   { const x = palExtraModal(kind); if (x) return x; }
   if (kind === 'palme') return personaModalHTML();
   if (kind === 'palpic') return palPicModalHTML();
+  if (kind === 'palsteer') {
+    const ch = curChat(); if (!ch) return ['Steer the reply', '<p class="hint">Open a chat first.</p>'];
+    const ps = palsOf(ch); const nm = ps[0] ? first(ps[0].name) : 'they';
+    return ['Steer the next reply', `<p class="hint">When the chat is stuck, going the wrong way, or you want something specific to happen. If their reply is the last thing in the chat, this replaces it with a fresh one. Nothing written here is added to the story.</p>
+      <label class="f"><span>Take it somewhere new</span><textarea id="stDir" rows="2" placeholder="e.g. drop the work talk and ask me about my sister"></textarea></label>
+      <label class="f"><span>Make this happen in the reply</span><textarea id="stAct" rows="2" placeholder="e.g. ${esc(nm)} admits she has been avoiding me, and finally says what she wants"></textarea></label>
+      <label class="chk"><input type="checkbox" id="stFresh" checked> <span>Don't repeat anything they already said: forces a genuinely different reply</span></label>
+      <label class="f"><span>Fix what they remember (kept: true from now on)</span><textarea id="stFix" rows="2" placeholder="e.g. my name is Alex, not Sam; we met in June, not last year"></textarea></label>
+      <div class="row" style="margin-top:10px"><button class="btn gold" data-act="palsteergo">${icon('spark')} Steer the reply</button><button class="btn ghost" data-act="close">Cancel</button></div>
+      <p class="hint">A correction here is saved as a pinned memory, so they keep it. To set a rule for the whole chat instead, use (( )) Direct the story.</p>`];
+  }
+  if (kind === 'palregen') {
+    const ch = curChat(); if (!ch) return ['Regen this reply', '<p class="hint">Open a chat first.</p>'];
+    const st = S.palRegen || {}; const m = arr(ch.messages).find(x => x.id === st.id);
+    if (!m) return ['Regen this reply', '<p class="hint">That reply is gone.</p>'];
+    if (st.ask) return ['Try something else', `<p class="hint">Their reply is written again with this note. It replaces the reply instead of adding a new one.</p>
+      <label class="f"><span>A short note for this reply</span><textarea id="palRegenBox" rows="2" placeholder="e.g. she gets defensive instead of apologising">${esc(st.text || '')}</textarea></label>
+      <div class="row" style="margin-top:10px"><button class="btn gold" data-act="palregenprompt">${icon('spark')} Write it again</button><button class="btn ghost" data-act="palregenback">Back</button><button class="btn ghost" data-act="close">Cancel</button></div>`];
+    return ['Regen this reply', `<p class="hint">Write their last reply again. It replaces that reply; nothing new is added to the chat.</p>
+      <div class="gseg" style="margin-top:10px"><button class="segbtn" data-act="palregennow"><b>↻ Regen last message</b><small>Same chat, written again from scratch</small></button><button class="segbtn" data-act="palregenask"><b>✎ Try something else</b><small>Write it again with a short note from you</small></button></div>
+      <div class="row" style="margin-top:10px"><button class="btn ghost" data-act="close">Cancel</button></div>`];
+  }
   if (kind === 'palchan') {
     const ch = PALS.chats[S.palSetupChat] || null; const names = ch ? palsOf(ch).map(p => p.name).join(', ') : 'your companion';
     return ['How does this start?', `<p class="hint" style="color:var(--ink)">Choose how you meet ${esc(names)}. You can switch any time in the chat with the Texting / In person buttons.</p>

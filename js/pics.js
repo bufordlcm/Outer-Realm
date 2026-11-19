@@ -107,16 +107,24 @@ function subjChar(s) {
   if (s.t === 'pc') return c.character; if (s.t === 'party') return arr(c.party).find(p => p.id === s.id) || null;
   if (s.t === 'npc') return (s.id && peopleOf(c).find(e => e.id === s.id)) || peopleOf(c).find(e => e.name === s.name) || null; return null;
 }
-const subjField = s => s.t === 'pal' ? 'tags' : s.t === 'npc' ? 'look' : 'appearance';
 function subjLook(s) {
   const x = subjChar(s); if (!x) return '';
   if (s.t === 'pal') return [x.tags, palLook(x).slice(0, 260), palOutfit(x) && `wearing ${palOutfit(x)}`].map(v => String(v || '').trim()).filter(Boolean).join(', ');
-  return String(x[subjField(s)] || '').trim();
+  if (s.t === 'npc') return String(x.look || '').trim();
+  return lookOf(x);
+}
+/* where a subject's look is edited: the visual profile for the player and the party, their own card otherwise */
+const subjLookGet = (s, x) => s.t === 'pal' ? String(x.tags || '') : s.t === 'npc' ? String(x.look || '') : String(profOf(x).appearance ?? x.appearance ?? '');
+function subjLookSet(s, x, v) {
+  if (s.t === 'pal') { x.tags = v.slice(0, 600); x.look = palLook(x); return; }
+  if (s.t === 'npc') { x.look = v.slice(0, 400); return; }
+  profSeed(x); profOf(x).appearance = v.slice(0, 500); profSync(x);
 }
 function subjSave(s) { if (s.t === 'pal') { const p = PALS.pals[s.id]; if (p) { palTouch(p); savePals(); } } else { const c = S.campaigns[s.g]; if (c) { touch(c); scheduleSync(); } } }
 /* the saved look first, then what is different in this one picture */
 function composePic(s, pose, old) {
   const x = subjChar(s); pose = String(pose || '').replace(/\s+/g, ' ').trim();
+  if (pose) pose = picThird(pose, picSelf(s, x), !!s && s.t === 'pc');
   if (!pose) { if (s.t === 'pal' && s.port && x) return palPortraitPrompt(x); if (s.t !== 'pal' && x) return portraitPrompt(subjLook(s) || x.name, x.role || x.storyRole); }
   const base = subjLook(s) || String(old || '').replace(/^\s*portrait (photo )?of\s+/i, '').replace(/,?\s*head and shoulders[\s\S]*$/i, '');
   return [base, pose].filter(Boolean).join(', ').replace(/\s+/g, ' ').slice(0, 860);
@@ -162,10 +170,11 @@ function openLightbox(src, cap, ref) {
       <div class="row wrap"><button class="btn sm" data-lb="useref" ${local ? 'disabled' : ''}>${icon('image')} Use this picture as ${esc(nm)}'s reference</button>${rp ? '<button class="link" data-lb="noref">Remove</button>' : ''}</div></div></div>` : '';
   const model = img && ref && ref.t ? picModel(ref, img) : null;
   const editor = !(info && info.prompt != null && !info.data) ? '' : !img ? `<div class="lbprompt"><b>Prompt</b><p>${esc(info.prompt)}</p></div>`
-    : who ? `<label class="f"><span>${esc(nm)}'s look: used in every picture of ${esc(nm)}</span><textarea id="lbLook" rows="3" placeholder="How ${esc(nm)} looks: age, hair, eyes, build, usual clothes">${esc(who[subjField(subj)] || '')}</textarea></label>
+    : who ? `<label class="f"><span>${esc(nm)}'s look: used in every picture of ${esc(nm)}</span><textarea id="lbLook" rows="3" placeholder="How ${esc(nm)} looks: age, hair, eyes, build, usual clothes">${esc(subjLookGet(subj, who))}</textarea></label>
         ${subj.t === 'pal' ? `<p class="hint" style="margin-top:-4px">These are her locked picture tags. Her Face, Body and current outfit from her card are added too.</p>` : ''}
         ${refRow}
         <label class="f"><span>This picture only: pose, place, outfit, mood</span><textarea id="lbPose" rows="3" placeholder="e.g. sitting on a park bench, autumn afternoon, smiling, reading a book">${esc(img.pose || '')}</textarea></label>
+        <div class="row wrap" style="margin-top:-6px"><button class="btn sm ghost" data-lb="aipose">${icon('spark')} Write the description from ${esc(nm || 'the character')}</button></div>
         <label class="f"><span>Negative prompt (things to leave out)</span><textarea id="lbNeg" rows="2" placeholder="e.g. glasses, hat, blurry, extra people">${esc(img.neg || '')}</textarea></label>
         ${lbModelHTML(img, model)}
         <div class="row wrap"><button class="btn sm gold" data-lb="regen">${icon('redo')} Regenerate</button>${ref.t !== 'port' ? `<button class="btn sm" data-lb="more">${icon('plus')} More like this</button>` : ''}</div>
@@ -186,6 +195,12 @@ function openLightbox(src, cap, ref) {
     if (!k || !S.lb?.ref) return;
     const r = S.lb.ref; const im = lbImage(r); if (!im) return closeLightbox();
     const sj = S.lb.subj; const ch0 = subjChar(sj);
+    if (k === 'aipose' && ch0) {
+      let ctx = '';
+      if (r.t === 'pal') { const pc = PALS.chats[r.chat]; ctx = [pc?.scene, ...arr(pc?.messages).filter(m => m.text).slice(-4).map(m => `${m.role === 'user' ? 'Them' : (PALS.pals[m.who]?.name || 'Her')}: ${m.text}`)].filter(Boolean).join('\n'); }
+      else { const cc = S.campaigns[r.id] || cur(); ctx = [cc?.location, cc?.world && String(cc.world).slice(0, 600), ...arr(cc?.messages).filter(m => m.text).slice(-4).map(m => `${m.role === 'gm' ? 'Narrator' : 'Player'}: ${m.text}`)].filter(Boolean).join('\n'); }
+      picAIPrompt(b, ch0, ctx); return;
+    }
     if (k === 'fav') { if (im.fav) delete im.fav; else im.fav = true; lbSave(r); return openLightbox(lbSrc(r), S.lb.cap, r); }
     if (k === 'nsfw') { if (im.nsfw) delete im.nsfw; else im.nsfw = true; lbSave(r); return openLightbox(lbSrc(r), S.lb.cap, r); }
     if (k === 'del') { if (picDeleteAsk(r)) closeLightbox(); return; }
@@ -201,8 +216,8 @@ function openLightbox(src, cap, ref) {
     const chosenModel = ($('#lbModel')?.value || '').trim();   /* '' means the usual model for this adventure */
     let prompt, pose = null;
     if (sj && ch0) {
-      const lookIn = $('#lbLook'); const f = subjField(sj);
-      if (lookIn && lookIn.value.trim() !== String(ch0[f] || '').trim()) { ch0[f] = lookIn.value.trim().slice(0, f === 'tags' ? 600 : 400); if (sj.t === 'pal') ch0.look = palLook(ch0); subjSave(sj); }
+      const lookIn = $('#lbLook');
+      if (lookIn && lookIn.value.trim() !== subjLookGet(sj, ch0).trim()) { subjLookSet(sj, ch0, lookIn.value.trim()); subjSave(sj); }
       const full = ($('#lbPrompt')?.value || '').replace(/\s+/g, ' ').trim(); pose = ($('#lbPose')?.value || '').trim();
       prompt = full && full !== String(im.prompt || '').replace(/\s+/g, ' ').trim() ? full : composePic(sj, pose, im.prompt);
     } else prompt = ($('#lbPrompt')?.value || '').replace(/\s+/g, ' ').trim() || im.prompt;
@@ -265,6 +280,91 @@ function palPhotoHTML(ch, m, p) {
   const src = palImg(m.image, p, ch); if (!src) return '';
   return `<div class="palphotow"><div class="ph"><span class="spin"></span><span class="imgprog">Painting…</span><button class="link" data-act="palpiccancel" data-id="${m.id}">Cancel</button></div><img class="palphoto" data-act="palzoom" data-id="${m.id}" alt="photo" src="${esc(src)}" onload="if(this.src.indexOf('data:image/svg')){this.classList.add('ld');this.previousElementSibling.style.display='none'}" onerror="palImgFail(this)"></div>`;
 }
+/* ---------- the player, in their own words ---------- */
+/* you write "I", "me", "my" in a picture prompt, but an image model needs a person it can draw.
+   In the picture the player becomes a pronoun; out of the picture they are the viewer holding the
+   camera, the same word the companion's own description uses. */
+const PIC_GRAM = {
+  female: { one: 'she', obj: 'her', poss: 'her', mine: 'hers', self: 'herself', plural: false, noun: 'the woman' },
+  male: { one: 'he', obj: 'him', poss: 'his', mine: 'his', self: 'himself', plural: false, noun: 'the man' },
+  other: { one: 'they', obj: 'them', poss: 'their', mine: 'theirs', self: 'themselves', plural: true, noun: 'the person' }
+};
+const picPerson = x => PIC_GRAM[/^f/i.test(String(x?.sex || '')) ? 'female' : /^m/i.test(String(x?.sex || '')) ? 'male' : 'other'];
+/* whose "I" is in a picture prompt: the player character when the picture is of them, the persona otherwise */
+function picSelf(s, x) {
+  if (s?.t === 'pc') return x;
+  if (s?.t === 'party') return (cur() && cur().character) || x;
+  if (s?.t === 'pal') { const ch = s.chat ? PALS.chats[s.chat] : null; return personaOf(ch) || (cur() && cur().character) || null; }
+  return (cur() && cur().character) || personaOf(null) || null;
+}
+const PIC_VERB1 = new Set('am are is was were be been being have has had do does did will would can could shall should may might must not'.split(' '));
+/* a past or progressive verb is already the right shape: "I hired" is "he hired", not "he hireds" */
+const PIC_PAST = new Set('went came got made said saw took gave knew thought found felt left put brought held wrote stood heard let ran paid met set sat spoke led grew lost fell sent built began told became kept slept drank ate drove wore won threw caught bought taught read'.split(' '));
+const PIC_ADV = 'just|really|also|only|still|even|always|never|actually|already|finally|then|again|ever|simply|sometimes|often|usually|mostly';
+const picVerb = w => /y$/i.test(w) && !/[aeiou]y$/i.test(w) ? w.slice(0, -1) + 'ies' : /(?:s|x|z|ch|sh|o)$/i.test(w) ? w + 'es' : w + 's';
+function picThird(txt, x, inFrame) {
+  const g = picPerson(x); const v = !inFrame;
+  /* "we" makes the player plural: their arm around her, not her arm */
+  const many = /\bwe\b|\bwe['’]re\b|\bus\b|\bour\b|\bours\b/i.test(String(txt || ''));
+  const one = v ? 'the viewer' : g.one, obj = v ? 'the viewer' : many ? 'them' : g.obj;
+  const poss = v ? "the viewer's" : many ? 'their' : g.poss, mine = v ? "the viewer's" : many ? 'theirs' : g.mine;
+  const self = v ? 'the viewer' : many ? 'themselves' : g.self;
+  const sg = v || !g.plural;
+  const NEG = { "don't": "doesn't", "aren't": "isn't", "weren't": "wasn't" };
+  const fix = src => {
+    const low = w => String(w).toLowerCase();
+    const conj = w => (!sg || PIC_VERB1.has(low(w)) || /ed$|ing$/.test(low(w)) || PIC_PAST.has(low(w)) ? w : picVerb(w));
+    const s2 = src
+      .replace(/\bI (don['’]t|didn['’]t|won['’]t|wouldn['’]t|can['’]t|couldn['’]t|shouldn['’]t|isn['’]t|aren['’]t|wasn['’]t|weren['’]t)\b/gi,
+        (m, w) => one + ' ' + (/^don/i.test(w) || /^are/i.test(w) || /^were/i.test(w) ? (sg ? NEG[/^don/i.test(w) ? "don't" : /^are/i.test(w) ? "aren't" : "weren't"] : w.replace('’', "'")) : w.replace('’', "'")))
+      .replace(/\bI['’]m\b/gi, () => v ? 'the viewer is' : g.plural ? "they're" : g.one + "'s")
+      .replace(/\bI['’]ve\b/gi, () => v ? 'the viewer has' : g.plural ? "they've" : g.one + "'s")
+      .replace(/\bI['’]ll\b/gi, () => v ? 'the viewer will' : g.one + "'ll")
+      .replace(/\bI['’]d\b/gi, () => v ? 'the viewer would' : g.one + "'d")
+      .replace(/\bI am\b/gi, () => one + (sg ? ' is' : ' are'))
+      .replace(/\bI have\b/gi, () => one + (sg ? ' has' : ' have'))
+      .replace(/\bI was\b/gi, () => one + (sg ? ' was' : ' were'))
+      .replace(new RegExp('\\bI (' + PIC_ADV + ') (\\w+)', 'g'), (m, adv, w) => one + ' ' + adv + ' ' + conj(w))
+      .replace(/\bI (\w+)/g, (m, w) => one + ' ' + conj(w))
+      .replace(/\bI\b/g, one)
+      .replace(/\bmyself\b/gi, self)
+      .replace(/\bmine\b/gi, mine)
+      .replace(/\bmy\b/gi, poss)
+      .replace(/\bme\b/gi, obj)
+      .replace(/\bwe['’]re\b/gi, "they're")
+      .replace(/\bwe are\b/gi, 'they are')
+      .replace(/\bwe\b/gi, 'they')
+      .replace(/\bour\b/gi, 'their')
+      .replace(/\bours\b/gi, 'theirs')
+      .replace(/\bus\b/gi, 'them');
+    /* "I" is always a capital, the words that replace it are not: start sentences only */
+    return s2.replace(/(^|[.!?]\s+|\n\s*)([a-z])/g, (m, a, b) => a + b.toUpperCase());
+  };
+  /* a line someone says out loud is quoted speech: leave it exactly as written */
+  return String(txt || '').split(/("[^"]*"|“[^”]*”)/).map((s, i) => i % 2 ? s : fix(s)).join('');
+}
+/* small local models write sentences instead of the comma phrases an image model wants, use her name,
+   and talk to "you": tidy that up before it goes to Forge/Pollinations */
+function palPicClean(txt, p, player) {
+  let s = String(txt || '').replace(/\s+/g, ' ').trim();
+  const nm = String(p?.name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (nm) s = s.replace(new RegExp('\\b' + nm + "['’]s\\b", 'gi'), 'her').replace(new RegExp('\\b' + nm + '\\b', 'gi'), 'she');
+  /* the player is "you" in the chat, but an image model needs a person: the man/woman in the photo,
+     or the viewer holding the phone */
+  if (player) s = s.replace(/\byou are\b/gi, player + ' is').replace(/\byou're\b/gi, player + ' is')
+    .replace(/\byou were\b/gi, player + ' was').replace(/\byou have\b/gi, player + ' has')
+    .replace(/\byourself\b/gi, player)
+    .replace(/\byour\b/gi, player + "'s").replace(/\byou\b/gi, player);
+  s = s.replace(/\.\s*/g, ', ').replace(/(^|,\s*)([A-Z])/g, (m, a, b) => a + b.toLowerCase());
+  s = s.replace(/\s*,\s*,+/g, ',').replace(/^[,\s]+|[,\s]+$/g, '');
+  const w = s.split(/\s+/).filter(Boolean);
+  if (w.length > 60) { s = w.slice(0, 60).join(' '); const k = s.lastIndexOf(','); if (k > 30) s = s.slice(0, k); }
+  return s.trim();
+}
+/* words that mean she is not wearing the outfit on her card. "Bare shoulders" alone is a sundress,
+   so only the strong ones count on their own; the soft ones need the picture to be intimate. */
+const PAL_NUDE_STRONG = /\b(?:nude|naked|topless|unclothed|undressed|nothing but|no clothes|no shirt|open shirt|skin exposed|buttons? (?:open|undone)|(?:half|halfway|partly|partially)[- ]?(?:off|open|undressed|nude|naked|bare)|only (?:her|his) (?:underwear|panties|bra)|in (?:her|his) (?:underwear|panties|bra|boxers)|(?:shirt|top|dress|bra|robe|towel|jeans|pants|belt)\b[^,.]{0,24}\b(?:off|open|undone|unfastened|slipped|pulled off|pulled up|pulled over|pushed (?:up|down)|lifted|tugged)\b|\breveal(?:s|ing)?\b[^,.]{0,28}\b(?:skin|torso|chest|breasts?|cleavage|nipples?|midriff)\b|(?:bodies|body|chest|torso)\b[^,.]{0,18}\bbare\b|\bbare\b[^,.]{0,18}\b(?:from|waist|chest|breasts?|torso|hips)\b)\b/i;
+const PAL_BARE = /\bbare (?:skin|chest|breasts?|shoulders?|torso|back|thighs?|midriff|stomach)\b/i;
 /* write the picture from what is happening in the chat, then paint it */
 async function palPicture(ch, o = {}) {
   const ps = palsOf(ch); if (!ps.length || S.palBusy) return;
@@ -275,8 +375,13 @@ async function palPicture(ch, o = {}) {
   const subjects = selfie || ps.length === 1 || o.who || to !== 'all' ? [p] : ps.slice(0, 3);
   /* per picture: only the people actually in it decide the rating, not everyone in the chat */
   const guarded = subjects.some(AGE.isProtected); const adult = !guarded && subjects.every(x => x.adult);
+  /* an 18+ chat painted with the safe model comes back clothed and airbrushed: say it out loud instead of guessing */
+  if (adult && S.settings.image.mode === 'local' && !S.settings.image.forgeModelNsfw && !S.palPicWarned) {
+    S.palPicWarned = true;
+    toast('This chat is 18+, but no NSFW model is chosen in Settings → Images, so pictures use the safe model. Pick one under "Pictures for M (Mature) adventures".', 9000);
+  }
   const user = String(o.user || '').replace(/\s+/g, ' ').trim().slice(0, 500); const neg = String(o.neg ?? ch.picNeg ?? '').replace(/\s+/g, ' ').trim().slice(0, 400);
-  const me = personaOf(ch); const you = meName(ch);
+  const me = personaOf(ch); const R = persRef(me);
   if (selfie && !o.quiet) ch.messages.push({ id: uid(), role: 'user', text: user ? `Send me a selfie? ${user}` : 'Send me a selfie?', mode: ch.channel || 'text', t: Date.now(), ...(ps.length > 1 ? { to: p.id } : {}) });
   const msg = { id: uid(), role: 'pal', who: p.id, text: '', mode: ch.channel || 'text', t: Date.now() + 1, picBusy: selfie ? 'Taking a selfie…' : 'Picturing the scene…', ...(selfie ? {} : { pic: 'scene' }) };
   ch.messages.push(msg); S.palBusy = { chat: ch.id, msg: msg.id, pic: true };
@@ -284,28 +389,50 @@ async function palPicture(ch, o = {}) {
   let j = null;
   try {
     if (o.ctx !== false && !o.exact && textReady()) {
-      const recent = ch.messages.filter(m => m !== msg && m.role !== 'sys' && m.text).slice(-10).map(m => `${m.role === 'user' ? you : palWho(ch, m)?.name}: ${m.text}`).join('\n');
+      const recent = ch.messages.filter(m => m !== msg && m.role !== 'sys' && (m.text || m.image)).slice(-14)
+        .map(m => `${m.role === 'user' ? R.n : palWho(ch, m)?.name}: ${m.text || ''}${m.image ? ' [sent a photo: ' + String(m.image.prompt || '').slice(0, 140) + ']' : ''}`).join('\n');
       const raw = await chat([
-        { role: 'system', content: `You write the description of ONE still picture for an image model, from a private chat. ${selfie ? `It is a selfie that ${p.name} takes and sends right now: taken by ${p.sex === 'male' ? 'himself' : 'herself'} at arm's length or in a mirror, phone-camera look.` : `It shows the moment that is happening right now, as a photograph of the scene with ${subjects.map(x => x.name).join(' and ')}.`}
-Base it on what is actually happening in the chat at this moment: where they are, what ${subjects.length > 1 ? 'they are' : first(p.name) + ' is'} doing, mood, time of day.
-"prompt": 25-45 words of comma-separated visual phrases: pose and action, facial expression, framing and camera angle, the place, the lighting. Do NOT describe face, hair or body (the app adds the saved look) and use no names.
-"wearing": what ${first(p.name)} is wearing in this exact moment if the chat makes it different from the usual outfit (${palOutfit(p) || 'not set'}); otherwise "".
-"you_in_frame": true only if ${you} is clearly in the picture too.
+        { role: 'system', content: `You write the description of ONE still photograph for an image model, taken from a private chat between ${R.n} and ${subjects.map(x => x.name).join(' and ')}. ${selfie
+          ? `It is a selfie ${first(p.name)} takes and sends right now: held at arm's length or shot in a mirror, phone-camera framing and lens.`
+          : 'It shows the moment that is happening right now in the chat, photographed exactly as it is.'}
+Read the last messages and describe what is REALLY happening: how close they are, what they are doing with their hands, what they are wearing or not wearing, the light, the room. Do not clean it up and do not upgrade it: an ordinary dressed moment stays ordinary, and an intimate moment is shown as intimate.
+"prompt": 40-70 words of comma-separated visual phrases covering: pose and body position; state of dress in plain words (fully dressed, shirt open, underwear, topless, nude); hands and contact; expression; framing and camera angle (close-up, waist-up, over the shoulder, from above); the place; the light; the mood. No names and no text in the picture. Do not re-describe her face, hair or figure (the app adds her saved look): clothing, skin, pose and contact are yours.
+"outfit": what ${first(p.name)} is wearing in the picture, in a few words; "NONE" if she is undressed; "SAME" if she is in her usual clothes (${palOutfit(p) || 'not set'}).
+"intimate": true if the picture is sexual or romantic, otherwise false.
+"you_in_frame": true only if ${R.n} is clearly in the picture too.
 "caption": ${selfie ? `the short message ${first(p.name)} sends with the selfie, in ${p.sex === 'male' ? 'his' : 'her'} own voice` : '""'}.
-${guarded ? 'IMPORTANT: someone in this picture is under 16 or protected. The picture is wholesome and fully clothed, nothing suggestive.' : adult ? 'This is an adults-only chat between adults; follow where the chat actually is.' : 'Keep it PG-13: fully clothed, nothing explicit.'}
+${guarded
+  ? 'IMPORTANT: someone in this picture is under 16 or protected. The picture is wholesome and fully clothed, nothing suggestive (swimwear at most).'
+  : adult
+    ? 'This chat is 18+ between consenting adults. Follow it exactly where it is. If it is sexual, say so plainly in the prompt: nudity, bodies, positions and contact in explicit words. Never turn an intimate moment into a tasteful clothed photo.'
+    : 'This chat is not 18+: keep it tasteful and fully clothed unless the chat clearly says otherwise, and nothing explicit.'}
 ${user ? `THE PLAYER ASKED FOR THIS IN THE PICTURE (it must be shown): ${user}` : ''}
-Reply with JSON only: {"prompt":"","wearing":"","you_in_frame":false,"caption":""}` },
-        { role: 'user', content: `${ch.scene ? `WHERE THEY ARE: ${ch.scene}\n` : ''}${ch.channel === 'person' ? 'They are together in person.' : 'They are texting, not in the same place.'}\n\nTHE CHAT RIGHT NOW:\n${recent || '(just starting)'}` }
-      ], { stream: false, signal, maxTokens: 260, temperature: 0.7, json: true, helper: true });
+Reply with JSON only: {"prompt":"","outfit":"","intimate":false,"you_in_frame":false,"caption":""}` },
+        { role: 'user', content: `${ch.scene ? `WHERE THEY ARE: ${ch.scene}\n` : ''}${ch.channel === 'person' ? 'They are together in person.' : 'They are texting, not in the same place.'}\nRELATIONSHIP: ${palStage(p).l}, ${p.intensity || 'balanced'} intensity\n\nTHE CHAT RIGHT NOW:\n${recent || '(just starting)'}` }
+      ], { stream: false, signal, maxTokens: 400, temperature: 0.7, json: true, helper: true });
       j = tryJSON(stripThink(raw));
     }
   } catch (e) { if (e.name === 'AbortError') { ch.messages = ch.messages.filter(m => m !== msg); S.palBusy = null; S.abort = null; savePals(false); return palRedraw(); } console.warn('Picture prompt failed, using the basic one', e); }
   const looks = subjects.map(x => [x.tags, palLook(x).slice(0, 260)].map(s => String(s || '').trim()).filter(Boolean).join(', '));
-  const wearing = String(j?.wearing || '').trim() || palOutfit(p);
-  const desc = String(j?.prompt || '').trim() || [selfie ? 'smiling at the camera' : 'candid moment', ch.scene || 'casual setting'].join(', ');
-  const prompt = o.exact && user ? user : [selfie ? 'selfie, phone camera photo' : subjects.length > 1 ? `photo of ${subjects.length} people together` : 'candid photo', ...looks, wearing && subjects.length === 1 ? `wearing ${wearing}` : '', desc, user && !desc.toLowerCase().includes(user.toLowerCase().slice(0, 24)) ? user : '', j?.you_in_frame === true && me?.look ? `with ${me.sex === 'female' ? 'a woman' : 'a man'}: ${me.look.slice(0, 160)}` : ''].map(s => String(s || '').trim()).filter(Boolean).join(', ').replace(/\s+/g, ' ').slice(0, 860);
+  /* what she is wearing in THIS picture: "NONE" means undressed, "SAME" or missing means her usual
+     clothes. The old rule fell back to the usual outfit every time, which dressed her again mid-scene. */
+  const fit = String(j?.outfit ?? '').trim();
+  const rawDesc = String(j?.prompt || '').trim();
+  const playerWord = j?.you_in_frame === true ? (me?.sex === 'female' ? 'the woman' : me?.sex === 'male' ? 'the man' : 'the other person') : 'the viewer';
+  const userPic = user ? picThird(user, me, j?.you_in_frame === true) : '';
+  const meLook = persLook(me);
+  const desc0 = rawDesc ? palPicClean(rawDesc, p, playerWord) : [selfie ? 'smiling at the camera' : 'candid moment', ch.scene || 'casual setting'].join(', ');
+  /* a small model happily says "SAME" and then describes her undressed in the same breath: the
+     description wins, or the app dresses her again in the middle of the scene */
+  const said = rawDesc + ', ' + desc0;
+  const stark = /^none$/i.test(fit) || (adult && PAL_NUDE_STRONG.test(said));
+  const undressed = stark || (adult && j?.intimate === true && PAL_BARE.test(said));
+  const desc = undressed ? desc0.replace(/\b(?:she|he|they)\s+(?:is|are)\s+(?:both\s+)?(?:fully|still|mostly)\s+(?:dressed|clothed)\b[^,]*/gi, '').replace(/\s*,\s*,+/g, ',').replace(/^[,\s]+|[,\s]+$/g, '') : desc0;
+  const wearing = undressed ? '' : !fit || /^same$/i.test(fit) ? palOutfit(p) : fit;
+  const real = adult && (j?.intimate === true || undressed) ? 'intimate, natural, unposed' : '';
+  const prompt = o.exact && userPic ? userPic : [selfie ? 'selfie, phone camera photo' : subjects.length > 1 ? `photo of ${subjects.length} people together` : 'candid photo', ...looks, wearing && subjects.length === 1 ? `wearing ${wearing}` : adult && stark ? 'nude, bare skin' : '', desc, real, userPic && !desc.toLowerCase().includes(userPic.toLowerCase().slice(0, 24)) ? userPic : '', j?.you_in_frame === true && meLook ? `with ${me.sex === 'female' ? 'a woman' : 'a man'}: ${meLook.slice(0, 160)}` : ''].map(s => String(s || '').trim()).filter(Boolean).join(', ').replace(/\s+/g, ' ').slice(0, 860);
   delete msg.picBusy;
-  msg.image = { prompt, seed: d(999999), neg, kind: selfie ? 'selfie' : 'scene', ...(o.model ? { model: o.model } : {}), ...(user ? { user } : {}), ...(subjects.length === 1 && !o.exact ? { subj: { t: 'pal', id: p.id }, pose: [desc, user].filter(Boolean).join(', ').slice(0, 500) } : {}) };
+  msg.image = { prompt, seed: d(999999), neg, kind: selfie ? 'selfie' : 'scene', ...(o.model ? { model: o.model } : {}), ...(user ? { user } : {}), ...(subjects.length === 1 && !o.exact ? { subj: { t: 'pal', id: p.id }, pose: [desc, userPic].filter(Boolean).join(', ').slice(0, 500) } : {}) };
   msg.text = selfie ? String(j?.caption || '').replace(/^["“]|["”]$/g, '').trim().slice(0, 300) || '*sends a selfie*' : '';
   if (o.saveNeg) ch.picNeg = neg;
   if (S.palBusy?.msg === msg.id) S.palBusy = null; if (S.abort?.signal === signal) S.abort = null;

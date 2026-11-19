@@ -18,7 +18,7 @@ function forgeBodyNeg(neg, safe) {
 }
 const PHOTO_STYLE = 'photorealistic, cinematic film still, 35mm photograph, natural lighting, detailed skin texture, shallow depth of field, sharp focus';
 /* ---------- portraits in the character builder ---------- */
-const draftCtx = D => ({ rating: D.rating, artStyle: D.art, character: { storyRole: D.storyRole, appearance: D.appearance, backstory: D.backstory } });
+const draftCtx = D => ({ rating: D.rating, artStyle: D.art, character: { storyRole: D.storyRole, appearance: lookOf(D), backstory: D.backstory } });
 function draftPortraitHTML(D) {
   if (S.settings.image.mode === 'off') return '<p class="hint">Turn on pictures in Settings → Images to paint a portrait here.</p>';
   const p = D.portrait;
@@ -29,7 +29,7 @@ function draftPortraitHTML(D) {
 /* ---------- SFW / NSFW picture models ----------
    Models are shown as "SFW" / "NSFW", never by file name. An adventure only uses the NSFW model when it is rated
    M (Mature) AND nothing about the player character suggests they are under 16. Any single picture whose
-   description mentions a child goes to the SFW model with sexual content blocked, whatever the rating. */
+   description mentions a child or teen goes to the SFW model with sexual content blocked, whatever the rating. */
 const NSFW_NAME = /porn|nsfw|lust|xxx|hentai|sex|nude|naked|erot|lewd|adult|r18|18\+/i;
 /* Whether a picture may use the explicit model is decided in js/ageguard.js (AGE.imageAllowed),
    the same rule that decides what the story text may contain. */
@@ -215,7 +215,7 @@ function forgeSettingsHTML() {
       const opts = sel => all.map(m => `<option value="${esc(m)}" ${sel === m ? 'selected' : ''}>${modelLabel(m)}</option>`).join('');
       return `<label class="f"><span>Pictures for regular adventures</span><select data-bind="image.forgeModelSfw">${all.length ? opts(im.forgeModelSfw) : '<option value="">Tap "Find it" to load models</option>'}</select></label>
       <label class="f"><span>Pictures for M (Mature) adventures</span><select data-bind="image.forgeModelNsfw"><option value="" ${im.forgeModelNsfw ? '' : 'selected'}>Same as regular (SFW)</option>${opts(im.forgeModelNsfw)}</select></label>
-      <p class="hint">The app chooses for you: M (Mature) adventures use the NSFW model, everything else uses SFW. If the player character might be under 16, or a picture shows a child, the SFW model is used with adult content blocked.</p>
+      <p class="hint">The app chooses for you: M (Mature) adventures use the NSFW model, everything else uses SFW. If the player character might be under 16, or a picture shows a child or teen, the SFW model is used with adult content blocked.</p>
       ${all.length ? `<details style="margin-top:6px"><summary class="hint" style="cursor:pointer">Show file names</summary><p class="hint">${all.map(m => `${modelLabel(m)}: ${esc(m)}`).join('<br>')}</p></details>` : ''}`; })()}
     <label class="f"><span>Quality preset</span><select data-bind="image.forgePreset"><option value="auto" ${(im.forgePreset || 'auto') === 'auto' ? 'selected' : ''}>Auto: match each model</option>${Object.entries(FORGE_PRESETS).map(([k, v]) => `<option value="${k}" ${im.forgePreset === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
     <p class="hint">Auto picks the right speed settings for each model: fast for the SFW model, standard SDXL for the NSFW one.</p>
@@ -590,7 +590,7 @@ function characterMD(c) {
     ch.injuries.length ? '## Injuries\n' + ch.injuries.map(i => `- ${i.name}: ${i.effect}`).join('\n') + '\n' : '',
     '## Gear', ...ch.gear.map(g => `- ${g.name}${g.tier ? ` [${g.tier}]` : ''}${g.desc ? ` — ${g.desc}` : ''}`), '',
     ch.signatures.length ? '## Signatures\n' + ch.signatures.map(s => `- ${s.name}${s.desc ? ` — ${s.desc}` : ''}`).join('\n') + '\n' : '',
-    '## Appearance', ch.appearance || '—', '', '## Backstory', ch.backstory || '—'].join('\n');
+    '## Appearance', lookOf(ch) || '—', '', '## Backstory', ch.backstory || '—'].join('\n');
 }
 function storyMD(c) {
   const lines = [`# ${c.title}`, '', `*${c.genre || ''}*`, '', c.premise, '', '---', ''];
@@ -732,7 +732,7 @@ function newDraft(sc = SCENARIOS[0]) {
   return { scenario: sc.id, title: sc.title, genre: sc.genre, premise: sc.premise, tone: sc.tone, art: sc.art, rating: sc.rating || 'PG-13', magicCost: sc.magic || 'gm', gmNotes:'',
     worldPrompt:'', world: sc.world || '', secrets: sc.secrets || '', plan: sc.plan || '', roadmap: sc.roadmap || '', threats: (sc.threats || []).map(t => ({ ...t })), factions: (sc.factions || []).map(f => ({ ...f })),
     people: (sc.people || []).map(p => ({ ...p })), pinned: [...(sc.pinned || [])], cards: [], gmPreset:'storyteller', gmName:'', gmStyle:'',
-    concept:'', name:'', sex:'', pronouns:'', storyRole:'', appearance:'', backstory:'',
+    concept:'', name:'', sex:'', pronouns:'', storyRole:'', appearance:'', backstory:'', profile:{},
     stats: Object.fromEntries(STATS.map(k => [k, 8])), traits: [], gear: (sc.gear || []).map(normGear), signatures: [], tpToEp: 0, tpToStats: 0, gold: START_GOLD };
 }
 function draftBudget(D) {
@@ -823,7 +823,7 @@ async function draftWithAI(convert = false) {
     if ((convert || !D.name.trim()) && j.name) D.name = String(j.name).slice(0, 60);
     { const g = String(j.gender || j.sex || '').toLowerCase(); if ((convert || !D.sex) && /^(f|m)/.test(g)) D.sex = g[0] === 'f' ? 'female' : 'male'; }
     D.storyRole = String(j.story_role || j.storyRole || D.storyRole || '').slice(0, 60);
-    D.appearance = String(j.appearance || D.appearance || '').slice(0, 400);
+    { profSeed(D); const ap = String(j.appearance || profOf(D).appearance || '').slice(0, 500); if (ap) profOf(D).appearance = ap; profSync(D); }
     D.backstory = String(j.backstory || D.backstory || '').slice(0, 2000);
     for (const k of STATS) D.stats[k] = clamp(num(j.stats[k]) || 10, 8, 20);
     let guard = 0; while (statPoints(D.stats) > draftBudget(D).cap && guard++ < 60) { const k = STATS.reduce((a, b) => D.stats[a] >= D.stats[b] ? a : b); D.stats[k]--; }
@@ -849,7 +849,7 @@ function createCampaign(s0 = false) {
     artStyle: D.art.trim(), gmNotes: D.gmNotes.trim(), magicCost: D.magicCost, world: (D.world || '').trim(), secrets: (D.secrets || '').trim(),
     gm: { preset: D.gmPreset || 'storyteller', name: (D.gmName || '').trim() || 'The Narrator', style: (D.gmStyle || '').trim() }, pinned: [], saves: [], tableTalk: [],
     plan: (D.plan || '').trim(), roadmap: (D.roadmap || '').trim(), rmAct: 0, rmDone: [], threats: [], factions: [], phase: s0 ? 'session0' : 'play', session0: [], createdAt: Date.now(), updatedAt: Date.now(),
-    character: { name: D.name.trim(), sex: D.sex || '', storyRole: D.storyRole.trim(), appearance: D.appearance.trim(), backstory: D.backstory.trim(),
+    character: { name: D.name.trim(), sex: D.sex || '', storyRole: D.storyRole.trim(), appearance: lookOf(D), backstory: D.backstory.trim(), profile: deep(D.profile || {}), ...(num(D.age) > 0 ? { age: num(D.age) } : {}),
       stats: { ...D.stats }, level: 1, hp: maxHp, maxHp, ep: Math.max(0, num(D.tpToEp)), tp: b.left, gold: num(D.gold),
       traits: D.traits.map(t => ({ ...t, source:'build' })), gear: D.gear.filter(g => g.name.trim()), signatures: D.signatures.filter(s => s.name.trim()), injuries: [], momentum: 0, strain: 0 },
     location:'', quests: [], memory: [], summary:'', summarizedUpTo: 0, pendingRoll: null, combat: false, levelPending: false,

@@ -39,13 +39,13 @@ function sheetHTML() {
   const cf = (path, label, type = 'text') => `<label class="f"><span>${label}</span><input type="${type}" data-cbind="${path}" value="${esc(getPath(c, path) ?? '')}"></label>`;
   let body = '';
   if (isCompanion(c)) return ['', `<div style="text-align:center;margin:10px 0 4px">${S.settings.image.mode !== 'off' ? `<div class="sheetport">${ch.portrait ? `<img class="port xl" src="${esc(imageUrl(ch.portrait, c))}" alt="">` : `<div class="port xl ph2">${esc(ch.name[0] || '?')}</div>`}<button class="btn sm ghost" data-act="compportrait" data-id="main">${icon('image')} ${ch.portrait ? 'New portrait' : 'Paint portrait'}</button>${(() => { const per = myPersona(); return per?.portrait ? `<button class="btn sm ghost" data-act="pcpersonaport">Use ${esc(per.name)}'s photo</button>` : ''; })()}</div>` : ''}<div style="font-family:var(--display);font-size:30px;font-weight:700;color:var(--gold2)">${esc(ch.name)}</div></div>
-    ${cf('character.storyRole', 'Who you are here')}<label class="f"><span>Appearance</span><textarea rows="2" data-cbind="character.appearance">${esc(ch.appearance || '')}</textarea></label><label class="f"><span>About you</span><textarea rows="5" data-cbind="character.backstory">${esc(ch.backstory || '')}</textarea></label>
+    ${cf('character.storyRole', 'Who you are here')}<label class="f"><span>Appearance</span><textarea rows="2" data-cbind="character.profile.appearance">${esc(String(profOf(ch).appearance ?? ch.appearance ?? ''))}</textarea></label><label class="f"><span>About you</span><textarea rows="5" data-cbind="character.backstory">${esc(ch.backstory || '')}</textarea></label>
     <p class="hint">The narrator and cast know what's written here. Things they learn about you as you talk are kept in More → Story tools → Memory.</p>`];
   if (tab === 'sheet') {
     body = `<div style="text-align:center;margin:10px 0 4px">${S.settings.image.mode !== 'off' ? `<div class="sheetport">${ch.portrait ? `<img class="port xl" src="${esc(imageUrl(ch.portrait, c))}" alt="">` : `<div class="port xl ph2">${esc(ch.name[0] || '?')}</div>`}<button class="btn sm ghost" data-act="compportrait" data-id="main">${icon('image')} ${ch.portrait ? 'New portrait' : 'Paint portrait'}</button>${(() => { const per = myPersona(); return per?.portrait ? `<button class="btn sm ghost" data-act="pcpersonaport">Use ${esc(per.name)}'s photo</button>` : ''; })()}</div>` : ''}<div style="font-family:var(--display);font-size:30px;font-weight:700;color:var(--gold2)">${esc(ch.name)}</div>
         <div class="hint">${esc(ch.storyRole || '')} · Level ${ch.level} · ${MAGIC_LABEL[c.magicCost] || ''} · ${esc(ratingTag(c))}${AGE.isProtected(ch) ? ' · Protected' : ''}</div></div>
-      <div class="kv">${cf('character.hp', 'HP', 'number')}${cf('character.maxHp', 'Max HP', 'number')}${cf('character.age', 'Age', 'number')}</div>
-      ${AGE.isMinor(ch) ? '<p class="hint">under 16: this character is always protected, whatever the rating.</p>' : ''}
+      <div class="kv">${cf('character.hp', 'HP', 'number')}${cf('character.maxHp', 'Max HP', 'number')}${cf('character.profile.age', 'Age')}</div>
+      ${AGE.isMinor(ch) ? '<p class="hint">Under 16: this character is always protected, whatever the rating.</p>' : ''}
       <label class="chk"><input type="checkbox" data-cbind="character.protected" ${AGE.isProtected(ch) ? 'checked' : ''} ${AGE.isMinor(ch) ? 'disabled' : ''}> <span>${AGE.isMinor(ch) ? 'Protected: this character is under 16, so this cannot be turned off' : 'Protect this character: no sexual content or explicit pictures of them, whatever their age'}</span></label>
       <div class="kv">${cf('character.gold', 'Gold', 'number')}<label class="f"><span>Banked</span><div class="row" style="padding:10px 0"><b>${ch.ep}</b> EP · <b>${ch.tp}</b> TP</div></label></div>
       <label class="f"><span>Stats (raised with EP at level-ups)</span></label>
@@ -67,9 +67,22 @@ function sheetHTML() {
         <textarea rows="1" data-cbind="character.gear.${i}.desc" placeholder="What it does">${esc(g.desc)}</textarea></div>`).join('') + `<button class="btn sm" data-act="gearadd" style="margin-top:10px">${icon('plus')} Add item</button>`
       + `<div class="sect" style="font-size:20px">Signatures</div>` + (ch.signatures.length ? ch.signatures.map(s => `<div class="quest"><div class="grow"><b>${esc(s.name)}</b>${s.desc ? ' — ' + esc(s.desc) : ''}</div></div>`).join('') : '<p class="hint">None yet. Rare items, allies and connections you find go here.</p>');
   } else {
-    body = `<label class="f"><span>Appearance</span><textarea rows="2" data-cbind="character.appearance">${esc(ch.appearance)}</textarea></label>
-      <label class="f"><span>Story role</span><input type="text" data-cbind="character.storyRole" value="${esc(ch.storyRole)}"></label>
-      <label class="f"><span>Backstory</span><textarea rows="8" data-cbind="character.backstory">${esc(ch.backstory)}</textarea></label>`;
+    profSeed(ch);
+    body = `<label class="f"><span>Story role</span><input type="text" data-cbind="character.storyRole" value="${esc(ch.storyRole)}"></label>
+      <div class="sect" style="font-size:18px">Identity &amp; ancestry</div>
+      ${profSectionHTML(ch, 'identity', { bind: 'cbind', prefix: 'character.profile.', host: 'sheet' })}
+      <div class="row wrap"><button class="btn sm" data-act="ivyopen" data-host="sheet">${icon('spark')} Interview me about this character</button></div>
+      <div class="sect" style="font-size:18px">Physical appearance &amp; visual profile</div>
+      ${profSectionHTML(ch, 'appearance', { bind: 'cbind', prefix: 'character.profile.', host: 'sheet' })}
+      <div class="sect" style="font-size:18px">Personality, likes, dislikes &amp; hobbies</div>
+      ${profSectionHTML(ch, 'personality', { bind: 'cbind', prefix: 'character.profile.', host: 'sheet' })}
+      <div class="sect" style="font-size:18px">Beliefs, values, motivations &amp; fears</div>
+      ${profSectionHTML(ch, 'beliefs', { bind: 'cbind', prefix: 'character.profile.', host: 'sheet' })}
+      <div class="sect" style="font-size:18px">Background, history &amp; relationships</div>
+      <label class="f"><span>Background</span><textarea rows="8" data-cbind="character.backstory">${esc(ch.backstory)}</textarea></label>
+      ${profSectionHTML(ch, 'history', { bind: 'cbind', prefix: 'character.profile.', host: 'sheet' })}
+      ${profSectionHTML(ch, 'craft', { bind: 'cbind', prefix: 'character.profile.', host: 'sheet' })}
+      ${profReviewHTML(ch)}`;
   }
   return [tabs, body];
 }

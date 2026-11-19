@@ -70,18 +70,33 @@ function renderNew(keepScroll) {
       <p class="hint">Copy the prompt, paste it into ChatGPT or Claude with your idea, then paste what it writes into the box above: the sheet fills in straight away. A character in any other format still works with the button above it (the AI sorts it).</p>
       <p class="hint">The AI fills in everything below — stats, traits, gear and backstory. Then tweak it. Or skip this and build by hand.</p>
     </div>
+    <div class="sect">1 · Identity &amp; ancestry</div>
     <div class="kv">${f('name', 'Name', 'Rowan')}<label class="f"><span>Gender</span><select data-dpath="sex"><option value="">Choose…</option><option value="male" ${D.sex === 'male' ? 'selected' : ''}>Male</option><option value="female" ${D.sex === 'female' ? 'selected' : ''}>Female</option></select></label></div>
     ${f('storyRole', isComp ? 'Who you are here' : 'Story role', isComp ? 'New bartender at the Gilded Stag, a ranger passing through…' : 'Third-year of House Ember, guild apprentice…')}
-    ${ta('appearance', 'Appearance (used for images)', 'Tall, weathered face, braided red hair, green wool cloak…', 2)}
-    ${draftPortraitHTML(D)}
-    ${ta('backstory', isComp ? 'About you' : 'Backstory', isComp ? 'Anything you want the story and the cast to know about you.' : 'Where they come from, what they want, what haunts them.', 4)}
+    ${profSectionHTML(D, 'identity', { host: 'draft' })}
+    <p class="hint">Required: name, age, ancestry, a basic look, a background and a core personality. Everything else is optional — fill it in later, or let the interview ask you.</p>
+    <div class="row wrap"><button class="btn" data-act="ivyopen" data-host="draft">${icon('spark')} Interview me, one question at a time</button></div>
+
+    <div class="sect">2 · Physical appearance &amp; visual profile</div>
+    <p class="hint">The visual profile: every portrait, scene picture and AI-written picture prompt is built from these fields.</p>
+    ${profSectionHTML(D, 'appearance', { host: 'draft' })}
+
+    <div class="sect">3 · Personality, likes, dislikes &amp; hobbies</div>
+    ${profSectionHTML(D, 'personality', { host: 'draft' })}
+
+    <div class="sect">4 · Beliefs, values, motivations &amp; fears</div>
+    ${profSectionHTML(D, 'beliefs', { host: 'draft' })}
+    <div class="sect">5 · Background, history &amp; relationships</div>
+    ${ta('backstory', isComp ? 'About you (required)' : 'Background &amp; life story (required)', isComp ? 'Anything you want the story and the cast to know about you.' : 'Where they come from, what they want, what haunts them.', 4)}
+    ${profSectionHTML(D, 'history', { host: 'draft' })}
     ${isComp ? `<div class="sect">Your cast</div>
     <label class="f"><span>Style</span><select data-dpath="compStyle">${Object.entries(COMP_STYLES).map(([k, v]) => `<option value="${k}" ${(D.compStyle || 'chat') === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
     <p class="hint" style="color:var(--ink)">Who do you want in your story? Describe each character on its own line. The AI builds each one with a personality, a voice, goals and a past. Add more any time from Cast.</p>
     ${ta('castText', 'Characters (one per line)', 'Mara, a sharp-tongued sellsword who secretly writes poetry\nOld Brannoc, the gruff innkeeper who knows everyone\'s business', 4)}
-    <p class="hint">Everyone in your cast is an adult (18+).</p>` : `
+    <p class="hint">Everyone in your cast is an adult (16+).</p>` : `
 
-    <div class="sect">Stats <small>${draftBudget(D).cap} points${draftBudget(D).extra ? ` (${STAT_BUDGET} + ${draftBudget(D).extra} bought with TP)` : ''} · 8 to 20</small></div>
+    <div class="sect">6 · Class, attributes &amp; skills <small>${draftBudget(D).cap} points${draftBudget(D).extra ? ` (${STAT_BUDGET} + ${draftBudget(D).extra} bought with TP)` : ''} · 8 to 20</small></div>
+    ${profSectionHTML(D, 'craft', { host: 'draft' })}
     <p class="hint">Each stat gives a bonus (in gold) that's added to your d20 when you roll with it: 10 is average (+0), 14 is +2, 18 is +4.</p>
     ${STATS.map(k => `<div class="statrow"><div class="sn"><b>${SN(k)}</b><small>${STAT_DESC[k]}</small></div>
       <button class="iconbtn sm" data-act="dstat" data-k="${k}" data-d="-1" ${D.stats[k] <= 8 ? 'disabled' : ''}>${icon('minus')}</button>
@@ -99,7 +114,7 @@ function renderNew(keepScroll) {
     <button class="btn sm" data-act="dadd" data-list="traits" data-pol="-" style="margin-top:10px">${icon('plus')} Add negative trait</button>
     <p class="hint">Gives back at build: D 1 · C 3 · B 5 · A 7 · S 9 TP.</p>
 
-    <div class="sect">Gear</div>
+    <div class="sect">7 · Abilities, equipment &amp; resources <small>gear · signatures · gold</small></div>
     ${D.gear.map((g, i) => `<div class="gearrow"><input type="text" data-dpath="gear.${i}.name" value="${esc(g.name)}" placeholder="Item">
       <select data-dpath="gear.${i}.tier" style="width:auto"><option value="" ${!g.tier ? 'selected' : ''}>Basic (free)</option>${TIERS.map(x => `<option value="${x}" ${g.tier === x ? 'selected' : ''}>Special ${x} (−${GEAR_COST[x]} TP)</option>`).join('')}</select>
       <button class="iconbtn sm" data-act="ddel" data-list="gear" data-i="${i}">${icon('x')}</button>
@@ -119,6 +134,12 @@ function renderNew(keepScroll) {
     <div class="kv">${f('gold', 'Starting gold', '15', 'number')}</div>
     `}
 
+    <div class="sect">8 · AI portrait studio</div>
+    ${draftPortraitHTML(D)}
+    <p class="hint">Painted from the visual profile above${D.art ? `, in this adventure's art style (<b>${esc(D.art)}</b>)` : ''}. Paint again after changing the look.</p>
+
+    <div class="sect">9 · Review &amp; finish</div>
+    ${profReviewHTML(D)}
     ${adding ? `<button class="btn gold wide" data-act="begin" style="margin-top:24px;min-height:54px;font-size:17px">${icon('plus')} Add to the adventure</button>` : `
     <button class="btn gold wide" data-act="begins0" style="margin-top:24px;min-height:54px;font-size:17px">${icon('spark')} ${isComp ? 'Talk it through with the narrator first' : 'Session zero first (recommended)'}</button>
     <p class="hint" style="text-align:center">${isComp ? 'Chat with the narrator about the story you want; it shapes the world from your answers.' : 'Chat with your GM about what you want; it builds the world and a hidden plan from your answers.'}</p>
@@ -313,6 +334,7 @@ function renderModal() {
   else if (S.modal === 'levelup') { title = 'Level up'; body = levelUpHTML(); }
   else if (S.modal === 'askgm') { title = 'Ask ' + gmOf(cur()).name; body = askGMHTML(); }
   else if (S.modal === 'fix') { title = 'Fix the story'; body = fixHTML(); }
+  else if (S.modal === 'interview') { title = 'Character interview'; body = interviewHTML(); }
   const again = !!root.querySelector('.modal');   /* re-drawing an open window: don't replay the open animation */
   root.innerHTML = `<div class="modal ${again ? 'still' : ''}" data-act="modalbg"><div class="sheet" role="dialog" aria-label="${title}">
     <div class="hd"><h2>${title}</h2><button class="iconbtn" data-act="close" aria-label="Close">${icon('x')}</button></div>

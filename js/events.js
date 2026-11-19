@@ -8,6 +8,8 @@ document.addEventListener('click', e => {
   const act = el.dataset.act; const c = cur(); const D = S.draft;
   if (act.startsWith('bible')) { bibleAction(act, el); return; }
   if (act.startsWith('pal') && palAction(act, el)) return;
+  if (act.startsWith('prof') && profAction(act, el)) return;
+  if (act.startsWith('ivy') && ivyAction(act, el)) return;
   if (act.startsWith('enc') && encAction(act, el, c)) return;
   if (homeAction(act, el) || panelAction(act, el, c) || memoryAction(act, el, c)) return;
   switch (act) {
@@ -262,6 +264,7 @@ document.addEventListener('input', e => {
     if (el.dataset.list) v = v.split('\n').map(s => s.trim()).filter(Boolean);
     else if (el.dataset.num) v = num(v);
     setPath(S.draft, el.dataset.dpath, v);
+    if (/^profile\./.test(el.dataset.dpath)) profSync(S.draft);
     if (el.tagName === 'SELECT') renderNew(true); else updateBudgets();
   } else if (el.dataset.lpath && S.lu) {
     setPath(S.lu.ch, el.dataset.lpath, el.value.split('\n').map(s => s.trim()).filter(Boolean));
@@ -270,6 +273,7 @@ document.addEventListener('input', e => {
     if (el.dataset.list) v = v.split('\n').map(s => s.trim()).filter(Boolean);
     else if (el.type === 'number') v = num(v);
     setPath(c, el.dataset.cbind, v);
+    if (/^character\.profile\./.test(el.dataset.cbind)) profSync(c.character);
     const ch = c.character; ch.maxHp = Math.max(1, ch.maxHp); ch.hp = clamp(ch.hp, 0, ch.maxHp); ch.momentum = clamp(num(ch.momentum), 0, 3); ch.strain = Math.max(0, num(ch.strain));
     touch(c); renderHUD(); scheduleSync();
     if ((el.tagName === 'SELECT' || el.type === 'checkbox') && S.modal) renderModal();
