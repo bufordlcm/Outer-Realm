@@ -275,6 +275,11 @@ async function palPicture(ch, o = {}) {
   const subjects = selfie || ps.length === 1 || o.who || to !== 'all' ? [p] : ps.slice(0, 3);
   /* per picture: only the people actually in it decide the rating, not everyone in the chat */
   const guarded = subjects.some(AGE.isProtected); const adult = !guarded && subjects.every(x => x.adult);
+  /* an 18+ chat painted with the safe model comes back clothed and airbrushed: say it out loud instead of guessing */
+  if (adult && S.settings.image.mode === 'local' && !S.settings.image.forgeModelNsfw && !S.palPicWarned) {
+    S.palPicWarned = true;
+    toast('This chat is 18+, but no NSFW model is chosen in Settings → Images, so pictures use the safe model. Pick one under "Pictures for M (Mature) adventures".', 9000);
+  }
   const user = String(o.user || '').replace(/\s+/g, ' ').trim().slice(0, 500); const neg = String(o.neg ?? ch.picNeg ?? '').replace(/\s+/g, ' ').trim().slice(0, 400);
   const me = personaOf(ch); const you = meName(ch);
   if (selfie && !o.quiet) ch.messages.push({ id: uid(), role: 'user', text: user ? `Send me a selfie? ${user}` : 'Send me a selfie?', mode: ch.channel || 'text', t: Date.now(), ...(ps.length > 1 ? { to: p.id } : {}) });
@@ -284,26 +289,39 @@ async function palPicture(ch, o = {}) {
   let j = null;
   try {
     if (o.ctx !== false && !o.exact && textReady()) {
-      const recent = ch.messages.filter(m => m !== msg && m.role !== 'sys' && m.text).slice(-10).map(m => `${m.role === 'user' ? you : palWho(ch, m)?.name}: ${m.text}`).join('\n');
+      const recent = ch.messages.filter(m => m !== msg && m.role !== 'sys' && (m.text || m.image)).slice(-14)
+        .map(m => `${m.role === 'user' ? you : palWho(ch, m)?.name}: ${m.text || ''}${m.image ? ' [sent a photo: ' + String(m.image.prompt || '').slice(0, 140) + ']' : ''}`).join('\n');
       const raw = await chat([
-        { role: 'system', content: `You write the description of ONE still picture for an image model, from a private chat. ${selfie ? `It is a selfie that ${p.name} takes and sends right now: taken by ${p.sex === 'male' ? 'himself' : 'herself'} at arm's length or in a mirror, phone-camera look.` : `It shows the moment that is happening right now, as a photograph of the scene with ${subjects.map(x => x.name).join(' and ')}.`}
-Base it on what is actually happening in the chat at this moment: where they are, what ${subjects.length > 1 ? 'they are' : first(p.name) + ' is'} doing, mood, time of day.
-"prompt": 25-45 words of comma-separated visual phrases: pose and action, facial expression, framing and camera angle, the place, the lighting. Do NOT describe face, hair or body (the app adds the saved look) and use no names.
-"wearing": what ${first(p.name)} is wearing in this exact moment if the chat makes it different from the usual outfit (${palOutfit(p) || 'not set'}); otherwise "".
+        { role: 'system', content: `You write the description of ONE still photograph for an image model, taken from a private chat between ${you} and ${subjects.map(x => x.name).join(' and ')}. ${selfie
+          ? `It is a selfie ${first(p.name)} takes and sends right now: held at arm's length or shot in a mirror, phone-camera framing and lens.`
+          : 'It shows the moment that is happening right now in the chat, photographed exactly as it is.'}
+Read the last messages and describe what is REALLY happening: how close they are, what they are doing with their hands, what they are wearing or not wearing, the light, the room. Do not clean it up and do not upgrade it: an ordinary dressed moment stays ordinary, and an intimate moment is shown as intimate.
+"prompt": 40-70 words of comma-separated visual phrases covering: pose and body position; state of dress in plain words (fully dressed, shirt open, underwear, topless, nude); hands and contact; expression; framing and camera angle (close-up, waist-up, over the shoulder, from above); the place; the light; the mood. No names and no text in the picture. Do not re-describe her face, hair or figure (the app adds her saved look): clothing, skin, pose and contact are yours.
+"outfit": what ${first(p.name)} is wearing in the picture, in a few words; "NONE" if she is undressed; "SAME" if she is in her usual clothes (${palOutfit(p) || 'not set'}).
+"intimate": true if the picture is sexual or romantic, otherwise false.
 "you_in_frame": true only if ${you} is clearly in the picture too.
 "caption": ${selfie ? `the short message ${first(p.name)} sends with the selfie, in ${p.sex === 'male' ? 'his' : 'her'} own voice` : '""'}.
-${guarded ? 'IMPORTANT: someone in this picture is under 16 or protected. The picture is wholesome and fully clothed, nothing suggestive.' : adult ? 'This is an adults-only chat between adults; follow where the chat actually is.' : 'Keep it PG-13: fully clothed, nothing explicit.'}
+${guarded
+  ? 'IMPORTANT: someone in this picture is under 18 or protected. The picture is wholesome and fully clothed, nothing suggestive (swimwear at most).'
+  : adult
+    ? 'This chat is 18+ between consenting adults. Follow it exactly where it is. If it is sexual, say so plainly in the prompt: nudity, bodies, positions and contact in explicit words. Never turn an intimate moment into a tasteful clothed photo.'
+    : 'This chat is not 18+: keep it tasteful and fully clothed unless the chat clearly says otherwise, and nothing explicit.'}
 ${user ? `THE PLAYER ASKED FOR THIS IN THE PICTURE (it must be shown): ${user}` : ''}
-Reply with JSON only: {"prompt":"","wearing":"","you_in_frame":false,"caption":""}` },
-        { role: 'user', content: `${ch.scene ? `WHERE THEY ARE: ${ch.scene}\n` : ''}${ch.channel === 'person' ? 'They are together in person.' : 'They are texting, not in the same place.'}\n\nTHE CHAT RIGHT NOW:\n${recent || '(just starting)'}` }
-      ], { stream: false, signal, maxTokens: 260, temperature: 0.7, json: true, helper: true });
+Reply with JSON only: {"prompt":"","outfit":"","intimate":false,"you_in_frame":false,"caption":""}` },
+        { role: 'user', content: `${ch.scene ? `WHERE THEY ARE: ${ch.scene}\n` : ''}${ch.channel === 'person' ? 'They are together in person.' : 'They are texting, not in the same place.'}\nRELATIONSHIP: ${palStage(p).l}, ${p.intensity || 'balanced'} intensity\n\nTHE CHAT RIGHT NOW:\n${recent || '(just starting)'}` }
+      ], { stream: false, signal, maxTokens: 340, temperature: 0.7, json: true, helper: true });
       j = tryJSON(stripThink(raw));
     }
   } catch (e) { if (e.name === 'AbortError') { ch.messages = ch.messages.filter(m => m !== msg); S.palBusy = null; S.abort = null; savePals(false); return palRedraw(); } console.warn('Picture prompt failed, using the basic one', e); }
   const looks = subjects.map(x => [x.tags, palLook(x).slice(0, 260)].map(s => String(s || '').trim()).filter(Boolean).join(', '));
-  const wearing = String(j?.wearing || '').trim() || palOutfit(p);
+  /* what she is wearing in THIS picture: "NONE" means undressed, "SAME" or missing means her usual
+     clothes. The old rule fell back to the usual outfit every time, which dressed her again mid-scene. */
+  const fit = String(j?.outfit ?? '').trim();
+  const undressed = /^none$/i.test(fit);
+  const wearing = undressed ? '' : !fit || /^same$/i.test(fit) ? palOutfit(p) : fit;
   const desc = String(j?.prompt || '').trim() || [selfie ? 'smiling at the camera' : 'candid moment', ch.scene || 'casual setting'].join(', ');
-  const prompt = o.exact && user ? user : [selfie ? 'selfie, phone camera photo' : subjects.length > 1 ? `photo of ${subjects.length} people together` : 'candid photo', ...looks, wearing && subjects.length === 1 ? `wearing ${wearing}` : '', desc, user && !desc.toLowerCase().includes(user.toLowerCase().slice(0, 24)) ? user : '', j?.you_in_frame === true && me?.look ? `with ${me.sex === 'female' ? 'a woman' : 'a man'}: ${me.look.slice(0, 160)}` : ''].map(s => String(s || '').trim()).filter(Boolean).join(', ').replace(/\s+/g, ' ').slice(0, 860);
+  const real = adult && (j?.intimate === true || undressed) ? 'intimate, natural, unposed' : '';
+  const prompt = o.exact && user ? user : [selfie ? 'selfie, phone camera photo' : subjects.length > 1 ? `photo of ${subjects.length} people together` : 'candid photo', ...looks, wearing && subjects.length === 1 ? `wearing ${wearing}` : adult && undressed ? 'nude, bare skin' : '', desc, real, user && !desc.toLowerCase().includes(user.toLowerCase().slice(0, 24)) ? user : '', j?.you_in_frame === true && me?.look ? `with ${me.sex === 'female' ? 'a woman' : 'a man'}: ${me.look.slice(0, 160)}` : ''].map(s => String(s || '').trim()).filter(Boolean).join(', ').replace(/\s+/g, ' ').slice(0, 860);
   delete msg.picBusy;
   msg.image = { prompt, seed: d(999999), neg, kind: selfie ? 'selfie' : 'scene', ...(o.model ? { model: o.model } : {}), ...(user ? { user } : {}), ...(subjects.length === 1 && !o.exact ? { subj: { t: 'pal', id: p.id }, pose: [desc, user].filter(Boolean).join(', ').slice(0, 500) } : {}) };
   msg.text = selfie ? String(j?.caption || '').replace(/^["“]|["”]$/g, '').trim().slice(0, 300) || '*sends a selfie*' : '';

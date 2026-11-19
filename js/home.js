@@ -175,7 +175,7 @@ function charsHTML() {
         <div class="pimg">${imgTag(portraitOf(p, c), '', p.name) || `<span class="ph">${initial(p.name)}</span>`}</div>
         <div class="pbody"><b>${esc(p.name)}</b><small>${esc(p.storyRole || '')}</small>
           ${c.mode === 'companion' ? '' : `<div class="stats"><span>Lvl ${p.level || 1}</span><span>${icon('heart')} ${p.hp}/${p.maxHp}</span><span>${p.gold ?? 0} gold</span></div><div class="bar"><i style="width:${pct}%"></i></div>`}
-          <div class="in">in ${esc(c.title)} · ${esc(normRating(c.rating))}${AGE.isProtected(p) ? ` · 🔒 ${AGE.isMinor(p) ? 'Under 16' : 'Protected'}` : ' · Open'}</div></div></button>`; }).join('')}</div>` : `<p class="empty">${emptyMsg}</p>`}`;
+          <div class="in">in ${esc(c.title)} · ${esc(normRating(c.rating))}${AGE.isProtected(p) ? ` · 🔒 ${AGE.isMinor(p) ? 'Under 18' : 'Protected'}` : ' · Open'}</div></div></button>`; }).join('')}</div>` : `<p class="empty">${emptyMsg}</p>`}`;
 }
 
 /* the Gallery (grouped by story or chat) and the large picture view are in pics.js */

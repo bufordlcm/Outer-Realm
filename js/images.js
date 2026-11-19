@@ -28,8 +28,8 @@ function draftPortraitHTML(D) {
 }
 /* ---------- SFW / NSFW picture models ----------
    Models are shown as "SFW" / "NSFW", never by file name. An adventure only uses the NSFW model when it is rated
-   M (Mature) AND nothing about the player character suggests they are under 16. Any single picture whose
-   description mentions a child goes to the SFW model with sexual content blocked, whatever the rating. */
+   M (Mature) AND nothing about the player character suggests they are under 18. Any single picture whose
+   description mentions a child or teen goes to the SFW model with sexual content blocked, whatever the rating. */
 const NSFW_NAME = /porn|nsfw|lust|xxx|hentai|sex|nude|naked|erot|lewd|adult|r18|18\+/i;
 /* Whether a picture may use the explicit model is decided in js/ageguard.js (AGE.imageAllowed),
    the same rule that decides what the story text may contain. */
@@ -215,7 +215,7 @@ function forgeSettingsHTML() {
       const opts = sel => all.map(m => `<option value="${esc(m)}" ${sel === m ? 'selected' : ''}>${modelLabel(m)}</option>`).join('');
       return `<label class="f"><span>Pictures for regular adventures</span><select data-bind="image.forgeModelSfw">${all.length ? opts(im.forgeModelSfw) : '<option value="">Tap "Find it" to load models</option>'}</select></label>
       <label class="f"><span>Pictures for M (Mature) adventures</span><select data-bind="image.forgeModelNsfw"><option value="" ${im.forgeModelNsfw ? '' : 'selected'}>Same as regular (SFW)</option>${opts(im.forgeModelNsfw)}</select></label>
-      <p class="hint">The app chooses for you: M (Mature) adventures use the NSFW model, everything else uses SFW. If the player character might be under 16, or a picture shows a child, the SFW model is used with adult content blocked.</p>
+      <p class="hint">The app chooses for you: M (Mature) adventures use the NSFW model, everything else uses SFW. If the player character might be under 18, or a picture shows a child or teen, the SFW model is used with adult content blocked.</p>
       ${all.length ? `<details style="margin-top:6px"><summary class="hint" style="cursor:pointer">Show file names</summary><p class="hint">${all.map(m => `${modelLabel(m)}: ${esc(m)}`).join('<br>')}</p></details>` : ''}`; })()}
     <label class="f"><span>Quality preset</span><select data-bind="image.forgePreset"><option value="auto" ${(im.forgePreset || 'auto') === 'auto' ? 'selected' : ''}>Auto: match each model</option>${Object.entries(FORGE_PRESETS).map(([k, v]) => `<option value="${k}" ${im.forgePreset === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
     <p class="hint">Auto picks the right speed settings for each model: fast for the SFW model, standard SDXL for the NSFW one.</p>

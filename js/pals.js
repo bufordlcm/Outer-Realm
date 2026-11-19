@@ -72,7 +72,7 @@ function personaOf(ch, p) {
 const meName = (ch, p) => (personaOf(ch, p)?.name || '').trim() || 'you';
 const sexWord = x => x?.sex === 'female' ? 'female' : x?.sex === 'male' ? 'male' : '';
 
-/* a companion under 16 (by age or by how they're described) is always platonic: no romance, no 18+, safe pictures.
+/* a companion under 18 (by age or by how they're described) is always platonic: no romance, no 18+, safe pictures.
    The rule itself lives in js/ageguard.js (AGE.isMinor) so pictures and chats can never disagree. */
 const palMinor = p => AGE.isMinor(p);
 const palStage = p => PAL_STAGES.find(s => s.k === p.stage) || PAL_STAGES[0];
@@ -91,7 +91,7 @@ function palCtx(p, chat) {
   const me = personaOf(chat, p);
   Object.assign(ctx, {
     id: 'pal_' + p.id, title: p.name, genre: '', premise: '', location: chat?.scene || '', artStyle: p.art || 'photorealistic, natural light, detailed',
-    rating: adultOK ? 'M' : 'PG-13', character: { name: meName(chat, p), appearance: [palLook(p), AGE.isMinor(p) ? 'under 16 years old' : ''].filter(Boolean).join(', '), backstory: '', storyRole: '' },
+    rating: adultOK ? 'M' : 'PG-13', character: { name: meName(chat, p), appearance: [palLook(p), AGE.isMinor(p) ? 'under 18 years old' : ''].filter(Boolean).join(', '), backstory: '', storyRole: '' },
     party: group, codex: [], voiceMap: chat ? (chat.voiceMap = chat.voiceMap || {}) : {}
   });
   return ctx;
@@ -363,9 +363,14 @@ function renderPalChat() {
 }
 function palMenuHTML(ch) {
   const ps = palsOf(ch); const one = ps.length === 1 ? ps[0] : null; const me = personaOf(ch); const others = allPals().filter(p => !ch.palIds.includes(p.id));
+  const recall = ch.recall && ch.recall.text ? ch.recall : null;
   return `<div class="palmenu card">
     <label class="f"><span>Where are you right now? (sets the scene)</span><input id="palScene" value="${esc(ch.scene || '')}" placeholder="e.g. Her apartment, late at night, rain on the windows"></label>
     <div class="row wrap"><button class="btn sm" data-act="palsceneset">Set scene</button></div>
+    <div class="lbl">Living memory: what she reads back before replying</div>
+    ${recall ? `<div class="memitem"><div class="mt">${String(recall.text).split('\n').map(l => esc(l)).join('<br>')}<small>read back ${esc(ago(recall.at))} · from the last ${num(recall.n)} messages</small></div></div>`
+      : `<p class="hint">Nothing read back yet. She reads the chat back just before each reply; build it now to check it.</p>`}
+    <div class="row wrap" style="margin:-2px 0 10px"><button class="btn sm ghost" data-act="palrecallnow" ${S.palRecallBusy ? 'disabled' : ''}>${S.palRecallBusy ? '<span class="spin sm"></span> Reading the chat back…' : icon('book') + ' Read the chat back now'}</button></div>
     <div class="kv"><label class="f"><span>Reply length</span><select data-pch="length">${Object.entries(PAL_LENGTHS).map(([k, v]) => `<option value="${k}" ${ch.length === k ? 'selected' : ''}>${v.l}</option>`).join('')}</select></label>
     <label class="f"><span>You are (persona)</span><select data-pch="personaId"><option value="">${one?.personaId && PALS.personas[one.personaId] ? `From ${esc(one.name)}'s card: ${esc(PALS.personas[one.personaId].name)}` : `Default${PALS.personas[PALS.defaultPersona] ? ': ' + esc(PALS.personas[PALS.defaultPersona].name) : ''}`}</option>${allPersonas().map(x => `<option value="${x.id}" ${ch.personaId === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label></div>
     ${me ? '' : '<p class="hint">You have no persona yet, so they don\'t know your name. <button class="link" data-act="palme">Make one</button></p>'}
@@ -541,12 +546,25 @@ async function palScout(ch, text, signal) {
 /* ---------- living memory: read the whole chat back before answering ---------- */
 /* Two layers. Ch.recal is what is happening right now, rebuilt from the actual messages so a long chat
    can never drift out of view; the lasting facts it finds are folded into what she remembers for good. */
-async function palRecall(ch, signal) {
+/* the read-back note only describes the messages it was written from. Clearing the chat or deleting
+   messages drops it, so an emptied chat can never be fed its own deleted conversation back. */
+function palRecallForget(ch) {
+  if (!ch || !ch.recall) return false;
+  delete ch.recall;
+  return true;
+}
+async function palRecall(ch, signal, force = false) {
   const msgs = arr(ch.messages).filter(m => m.role !== 'sys' && String(m.text || '').trim());
   const cached = ch.recall && ch.recall.text ? ch.recall : null;
-  if (msgs.length < 6 || !textReady() || signal?.aborted) return cached?.text || '';
-  /* fresh enough: rebuilt every couple of messages, so chatting stays quick */
-  if (cached && msgs.length - num(cached.n) < 2 && Date.now() - num(cached.at) < 10 * 60e3) return cached.text;
+  /* nothing left worth recalling: drop the note instead of carrying it into the fresh chat */
+  if (msgs.length < 6) {
+    if (palRecallForget(ch)) { palTouch(ch); savePals(false); }
+    return '';
+  }
+  if (!textReady() || signal?.aborted) return cached?.text || '';
+  /* fresh enough: rebuilt every couple of messages, so chatting stays quick. The note never outlives its
+     messages: delete any and the count falls below n, so it is rebuilt from what is left. */
+  if (cached && !force && msgs.length >= num(cached.n) && msgs.length - num(cached.n) < 2 && Date.now() - num(cached.at) < 10 * 60e3) return cached.text;
   const ps = palsOf(ch); const group = ps.length > 1; const you = meName(ch);
   const recent = msgs.slice(-40).map(m => `${m.role === 'user' ? you : palWho(ch, m)?.name || 'them'}: ${String(m.text).replace(/\s+/g, ' ').slice(0, 400)}`).join('\n');
   const mem = palMemPick(ps.flatMap(p => arr(p.memory).filter(m => m.src !== 'group:' + ch.id)), 20).map(m => '- ' + m.t).join('\n');
@@ -571,6 +589,19 @@ async function palRecall(ch, signal) {
   ch.recall = { text: text.slice(0, 900), n: msgs.length, at: Date.now() };
   palTouch(ch); savePals(false);
   return ch.recall.text;
+}
+/* build the read-back on demand, so it can be checked without waiting for a reply */
+async function palRecallNow(ch) {
+  if (!ch || S.palRecallBusy) return;
+  const n = arr(ch.messages).filter(m => m.role !== 'sys' && String(m.text || '').trim()).length;
+  if (n < 6) return toast('Chat a little more first: the read-back needs at least six messages.');
+  if (!textReady()) return toast('Set up an AI first (Settings → Story AI).');
+  S.palRecallBusy = true; palRedraw();
+  try {
+    const t = await palRecall(ch, null, true);
+    toast(t ? 'Read the chat back just now.' : 'The AI could not read this chat back. Try again in a moment.', 3200);
+  } catch (e) { toast('Read-back failed: ' + (e.message || e), 4000); }
+  finally { S.palRecallBusy = false; palRedraw(); }
 }
 /* small or tired models drift into saying the same thing again; these keep a reply from looping on itself */
 const palLoopNorm = t => String(t || '').toLowerCase().replace(/\{[^{}]*\}/g, ' ').replace(/\*+/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -610,6 +641,7 @@ async function palReply(ch, opts = {}) {
   ch.messages.push(msg);
   S.palBusy = { chat: ch.id, msg: msg.id };
   S.abort = new AbortController(); const signal = S.abort.signal;
+  let replied = false;   /* a real reply landed, so a picture the player asked for can follow it */
   palRedraw();
 
   const hist = [];
@@ -679,6 +711,7 @@ async function palReply(ch, opts = {}) {
         palTouch(p);
       }
       ch.memTurns = num(ch.memTurns) + 1;
+      replied = true;
       palTouch(ch); savePals();
       if (ch.autovoice) made.forEach((m, n) => palSpeakMsg(ch, m, n > 0));
       if (ch.memTurns % 6 === 0) palUpdateMemory(ch);
@@ -693,6 +726,7 @@ async function palReply(ch, opts = {}) {
     if (S.palBusy?.msg === msg.id) S.palBusy = null;
     if (S.abort?.signal === signal) S.abort = null;
     palRedraw();
+    if (replied && opts.after) { try { const r = opts.after(); if (r && r.catch) r.catch(e => console.warn('After-reply step failed', e)); } catch (e) { console.warn('After-reply step failed', e); } }
   }
 }
 /* redraw the chat without losing what you were halfway through typing */
@@ -702,6 +736,26 @@ function palRedraw() {
   renderPalChat();
   const n = $('#palInput'); if (n && v) { n.value = v; autoGrow(n); if (had) n.focus(); }
 }
+/* "send me a selfie" or "picture this" typed into the chat does what the 📷 and 🎨 chips do */
+const PAL_WANT_PIC = /\b(selfie|nudes?|photo(?:s|graph|graphs)?|pics?|pictures?|snaps?|snapchat)\b/i;
+const PAL_NO_PIC = /\b(?:no|not|never|don'?t|stop)\b[^.!?\n]{0,24}\b(?:more\s+)?(?:selfies?|photos?|pics?|pictures?|nudes?)\b/i;
+const PAL_PIC_SELF = /\b(?:selfie|nudes?)\b|\b(?:pic|photo|picture|snap)\b[^.!?\n]{0,18}\b(?:of\s+)?(?:you|yourself|u|her)\b|\byour\s+(?:pic|photo|picture|body|outfit|face)\b/i;
+const PAL_PIC_PLACE = /\b(?:scene|room|place|view|surroundings|moment|us|together|here|where\s+(?:you|we)\s+are)\b/i;
+function palPicAsk(txt) {
+  const t = String(txt || '');
+  if (!t || S.settings.image.mode === 'off' || !PAL_WANT_PIC.test(t) || PAL_NO_PIC.test(t)) return null;
+  if (!curChat() || !palsOf(curChat()).length) return null;
+  return { kind: PAL_PIC_SELF.test(t) ? 'selfie' : PAL_PIC_PLACE.test(t) ? 'scene' : 'selfie' };
+}
+/* the part of the message that is actually about the picture ("in the shower", "wearing my hoodie") */
+function palPicWords(txt) {
+  return String(txt || '')
+    .replace(/\b(?:please\s+)?(?:can|could|would|will)\s+you\s+/gi, '')
+    .replace(/\b(?:send|show|take|make|snap|give)\s+(?:me|us)?\s*(?:a|an|some)?\s*(?:selfie|pics?|photos?|pictures?|snaps?|nudes?)\b/gi, '')
+    .replace(/\b(?:of\s+)?(?:yourself|urself|you)\b/gi, '')
+    .replace(/\b(?:picture|photo|pic)\s+(?:this|the)\s+(?:scene|moment|room|place)\b/gi, '')
+    .replace(/\s+/g, ' ').replace(/^[\s,.!?-]+|[\s,.!?-]+$/g, '').trim().slice(0, 300);
+}
 function palSend() {
   const ch = curChat(); const inp = $('#palInput'); const txt = (inp?.value || '').trim();
   if (!ch || !txt) return;
@@ -709,7 +763,10 @@ function palSend() {
   inp.value = ''; const to = palTo(ch);
   ch.messages = ch.messages.filter(m => !m.retry);
   ch.messages.push({ id: uid(), role: 'user', text: txt, mode: ch.channel || 'text', t: Date.now(), ...(palsOf(ch).length > 1 ? { to: to === 'all' ? 'all' : to.id } : {}) });
-  palTouch(ch); savePals(); renderPalChat(); palReply(ch);
+  /* asking for a picture in words: answer first, then send the picture */
+  const pic = palPicAsk(txt);
+  palTouch(ch); savePals(); renderPalChat();
+  palReply(ch, pic ? { after: () => { if (curChat() === ch) return palPicture(ch, { ...pic, quiet: true, user: palPicWords(txt) }); } } : {});
 }
 
 async function palUpdateMemory(ch, manual = false) {
@@ -780,7 +837,11 @@ function palAction(act, el) {
     case 'palreplyto': if (ch && PALS.pals[el.dataset.id]) { ch.to = el.dataset.id; savePals(false); palRedraw(); $('#palInput')?.focus(); } return true;
     case 'palfmt': palFmt(el.dataset.k); return true;
     case 'palsceneset': if (ch) { ch.scene = ($('#palScene')?.value || '').trim(); ch.messages.push({ id: uid(), role: 'sys', text: ch.scene ? `Scene: ${ch.scene}` : 'Scene cleared', t: Date.now() }); palTouch(ch); savePals(); renderPalChat(); } return true;
-    case 'palclear': if (ch && confirm('Clear all messages in this chat? What they remember stays.')) { ch.messages = []; ch.summary = ''; palTouch(ch); savePals(); renderPalChat(); } return true;
+    case 'palclear': if (ch && confirm('Clear all messages in this chat? What they remember stays.')) {
+      if (S.palBusy?.chat === ch.id) S.abort?.abort();   /* a reply in flight must not land in the fresh chat */
+      ch.messages = []; ch.summary = ''; palRecallForget(ch); palTouch(ch); savePals(); renderPalChat();
+    } return true;
+    case 'palrecallnow': if (ch) palRecallNow(ch); return true;
     case 'palsend': palSend(); return true;
     case 'palstop': S.abort?.abort(); return true;   /* palReply's finally clears the busy state */
     case 'palretry': if (ch && !S.palBusy) { ch.messages = ch.messages.filter(m => !m.retry); palReply(ch); } return true;
@@ -799,7 +860,7 @@ function palAction(act, el) {
       if (m && v) { m.text = v; if (m.alts) m.alts[m.altI ?? m.alts.length - 1] = v; palTouch(ch); savePals(); }
       S.palEdit = null; renderPalChat(); return true;
     }
-    case 'paldelmsg': if (ch) { ch.messages = ch.messages.filter(x => x.id !== el.dataset.id); palTouch(ch); savePals(); renderPalChat(); } return true;
+    case 'paldelmsg': if (ch) { ch.messages = ch.messages.filter(x => x.id !== el.dataset.id); palRecallForget(ch); palTouch(ch); savePals(); renderPalChat(); } return true;
     case 'palreroll': {
       const m = ch?.messages.find(x => x.id === el.dataset.id);
       if (m && !S.palBusy) {

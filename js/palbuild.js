@@ -87,7 +87,7 @@ function renderPalEditor() {
   } else if (st.k === 'rel') body = `${t('userRole', 'Who you are to them', 'e.g. my neighbor I keep running into; my best friend since college; a stranger who matched with me', 2)}
       <label class="f"><span>Which of your personas they talk to</span><select data-pd="personaId"><option value="">Your default persona${PALS.personas[PALS.defaultPersona] ? ' (' + esc(PALS.personas[PALS.defaultPersona].name) + ')' : ''}</option>${allPersonas().map(x => `<option value="${x.id}" ${D.personaId === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
       <p class="hint"><button class="link" data-act="palme">Manage your personas</button></p>
-      ${minor ? `<p class="hint" style="color:var(--gold2)">${esc(D.name || 'They')} ${num(D.age) && num(D.age) < 18 ? `is ${num(D.age)}` : 'is described as under 16'}, so this is a platonic relationship: friends, family, teammates or mentoring. Romance and 18+ are off.</p>` : ''}
+      ${minor ? `<p class="hint" style="color:var(--gold2)">${esc(D.name || 'They')} ${num(D.age) && num(D.age) < 18 ? `is ${num(D.age)}` : 'is described as under 18'}, so this is a platonic relationship: friends, family, teammates or mentoring. Romance and 18+ are off.</p>` : ''}
       <label class="f"><span>Where it can go</span><select data-pd="goal" ${minor ? 'disabled' : ''}>${Object.entries(PAL_GOALS).filter(([k]) => !minor || k === 'friends').map(([k, l]) => `<option value="${k}" ${D.goal === k || minor ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label class="f"><span>Where you start</span><select data-pd="stage">${PAL_STAGES.filter(s => (D.goal !== 'friends' && !minor) || !s.romance).map(s => `<option value="${s.k}" ${D.stage === s.k ? 'selected' : ''}>${s.l}</option>`).join('')}</select></label>
       <p class="hint">${esc(palStage(D).d)} The relationship moves on its own as you talk.</p>
@@ -95,7 +95,7 @@ function renderPalEditor() {
       ${t('limits', 'Hard limits (they will never go here)', 'Anything you never want in your chats, one per line', 2)}
       ${palFeelsHTML(D)}
       ${minor ? '' : `<label class="chk"><input type="checkbox" data-pd="adult" ${D.adult ? 'checked' : ''}> <span>Allow 18+ content with this companion</span></label>`}
-      <label class="chk"><input type="checkbox" data-pd="protected" ${AGE.isProtected(D) ? 'checked' : ''} ${AGE.isMinor(D) ? 'disabled' : ''}> <span>${AGE.isMinor(D) ? 'Protected: this companion is under 16, so this cannot be turned off' : 'Protect this companion: platonic only, no 18+ content, safe pictures'}</span></label>`;
+      <label class="chk"><input type="checkbox" data-pd="protected" ${AGE.isProtected(D) ? 'checked' : ''} ${AGE.isMinor(D) ? 'disabled' : ''}> <span>${AGE.isMinor(D) ? 'Protected: this companion is under 18, so this cannot be turned off' : 'Protect this companion: platonic only, no 18+ content, safe pictures'}</span></label>`;
   else if (st.k === 'open') body = `${t('scenario', 'How it starts', 'e.g. We matched on a dating app last night', 3)}${t('greeting', 'Their first message', 'The AI writes one if you leave it empty', 3)}`;
   else body = `${t('likes', 'Likes, dislikes and interests', '', 3)}${t('notes', 'Anything else', 'Job, schedule, habits, pets, people in their life, things they would never do…', 5)}`;
 
