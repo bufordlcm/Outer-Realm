@@ -133,6 +133,98 @@ async function freeOllamaVRAM() {
     try { await fetch(cn.baseUrl.replace(/\/v1\/?$/, '') + '/api/generate', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify({ model: cn.model, keep_alive: 0 }) }); } catch {}
   }
 }
+/* ---------- the VRAM bump ----------
+   When replies or pictures start crawling, something is sitting in the graphics card's memory that
+   isn't needed right now. The helper on the PC knows how to unload both engines (Ollama models and
+   Forge's checkpoint); this asks it to. It never pulls a model out from under a reply that is writing. */
+/* No fixed trigger: a 12B model on a 1070 Ti takes far longer than a cloud model on a good day, so
+   "normal" is learned per model (the middle of the last few timings) and the bump waits for about two
+   and a half times that. A model with no history yet gets two minutes. */
+const BUMP_MIN = 45000;          /* never before this, however fast the model is */
+const BUMP_SLOW = 2.5;           /* this many times normal counts as crawling */
+const BUMP_COLD = 120000;        /* no timings for this model yet: two minutes */
+const BUMP_KEEP = 12;            /* timings that make "normal" */
+const BUMP_MAX_SAMPLE = 300000;  /* a tab left open isn't a real timing */
+const bumpTimes = LS.get('iq.bumpTimes', null) || {};
+let bumpBusy = false, bumpAt = 0;
+const bumpOn = () => S.settings.ai.bump !== false;
+/* the helper version that knows how to free memory; an older one answers /iq/health but not /iq/bump */
+const HELPER_BUMP = 4;
+let helperV = null, helperVAt = 0;
+async function helperVersion(force) {
+  if (!force && helperV !== null && Date.now() - helperVAt < 60000) return helperV;
+  try {
+    /* health also probes Forge and SearXNG, so give it room: 4 s + 5 s when neither is up yet */
+    const r = await fetch(forgeUrl() + '/iq/health', { signal: AbortSignal.timeout ? AbortSignal.timeout(12000) : undefined });
+    helperV = r.ok ? (num((await r.json().catch(() => ({}))).helper) || 0) : 0;   /* 0: answering, but not the helper */
+  } catch { helperV = -1; }   /* -1: nothing answering at that address */
+  helperVAt = Date.now();
+  return helperV;
+}
+/* one plain sentence for why a bump did nothing, instead of failing silently */
+function bumpProblem(v) {
+  if (v <= 0) return `Couldn't reach the picture helper at ${forgeUrl()}. If its window is already open, close it and run Start Outer Realm.bat (freeing VRAM needs the updated helper); otherwise start it.`;
+  if (v < HELPER_BUMP) return `The picture helper running now is v${v}; freeing VRAM needs v${HELPER_BUMP}. Close its window and run Start Outer Realm.bat, then try again.`;
+  return 'The helper answered but could not free memory this time. Its window says why.';
+}
+/* shown in Settings → Images, so an out-of-date helper is visible before you click anything */
+function helperNoteHTML() {
+  if (helperV === null) {
+    helperVersion().then(() => { if (S.modal === 'settings') renderModal(); });
+    return '<p class="hint">Checking the picture helper…</p>';
+  }
+  if (helperV <= 0) return `<p class="hint">✗ No picture helper answering at <code>${esc(forgeUrl())}</code>: Free VRAM needs it running next to Forge.</p>`;
+  if (helperV < HELPER_BUMP) return `<p class="hint">✗ The helper running now is v${helperV}; Free VRAM needs v${HELPER_BUMP}. Restart it: close its window and run <b>Start Outer Realm.bat</b>.</p>`;
+  return `<p class="hint">✓ Helper v${helperV}: Free VRAM is ready.</p>`;
+}
+function bumpKey(kind) {
+  if (kind === 'picture') { const im = S.settings.image; return `picture|${im.forgeModelSfw || im.forgeModel || 'auto'}|${im.forgePreset || 'auto'}`; }
+  const cn = typeof activeConn === 'function' ? activeConn() : null;
+  return `reply|${cn?.preset || ''}|${cn?.model || ''}`;
+}
+/* the middle timing, so one slow reply (or one quick one) doesn't move the line */
+function bumpNormal(kind) {
+  const list = bumpTimes[bumpKey(kind)];
+  const xs = (Array.isArray(list) ? list : []).slice(-BUMP_KEEP).sort((a, b) => a - b);
+  return xs.length >= 3 ? xs[Math.floor(xs.length / 2)] : 0;
+}
+function bumpWait(kind) {
+  const normal = bumpNormal(kind);
+  return normal ? Math.max(BUMP_MIN, normal * BUMP_SLOW) : BUMP_COLD;
+}
+function bumpNote(kind, ms) {
+  if (!(ms >= 3000)) return;   /* stopped, cancelled or failed instantly: not a real timing */
+  const k = bumpKey(kind);
+  bumpTimes[k] = [...(Array.isArray(bumpTimes[k]) ? bumpTimes[k] : []), Math.round(Math.min(ms, BUMP_MAX_SAMPLE))].slice(-BUMP_KEEP);
+  LS.set('iq.bumpTimes', bumpTimes);
+}
+async function bumpVRAM(target = 'both') {
+  if (!bumpOn() || bumpBusy) return false;
+  const doForge = target !== 'ollama';
+  const doOllama = target !== 'forge' && !S.busy && !S.palBusy;   /* never mid-reply */
+  if (!doForge && !doOllama) return false;
+  bumpBusy = true;
+  try {
+    const r = await fetch(forgeUrl() + '/iq/bump', { method:'POST', headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ ollama: doOllama, forge: doForge }),
+      signal: AbortSignal.timeout ? AbortSignal.timeout(30000) : undefined });
+    if (!r.ok) { toast(bumpProblem(await helperVersion(true)), 9000); return false; }
+    const j = await r.json().catch(() => ({}));
+    bumpAt = Date.now(); helperV = HELPER_BUMP; helperVAt = Date.now();
+    const freed = [String(j.ollama || '').startsWith('unloaded') ? 'story AI' : '', j.forge === 'unloaded' ? 'picture model' : ''].filter(Boolean);
+    if (freed.length) toast(`Freed graphics memory: ${freed.join(' + ')}.`);
+    return true;
+  } catch { toast(bumpProblem(await helperVersion(true)), 9000); return false; }
+  finally { bumpBusy = false; }
+}
+/* Fires once if this step runs far past normal for this model; call what it returns when the step ends,
+   so the timing feeds the next "normal" (kind is 'reply' or 'picture'). */
+function slowBump(kind = 'reply') {
+  if (!bumpOn()) return () => {};
+  const wait = bumpWait(kind), t0 = Date.now();
+  const t = setTimeout(() => bumpVRAM(kind === 'picture' ? 'ollama' : 'forge'), wait);
+  return () => { clearTimeout(t); bumpNote(kind, Date.now() - t0); };
+}
 /* is there an IP-Adapter face model in Forge? (asked once, then every few minutes) */
 async function cnFind(force) {
   if (!force && LOCAL.cn !== undefined && Date.now() - (LOCAL.cnAt || 0) < 300000) return LOCAL.cn;
@@ -168,15 +260,16 @@ async function forgeGenerate(job, retried = false, noRef = false) {
   if (unit) body.alwayson_scripts = { ControlNet: { args: [unit] } };
   const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 360000);
   LOCAL.cur = { k: job.k, ctl, t: Date.now() };
+  const doneBump = slowBump('picture');   /* slow picture: free the story AI's models if they are parked in the card */
   let r;
   try { r = await fetch(forgeUrl() + '/sdapi/v1/txt2img', { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(body), signal: ctl.signal }); }
   catch (e) {
-    clearTimeout(tm);
+    clearTimeout(tm); doneBump();
     if (e.name === 'AbortError') throw new Error(LOCAL.cancelled === job.k ? 'Cancelled.' : 'Your PC took more than 6 minutes on one picture. Try the SDXL Lightning or SD 1.5 preset.');
     if (!retried && await forgeFind(true)) return forgeGenerate(job, true, noRef);
     throw new Error(`Couldn't reach Stable Diffusion at ${forgeUrl()}. Make sure Forge is running on your PC (with the --api and --cors-allow-origins settings from the guide).`);
   }
-  clearTimeout(tm);
+  clearTimeout(tm); doneBump();
   if (!r.ok && unit) { const t = await r.text().catch(() => ''); console.warn('Forge refused the reference photo, painting without it', r.status, t.slice(0, 200)); LOCAL.cn = null; LOCAL.cnAt = Date.now(); S.cnStatus = `✗ Forge refused the reference photo (error ${r.status}), so it is off for a few minutes. Pictures still use the saved look.`; return forgeGenerate(job, retried, true); }
   if (!r.ok) { const t = await r.text().catch(() => ''); throw new Error(`Stable Diffusion error ${r.status}${r.status === 404 ? ' (the API is off: add --api to Forge\'s settings)' : ''}: ${t.slice(0, 160)}`); }
   const j = await r.json(); const b64 = j.images?.[0]; if (!b64) throw new Error('Stable Diffusion sent back no picture.');
@@ -226,6 +319,10 @@ function forgeSettingsHTML() {
     <p class="hint">Needs an IP-Adapter face model in Forge's ControlNet models folder (for SDXL, for example <code>ip-adapter-plus-face_sdxl_vit-h</code>), then restart Forge. Pick a reference by opening any picture of a character large and tapping "Use this picture as … reference". Without the model, pictures use the saved look only. Higher follows the face more closely but leaves less room for the pose you ask for.</p>
     ${bindCheck('image.driveSave', 'Save pictures to Google Drive (your phone and PC share them, and the phone can show them even when Forge isn\'t reachable)')}
     ${bindCheck('image.forgeShare', 'Pictures and the story AI share one graphics card (pictures wait for the GM\'s turn and free the story AI\'s memory first). Turn this OFF if Forge runs on its own second graphics card.')}
+    ${bindCheck('ai.bump', 'Free VRAM automatically when a reply or a picture starts taking a long time')}
+    <div class="row" style="margin:-2px 0 8px"><button class="btn sm ghost" data-act="vrambump">Free VRAM now</button></div>
+    <p class="hint">The bump asks the picture helper to unload the story AI's loaded models and Forge's painting model from the graphics card, then carries on. It learns how long your model normally takes here and only fires once something runs about two and a half times longer than that (never before 45 seconds; two minutes for a model it hasn't timed yet), so a slow model on a normal day doesn't trigger it. It never interrupts a reply that is being written.${bumpAt ? ` Last freed ${esc(ago(bumpAt))}.` : ''}</p>
+    ${helperNoteHTML()}
     ${bindInput('image.forgeNeg', 'Things to avoid (negative prompt)', { ph: FORGE_NEG.slice(0, 60) + '…', hint:'Leave empty for the built-in list, which steers away from cartoons and bad hands.' })}
     ${bindArea('image.look', 'Always add to the picture prompt', { ph: 'soft diffused lighting, clean natural skin texture, detailed photograph', hint: 'Added to every picture, on your PC and with the online services. Clear it to send prompts exactly as written.' })}
     ${bindArea('image.avoid', 'Always add to the negative prompt', { ph: 'film grain, noise, gritty texture…', hint: 'Kept out of every picture, alongside the list above.' })}
@@ -426,7 +523,7 @@ const Drive = {
   async list(q) {
     let out = [], pageToken = '';
     do {
-      const p = new URLSearchParams({ q, fields:'nextPageToken,files(id,name,mimeType,appProperties,modifiedTime)', pageSize:'200', supportsAllDrives:'true', includeItemsFromAllDrives:'true' });
+      const p = new URLSearchParams({ q, fields:'nextPageToken,files(id,name,mimeType,appProperties,modifiedTime,parents)', pageSize:'200', supportsAllDrives:'true', includeItemsFromAllDrives:'true' });
       if (pageToken) p.set('pageToken', pageToken);
       const j = await (await this.api('https://www.googleapis.com/drive/v3/files?' + p)).json();
       out = out.concat(j.files || []); pageToken = j.nextPageToken || '';

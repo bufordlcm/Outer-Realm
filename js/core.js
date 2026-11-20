@@ -166,8 +166,8 @@ const SCENARIOS = [
 ];
 
 const DEFAULT_SETTINGS = {
-  text: { temperature:0.85, maxTokens:1000, stream:true, length:'long', lenV2:true },
-  ai:   { conns: [], active:'', fallback:true, deliberate:true, verify:true, referee:true, dice:'normal', people:true, agency:true, profile:'balanced', helperModel:'', helperAuto:'', builder:'auto' },
+  text: { temperature:0.85, maxTokens:1000, stream:false, length:'long', lenV2:true },
+  ai:   { conns: [], active:'', fallback:true, deliberate:true, verify:true, referee:true, dice:'normal', people:true, agency:true, profile:'balanced', helperModel:'', helperAuto:'', builder:'auto', bump:true },
   image:{ mode:'pollinations', polliKey:'', polliModel:'flux', size:'square', style:'', template:'', forgePreset:'auto', forgeModel:'', forgeModelSfw:'', forgeModelNsfw:'', forgeShare:true, forgeNeg:'', autoPortraits:true, driveSave:true, scenes:true, forgeRes:'fast', refPhotos:true, refWeight:0.7,
     /* added to every picture; edit or clear these in Settings → Images */
     look:'soft diffused lighting, clean natural skin texture, detailed photograph',

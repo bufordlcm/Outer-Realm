@@ -88,6 +88,7 @@ document.addEventListener('click', e => {
     case 'drawpick': drawerPick(el); break;
     case 'rmnext': case 'rmback': { if (!c) break; const n = parseRoadmap(c.roadmap).length; c.rmAct = clamp(num(c.rmAct) + (act === 'rmnext' ? 1 : -1), 0, n); touch(c); saveCampaigns(); renderModal(); break; }
     case 'voicecheck': checkPCVoices(true).then(() => { renderModal(); toast(VOICE.pc ? 'Natural PC voices found.' : 'No PC voices found. Run Install voices.bat on the PC, then restart the helper.'); }); break;
+    case 'vrambump': bumpVRAM('both').then(() => renderModal()); break;   /* bumpVRAM says plainly why it failed */
     case 'voicetest': speak(`${gmOf(c || {}).name || 'The Narrator'} clears their throat. The tale begins.`); break;
     case 'compform': S.compForm = el.dataset.f; renderModal(); setTimeout(() => $('#compConcept, #cm_name')?.focus(), 40); break;
     case 'compcancel': S.compForm = null; renderModal(); break;

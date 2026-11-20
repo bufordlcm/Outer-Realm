@@ -7,6 +7,8 @@
 #   3. Reading:  /iq/read?url=...  -> the readable text of one web page (private/local addresses refused).
 #   4. Voices:   /iq/tts (POST {text, voice, speed}) -> natural speech from Kokoro, run on this PC's processor.
 #                One-time install: run this file with --install-voices (Install voices.bat does that).
+#   5. VRAM:     /iq/bump (POST {ollama, forge}) -> unloads Ollama's loaded models and Forge's painting
+#                checkpoint from the graphics card when replies or pictures are crawling.
 # Only the Ironquill website and pages on this PC are allowed to use it.
 import os, html, io, threading, wave
 import html.parser
@@ -22,6 +24,7 @@ import urllib.parse
 import urllib.request
 
 FORGE = 'http://127.0.0.1:7860'
+OLLAMA = 'http://127.0.0.1:11434'
 SEARXNG = 'http://127.0.0.1:8888'
 PORT = 7861
 ALLOWED = {'https://ironquillstories.netlify.app', 'https://outer-realm.netlify.app'}
@@ -230,6 +233,45 @@ def forge_up():
         return False
 
 
+# ---------------- freeing VRAM ----------------
+def ollama_loaded():
+    try:
+        st, body, _ = fetch(OLLAMA + '/api/ps', timeout=4)
+        return [m.get('name') or m.get('model') for m in json.loads(body).get('models', []) if (m.get('name') or m.get('model'))]
+    except Exception:
+        return []
+
+
+def ollama_unload():
+    """keep_alive 0 on each loaded model makes Ollama drop it from the graphics card now."""
+    done, failed = [], []
+    for name in ollama_loaded():
+        try:
+            req = urllib.request.Request(OLLAMA + '/api/generate', method='POST',
+                                         data=json.dumps({'model': name, 'keep_alive': 0, 'stream': False}).encode(),
+                                         headers={'Content-Type': 'application/json'})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                r.read(2000)
+            done.append(name)
+        except Exception as e:
+            failed.append('%s: %s' % (name, e))
+    return done, failed
+
+
+def forge_unload():
+    """Forge drops the painting checkpoint out of VRAM (an older Forge has no such endpoint)."""
+    try:
+        req = urllib.request.Request(FORGE + '/sdapi/v1/unload-checkpoint', method='POST',
+                                     data=b'{}', headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            r.read(2000)
+            return 'unloaded'
+    except urllib.error.HTTPError as e:
+        return 'not supported' if e.code in (404, 405) else 'error %s' % e.code
+    except Exception:
+        return 'not running'
+
+
 # ---------------- page reading ----------------
 SKIP = {'script', 'style', 'noscript', 'svg', 'nav', 'header', 'footer', 'aside', 'form', 'button', 'select', 'iframe', 'figure', 'sup', 'table'}
 BLOCK = {'p', 'div', 'br', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'tr', 'section', 'article', 'blockquote', 'dd', 'dt'}
@@ -339,7 +381,7 @@ class Helper(http.server.BaseHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
         if u.path == '/iq/health':
-            return self.reply(200, {'ok': True, 'helper': 3, 'forge': forge_up(), 'searxng': searxng_up(), 'tts': voices_installed()})
+            return self.reply(200, {'ok': True, 'helper': 4, 'forge': forge_up(), 'searxng': searxng_up(), 'tts': voices_installed()})
         if u.path == '/iq/tts' and self.command == 'POST':
             try:
                 length = int(self.headers.get('Content-Length') or 0)
@@ -372,6 +414,22 @@ class Helper(http.server.BaseHTTPRequestHandler):
                 return self.reply(200, {'title': title, 'url': url, 'text': text})
             except Exception as e:
                 return self.reply(502, {'error': 'could not read the page: %s' % e})
+        if u.path == '/iq/bump' and self.command == 'POST':
+            try:
+                length = int(self.headers.get('Content-Length') or 0)
+                req = json.loads(self.rfile.read(min(length, 4000)) or b'{}')
+            except Exception:
+                req = {}
+            out = {'ok': True, 'ollama': 'off', 'forge': 'off'}
+            if req.get('ollama', True):
+                done, failed = ollama_unload()
+                out['ollama'] = ('unloaded ' + ', '.join(done)) if done else 'nothing loaded'
+                if failed:
+                    out['errors'] = failed
+            if req.get('forge', True):
+                out['forge'] = forge_unload()
+            print('  vram bump: ollama %s / forge %s' % (out['ollama'], out['forge']))
+            return self.reply(200, out)
         return self.reply(404, {'error': 'unknown'})
 
     def forward(self, method):

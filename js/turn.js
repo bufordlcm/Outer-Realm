@@ -156,8 +156,12 @@ async function gmTurn(opts = {}) {
     /* 3. the writer: story text only, one short beat */
     msg.phase = ''; renderLog(true);
     const wt = isOOC ? 400 : isCompanion(c) && compStyle(c) === 'chat' ? 260 : sceneLen().tokens;
-    let raw = await chat(msgs, { stream: !!S.settings.text.stream, signal, maxTokens: wt, onToken: full => streamPaint(msg, full) });
-    if (!stripThink(raw).trim()) raw = await chat(msgs, { stream:false, signal, maxTokens: wt });
+    const doneBump = slowBump('reply');   /* a scene far past the model's normal frees the picture model's memory */
+    let raw;
+    try {
+      raw = await chat(msgs, { stream: !!S.settings.text.stream, signal, maxTokens: wt, onToken: full => streamPaint(msg, full) });
+      if (!stripThink(raw).trim()) raw = await chat(msgs, { stream:false, signal, maxTokens: wt });
+    } finally { doneBump(); }
     const { narration, state: writerState } = parseGM(raw);
     if (!narration) throw new Error('The AI sent back an empty reply. Tap Retry, or try a different model.');
     msg.text = tidyScene(narration); delete msg.streaming; lap('writer');

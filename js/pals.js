@@ -158,9 +158,57 @@ function dataUrlBlob(u) {
   try { const bin = atob(m[2]); const bytes = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i); return new Blob([bytes], { type: m[1] }); }
   catch { return null; }
 }
+/* ---------- cards copied in by hand ---------- */
+/* A folder you drop into Drive yourself (a card from another copy of the app, a backup you kept) has none
+   of the labels this app writes on the folders it makes, so a hand-dropped card used to sit there unseen.
+   These read such a folder, bring the card and its chats in, and label the folder so it syncs normally
+   from then on. */
+let cardSearch = null;   /* one Drive-wide search per sync, not one per folder */
+async function cardFiles(name) {
+  if (!cardSearch) cardSearch = {};
+  if (cardSearch[name]) return cardSearch[name];
+  let out = [];
+  try { out = await Drive.list(`name='${name}' and mimeType!='${FOLDER_MIME}' and trashed=false`); }
+  catch (e) { console.warn('Card search failed', e); }
+  return (cardSearch[name] = out);
+}
+/* { folder, changed } when the folder held a card this device did not have, else null */
+async function adoptCardFolder(f, kind) {
+  const pal = kind === 'pal';
+  const id = await Drive.fileId(f.id, pal ? 'companion.json' : 'persona.json'); if (!id) return null;
+  const data = await Drive.getJSON(id);
+  if (!data || (data.app && data.app !== APP)) return null;   /* not written by this app */
+  const card = pal ? data.pal : data.persona;
+  if (!card || !card.id || !String(card.name || '').trim()) return null;
+  const chats = pal ? arr(data.chats) : [];
+  const stamp = Math.max(num(card.updatedAt), ...chats.map(ch => num(ch.updatedAt)));
+  if (PALS.deleted[card.id] && PALS.deleted[card.id] >= stamp) return null;   /* deleted here: do not resurrect */
+  const here = pal ? PALS.pals[card.id] : PALS.personas[card.id];
+  const mine = pal ? (here ? palStamp(here) : 0) : (here?.updatedAt || 0);
+  if (here && mine >= stamp) return null;   /* this device already has it, at least as new: leave their copy alone */
+  let changed = 0;
+  if (pal) {
+    PALS.pals[card.id] = palUpgrade(card); changed++;
+    for (const r of chats) {
+      if (!r || !r.id) continue;
+      if (PALS.deleted[r.id] && PALS.deleted[r.id] >= (r.updatedAt || 0)) continue;
+      if (S.palBusy && r.id === S.palBusy.chat) continue;
+      const l = PALS.chats[r.id];
+      if (!l || (r.updatedAt || 0) > (l.updatedAt || 0)) { PALS.chats[r.id] = r; changed++; }
+    }
+  } else { PALS.personas[card.id] = card; changed++; }
+  const appProperties = { ...(pal ? { iqPal: card.id } : { iqPersona: card.id }), iqUpdated: String(stamp) };
+  try { await Drive.patch(f.id, { appProperties }); }
+  catch (e) { console.warn('Card folder label failed', e); }   /* a view-only folder can still be read */
+  return { folder: { ...f, appProperties }, changed };
+}
 async function syncPals(root) {
+  cardSearch = null;
+  const empty = !Object.keys(PALS.pals).length && !Object.keys(PALS.chats).length && !Object.keys(PALS.personas).length && !Object.keys(PALS.worlds).length;
   let folder = (await Drive.list(`'${root}' in parents and name='Companions' and mimeType='${FOLDER_MIME}' and trashed=false`))[0]?.id;
-  if (!folder) { if (!Object.keys(PALS.pals).length && !Object.keys(PALS.chats).length && !Object.keys(PALS.personas).length && !Object.keys(PALS.worlds).length) return 0; folder = await Drive.createFolder('Companions', root, {}); }
+  /* nothing here and no Companions folder yet: a card folder dropped straight into your story folder still counts */
+  if (!folder && empty && !(await cardFiles('companion.json')).length && !(await cardFiles('persona.json')).length) return 0;
+  if (!folder) folder = await Drive.createFolder('Companions', root, {});
   const fid = await Drive.fileId(folder, 'companions.json');
   const remote = fid ? await Drive.getJSON(fid) : null;
   let changed = 0, push = !remote;
@@ -186,6 +234,21 @@ async function syncPals(root) {
   try { folders = await Drive.list(`'${folder}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`); } catch (e) { console.warn('Companion folders', e); }
   const byPal = {};
   for (const f of folders) { const pid = f.appProperties?.iqPal; if (pid) byPal[pid] = f; }
+  /* a card folder dropped in by hand carries no label: read it and adopt it */
+  for (const f of folders) {
+    if (f.appProperties?.iqPal) continue;
+    const got = await adoptCardFolder(f, 'pal');
+    if (got) { byPal[got.folder.appProperties.iqPal] = got.folder; changed += got.changed; }
+  }
+  /* ...and one that landed anywhere else in the Drive (My Drive, a "cards" folder) */
+  const seen = new Set([folder, ...folders.map(f => f.id)]);
+  for (const cf of await cardFiles('companion.json')) {
+    const parent = arr(cf.parents)[0];
+    if (!parent || seen.has(parent)) continue;
+    seen.add(parent);
+    const got = await adoptCardFolder({ id: parent }, 'pal');
+    if (got) { byPal[got.folder.appProperties.iqPal] = got.folder; changed += got.changed; }
+  }
   /* pull anything a companion folder has that is newer */
   for (const [pid, f] of Object.entries(byPal)) {
     if (PALS.deleted[pid] && PALS.deleted[pid] >= num(f.appProperties?.iqUpdated)) continue;
@@ -237,12 +300,27 @@ async function syncPals(root) {
 
   /* one folder per persona, holding their profile */
   const personas = Object.values(PALS.personas);
-  if (personas.length) {
+  const personaFiles = await cardFiles('persona.json');
+  if (personas.length || personaFiles.length) {
     let pRoot = (await Drive.list(`name='Personas' and '${root}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`))[0]?.id;
     if (!pRoot) pRoot = await Drive.createFolder('Personas', root, { iqPersonas: '1' });
     let pf = [];
     try { pf = await Drive.list(`'${pRoot}' in parents and mimeType='${FOLDER_MIME}' and trashed=false`); } catch (e) { console.warn('Persona folders', e); }
     const byPer = {}; for (const f of pf) { const pid = f.appProperties?.iqPersona; if (pid) byPer[pid] = f; }
+    /* a persona folder copied in by hand: here, or anywhere else in the Drive */
+    for (const f of pf) {
+      if (f.appProperties?.iqPersona) continue;
+      const got = await adoptCardFolder(f, 'persona');
+      if (got) { byPer[got.folder.appProperties.iqPersona] = got.folder; changed += got.changed; }
+    }
+    const seenPer = new Set([pRoot, ...pf.map(f => f.id)]);
+    for (const cf of personaFiles) {
+      const parent = arr(cf.parents)[0];
+      if (!parent || seenPer.has(parent)) continue;
+      seenPer.add(parent);
+      const got = await adoptCardFolder({ id: parent }, 'persona');
+      if (got) { byPer[got.folder.appProperties.iqPersona] = got.folder; changed += got.changed; }
+    }
     for (const [pid, f] of Object.entries(byPer)) {
       if (PALS.deleted[pid] && PALS.deleted[pid] >= num(f.appProperties?.iqUpdated)) continue;
       const local = PALS.personas[pid];
@@ -722,8 +800,12 @@ async function palReply(ch, opts = {}) {
   const sysMsg = { role: 'system', content: palSystem(ch, to) + (recall ? `\n\nMEMORY OF THIS CONVERSATION (your own recollection, read back from the messages: treat it as true, pick up what is still open, and never mention that it was written down):\n${recall}` : '') + (loreNote ? '\n\n' + loreNote : '') };
   const ask = (stream, extra) => chat([sysMsg, ...hist, ...(extra || [])],
     { maxTokens: Math.round(PAL_LENGTHS[ch.length || 'normal'].tok * (group && to === 'all' ? 1.7 : 1)), temperature: 0.85, stream, signal, onToken: full => { msg.text = palDedupeText(stripThink(full)); paintPalLog(); } });
+  const live = !!S.settings.text.stream;   /* one setting covers story turns and companion replies */
   try {
-    let out = palDedupeText(stripThink(await ask(true)).trim());
+    let out = '';
+    const doneBump = slowBump('reply');
+    try { out = palDedupeText(stripThink((await ask(live)).trim())); }
+    finally { doneBump(); }
     if (!out) out = palDedupeText(stripThink(await ask(false)).trim());   /* some models send an empty first try */
     /* it just said this: one more try, asked plainly, instead of showing the same reply again.
        A steered reply ("don't repeat") is measured against the last few lines, not only the one before. */

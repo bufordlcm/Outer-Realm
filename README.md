@@ -88,6 +88,8 @@ The GM only requests an image when you reach a new place or meet someone importa
 
 **Custom image URL:** point at any service that returns an image from a URL, using the placeholders `{prompt}`, `{seed}`, `{width}`, `{height}`.
 
+**Slow replies or pictures (freeing VRAM).** If a reply or a picture starts crawling, something is still parked in the graphics card's memory. With **Settings → Images → "Free VRAM automatically when a reply or a picture starts taking a long time"** on (the default), a step that passes 20 seconds asks the picture helper to unload Ollama's loaded models and Forge's painting checkpoint, then carries on without interrupting the reply. **Free VRAM now** does it by hand. The helper must be running (it reaches Ollama at `127.0.0.1:11434` and Forge at `127.0.0.1:7860`); restart it once after updating so it has the `/iq/bump` endpoint.
+
 ---
 
 ## 4. Google Drive sync (play on any device)
@@ -414,7 +416,7 @@ The **Companions** tab is its own app inside Outer Realm: AI characters you talk
 - Every chat is **📱 Texting** (message bubbles, voice messages, photos) or **🧍 In person** (a narrated scene with *actions* and dialogue). Tap to switch, or the companion switches when you meet up or part ways.
 - Relationships move from strangers to friends to more (or stay friends only) as you talk; companions remember facts about you, your history and inside jokes (`js/pals.js`).
 - Edit, reroll (with ‹ › to flip between replies), delete or continue any reply; `((double brackets))` direct the story; group chats with several companions.
-- Saved on the device and in Drive as `Companions/companions.json`. Adult content must be switched on in About you and per companion; every companion must be an adult (16+).
+- Saved on the device and in Drive as `Companions/companions.json`, plus one folder per companion (`companion.json` with their chats) and one per persona. A card folder you drop into Drive by hand — a backup, or a card from another device — is picked up and adopted on the next sync, wherever in the Drive you put it. Adult content must be switched on in About you and per companion; every companion must be an adult (16+).
 
 ## Game Settings, music and ambience
 

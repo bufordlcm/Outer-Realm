@@ -364,7 +364,7 @@ function settingsHTML() {
       ${bindCheck('ai.verify', 'Continuity check: rewrites contradictions (slow on small models)')}` : ''}
       <div class="kv">${bindInput('text.temperature', 'Creativity (0–1.5)', { type:'number' })}${helperSelectHTML()}</div>
       <p class="hint">The helper model runs the rule steps (referee, guard, bookkeeper). Leave it empty to use your story model for everything. Example: story model <code>Wayfarer</code>, helper <code>dolphin3</code>. On an 8 GB card two models swap in and out, which adds a few seconds per turn.</p>
-      ${bindCheck('text.stream', 'Stream text as it\'s written')}
+      ${bindCheck('text.stream', 'Stream text as it\'s written (story turns and companion replies)')}
       <div class="sect" style="font-size:20px">World &amp; character builder</div>
       <label class="f"><span>AI for building worlds, characters and story setup</span><select data-bind="ai.builder">
         <option value="auto" ${(S.settings.ai.builder ?? 'auto') === 'auto' ? 'selected' : ''}>Automatic: a stronger online AI if you've added one</option>
